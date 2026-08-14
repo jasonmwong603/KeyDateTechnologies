@@ -1,0 +1,15 @@
+{
+  "appId": "com.keydatetechnologies.floor",
+  "appName": "The Keydate Floor",
+  "webDir": "dist-client",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "backgroundColor": "#0b1020"
+  },
+  "ios": {
+    "backgroundColor": "#0b1020",
+    "contentInset": "always"
+  }
+}

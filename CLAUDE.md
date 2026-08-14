@@ -14,6 +14,7 @@ npm test               # vitest, runs against TS source (no build needed)
 npm run test:client    # drives real Chromium: desktop + emulated phone
 npm start              # build, then server on :8080 (client + WebSocket)
 npm run serve          # run without rebuilding (deployment)
+npm run bundle:client  # self-contained client payload for app packaging
 npm run format:check   # prettier
 ```
 
@@ -47,6 +48,7 @@ npm run format:check   # prettier
 ## Docs
 
 `docs/playing.md` (how to run it, phones, controls) · `docs/deploying.md` ·
+`docs/distribution.md` (packaging as an app) ·
 `docs/architecture.md` (tick loop, replication) · `docs/netcode.md` (prediction,
 interpolation) · `docs/protocol.md` (every message) · `docs/adding-a-table-game.md` ·
 `docs/responsible-play.md` · `docs/roadmap.md` (including known limitations).

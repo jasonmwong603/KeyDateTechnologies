@@ -14,7 +14,8 @@
  */
 
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync } from 'node:fs';
+import { createReadStream, existsSync, mkdirSync, statSync } from 'node:fs';
+import { createServer } from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium, devices } from 'playwright';
@@ -96,6 +97,61 @@ async function join(page, name, sessionCode = '') {
 /** Reads the local player's position out of the running client. */
 function readPosition(page) {
   return page.evaluate(() => window.__keydate?.position() ?? null);
+}
+
+/**
+ * Serves a directory over HTTP, standing in for an app's local file store.
+ *
+ * The packaged-client check needs the page to come from somewhere that is *not*
+ * the game server, because that is the whole situation a packaged app is in:
+ * the HTML is local, the server is elsewhere.
+ */
+function serveDirectory(directory, port) {
+  const types = {
+    '.html': 'text/html; charset=utf-8',
+    '.js': 'text/javascript; charset=utf-8',
+    '.css': 'text/css; charset=utf-8',
+    '.json': 'application/json',
+    '.webmanifest': 'application/manifest+json',
+    '.svg': 'image/svg+xml',
+    '.png': 'image/png',
+  };
+
+  const server = createServer((request, response) => {
+    const url = new URL(request.url, 'http://localhost');
+    const relative =
+      url.pathname === '/' ? 'index.html' : decodeURIComponent(url.pathname).slice(1);
+    const target = path.resolve(directory, relative);
+
+    if (!target.startsWith(path.resolve(directory))) {
+      response.writeHead(403).end();
+      return;
+    }
+    try {
+      if (!statSync(target).isFile()) throw new Error('not a file');
+    } catch {
+      response.writeHead(404).end();
+      return;
+    }
+    response.writeHead(200, {
+      'content-type': types[path.extname(target)] ?? 'application/octet-stream',
+    });
+    createReadStream(target).pipe(response);
+  });
+
+  return new Promise((resolve) => server.listen(port, '127.0.0.1', () => resolve(server)));
+}
+
+/** Runs the client bundler into `outDir`, baking in `serverUrl`. */
+function runBundler(outDir, serverUrl) {
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, [path.join(repoRoot, 'scripts/bundle-client.mjs')], {
+      env: { ...process.env, KEYDATE_BUNDLE_DIR: outDir, KEYDATE_SERVER_URL: serverUrl },
+      stdio: ['ignore', 'ignore', 'pipe'],
+    });
+    child.stderr.on('data', (chunk) => process.stderr.write(`[bundler] ${chunk}`));
+    child.on('exit', (code) => resolve(code === 0));
+  });
 }
 
 async function run() {
@@ -267,6 +323,49 @@ async function run() {
       chipsBefore !== chipsAfter,
       `${chipsBefore} -> ${chipsAfter}`,
     );
+
+    // ------------------------------------------------- packaged app payload
+    // Proves the scenario every native wrapper is in: the page loads from a
+    // local origin with no server behind it, and reaches the world server only
+    // because an endpoint was baked in at bundle time.
+    console.log('\nPackaged client (served from a different origin)');
+    // Bundle fresh, pointed at this test's server, so the check proves the real
+    // wiring rather than whatever endpoint a previous manual bundle used.
+    const bundleDir = path.join(SHOT_DIR, 'bundle');
+    const bundled = await runBundler(bundleDir, `ws://127.0.0.1:${PORT}`);
+    check('bundler produces a client payload', bundled);
+
+    if (!bundled) {
+      console.log('  skip  bundling failed');
+    } else {
+      const staticPort = PORT + 1;
+      const staticServer = await serveDirectory(bundleDir, staticPort);
+      try {
+        const appContext = await browser.newContext({ viewport: { width: 900, height: 600 } });
+        const app = await appContext.newPage();
+        const appErrors = [];
+        app.on('pageerror', (error) => appErrors.push(String(error)));
+
+        await app.goto(`http://127.0.0.1:${staticPort}/`, { waitUntil: 'domcontentloaded' });
+
+        const endpoint = await app.evaluate(() => window.KEYDATE_SERVER_URL);
+        check('bundle has a server endpoint baked in', Boolean(endpoint), `endpoint=${endpoint}`);
+
+        await app.fill('#name-input', 'AppPlayer');
+        await app.click('#join-button');
+        await app.waitForSelector('#join-screen', { state: 'hidden', timeout: 15_000 });
+
+        check('packaged client connects to a server on another origin', true);
+        const appChips = await app.textContent('#chips-value');
+        check('packaged client is in the world', appChips && appChips !== '0', `chips=${appChips}`);
+        check('no page errors in the packaged client', appErrors.length === 0, appErrors[0]);
+
+        await app.screenshot({ path: path.join(SHOT_DIR, 'packaged-client.png') });
+        await appContext.close();
+      } finally {
+        staticServer.close();
+      }
+    }
 
     // Re-check errors at the end, not just after load. A render loop that
     // throws every frame still loads cleanly — checking only at startup is how

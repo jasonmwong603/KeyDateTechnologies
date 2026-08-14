@@ -48,6 +48,11 @@ all-bets-then-one-resolution phase machine does not model.
 **Avatar customisation and voice.** The social half of a social casino. Both are large
 and neither blocks anything else.
 
+**LAN discovery.** A host device announcing itself over UDP broadcast or mDNS, so players
+on the same Wi-Fi see "Jason's Floor" in a list and tap it — no address typed anywhere.
+Only usable from a Capacitor or Electron build, since browsers cannot do UDP. See
+[distribution.md](distribution.md).
+
 ## Known limitations
 
 | Limitation                          | Consequence                                        | Where                                |

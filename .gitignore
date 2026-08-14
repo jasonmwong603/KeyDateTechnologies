@@ -44,3 +44,6 @@ DerivedDataCache/
 
 # Client smoke-test screenshots
 .smoke/
+
+# Packaged client payload
+dist-client/

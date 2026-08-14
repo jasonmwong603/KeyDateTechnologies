@@ -41,6 +41,8 @@ to be on the same Wi-Fi. **To play with people who are not**, deploy it: there i
 - **[docs/playing.md](docs/playing.md)** — full walkthrough, controls, firewall
   troubleshooting, home-screen install, and what to change first
 - **[docs/deploying.md](docs/deploying.md)** — Render, Fly.io, Docker, plain VPS
+- **[docs/distribution.md](docs/distribution.md)** — shipping it as an installable app
+  with no URL for players to type
 
 ### Controls
 
@@ -55,15 +57,16 @@ to be on the same Wi-Fi. **To play with people who are not**, deploy it: there i
 
 ### Commands
 
-| Command               | What it does                                             |
-| --------------------- | -------------------------------------------------------- |
-| `npm start`           | Build, then run the world server on port 8080            |
-| `npm run serve`       | Run without rebuilding (for deployment)                  |
-| `npm run build`       | Compiles every package via TypeScript project references |
-| `npm test`            | Unit suite, against TypeScript source                    |
-| `npm run test:client` | Drives a real browser — desktop and emulated phone       |
-| `npm run coverage`    | Test suite with a coverage report                        |
-| `npm run format`      | Formats with Prettier                                    |
+| Command                 | What it does                                             |
+| ----------------------- | -------------------------------------------------------- |
+| `npm start`             | Build, then run the world server on port 8080            |
+| `npm run serve`         | Run without rebuilding (for deployment)                  |
+| `npm run build`         | Compiles every package via TypeScript project references |
+| `npm run bundle:client` | Self-contained client payload for packaging as an app    |
+| `npm test`              | Unit suite, against TypeScript source                    |
+| `npm run test:client`   | Drives a real browser — desktop and emulated phone       |
+| `npm run coverage`      | Test suite with a coverage report                        |
+| `npm run format`        | Formats with Prettier                                    |
 
 ---
 

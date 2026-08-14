@@ -21,6 +21,7 @@
     "typecheck": "tsc --build --dry",
     "start": "npm run build && node apps/server/dist/index.js",
     "serve": "node apps/server/dist/index.js",
+    "bundle:client": "npm run build && node scripts/bundle-client.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:client": "node apps/client/smoke.mjs",

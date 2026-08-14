@@ -1,4 +1,5 @@
 import { PROTOCOL_VERSION } from '@keydate/protocol';
+import { resolveServerUrl } from './config.js';
 
 /**
  * The socket connection to the world server.
@@ -52,8 +53,17 @@ export class Connection {
   }
 
   _open() {
-    const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
-    const socket = new WebSocket(`${scheme}://${location.host}/ws`);
+    // Resolved per attempt rather than cached, so a packaged build that had its
+    // endpoint injected late still picks it up on reconnect.
+    let endpoint;
+    try {
+      endpoint = resolveServerUrl();
+    } catch (error) {
+      this._emit('config-error', error);
+      return;
+    }
+
+    const socket = new WebSocket(endpoint);
     this.socket = socket;
 
     socket.addEventListener('open', () => {

@@ -76,6 +76,14 @@ joinForm.addEventListener('submit', (event) => {
   document.getElementById('join-button').disabled = true;
 });
 
+// A packaged build with no server address baked in can never connect. Say so
+// on the join screen rather than spinning forever on a reconnect timer.
+connection.on('config-error', (error) => {
+  joinError.hidden = false;
+  joinError.textContent = error.message;
+  document.getElementById('join-button').disabled = false;
+});
+
 connection.on('server-error', (message) => {
   if (joinScreen.hidden) {
     hud.addChatLine(null, message.message, 'system');
