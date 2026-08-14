@@ -85,6 +85,59 @@ keydate.example.com {
 }
 ```
 
+## Putting it on play.keydate.ca
+
+The target layout is `https://play.keydate.ca/the-floor/`. The apex domain is left
+completely alone — this is a new subdomain, so nothing about keydate.ca's DNS,
+hosting or content changes.
+
+### DNS
+
+Add **one** record at your DNS provider. Do not touch the existing `keydate.ca`
+records.
+
+| Type  | Name   | Value                                |
+| ----- | ------ | ------------------------------------ |
+| CNAME | `play` | the hostname your platform gives you |
+
+On Render that is the `onrender.com` hostname shown under **Settings → Custom Domains**
+after you add `play.keydate.ca`. On Fly, run `fly certs add play.keydate.ca` and it
+prints the records to create. Both then issue TLS for the subdomain automatically.
+
+Because the apex is untouched, `keydate.ca` and `www.keydate.ca` keep resolving exactly
+where they do today. You can confirm before and after:
+
+```bash
+dig +short keydate.ca        # unchanged
+dig +short play.keydate.ca   # points at your game host
+```
+
+### The resulting URLs
+
+| URL                          | What happens            |
+| ---------------------------- | ----------------------- |
+| `play.keydate.ca/the-floor/` | The game                |
+| `play.keydate.ca/the-floor`  | 301 to the above        |
+| `play.keydate.ca/`           | 301 to the current game |
+| `play.keydate.ca/healthz`    | Health probe            |
+| `keydate.ca`                 | Untouched               |
+
+### Renaming the game later
+
+Change one variable, and list the old name so nothing breaks:
+
+```bash
+GAME_SLUG=high-roller
+LEGACY_SLUGS=the-floor
+```
+
+Requests to `/the-floor/...` then 301 to `/high-roller/...` with the rest of the path
+intact. This matters more than it looks: shared links and bookmarks survive, and so do
+**already-installed apps**, which have their address compiled in and cannot be updated
+by you. Keep old slugs listed indefinitely — they cost nothing.
+
+`LEGACY_SLUGS` takes a comma-separated list, so a game can be renamed more than once.
+
 ## Where the game gets mounted
 
 The game serves everything — client, assets and the WebSocket — under one

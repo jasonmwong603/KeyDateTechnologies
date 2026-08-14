@@ -12,7 +12,7 @@ npm install
 npm run build          # tsc project references across all packages
 npm test               # vitest, runs against TS source (no build needed)
 npm run test:client    # drives real Chromium: desktop + emulated phone
-npm start              # build, then server on :8080 (client + WebSocket)
+npm start              # build, then server on :8080/<GAME_SLUG>/ (client + WebSocket)
 npm run serve          # run without rebuilding (deployment)
 npm run bundle:client  # self-contained client payload for app packaging
 npm run format:check   # prettier
@@ -44,6 +44,11 @@ npm run format:check   # prettier
    longer reproduces the outcome and the fairness proof breaks.
 6. **Validate every new message type** in `parseClientMessage`, with adversarial tests.
 7. **No real money.** See `docs/responsible-play.md` — these are hard lines.
+8. **Nothing hard-codes the mount point.** The game is served under `GAME_SLUG`
+   (`play.keydate.ca/the-floor`). The page carries one `<base href>` the server
+   rewrites; every other URL is relative to it, and the socket endpoint is derived
+   from it. Import map addresses must start with `./` — a bare path is read as a
+   bare specifier and silently blocked.
 
 ## Docs
 

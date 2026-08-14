@@ -21,13 +21,13 @@ reached on:
 ```
   The Keydate Floor — world server running at 30Hz
 
-  On this computer:   http://localhost:8080
+  On this computer:   http://localhost:8080/the-floor/
 
   On your phone or another device (same Wi-Fi):
-    http://192.168.1.24:8080
+    http://192.168.1.24:8080/the-floor/
 ```
 
-Open <http://localhost:8080>, type a name, press **Enter the floor**.
+Open <http://localhost:8080/the-floor/>, type a name, press **Enter the floor**.
 
 To play against yourself while testing, open a second browser window — each tab is an
 independent player with its own camera. Use two different browsers (or one normal and
@@ -43,7 +43,7 @@ room.
 
 1. Run `npm start` on your computer.
 2. Read the LAN address it printed — the `192.168.x.x` one.
-3. Type that address into your phone's browser, including `:8080`.
+3. Type that address into your phone's browser, including the port and the game path.
 
 Both devices must be on the same Wi-Fi network.
 
@@ -76,7 +76,7 @@ shared Wi-Fi. See [deploying.md](deploying.md) for the full walkthrough — ther
 `Dockerfile` and a `render.yaml` in the repository, and the server needs nothing but a
 port.
 
-Once deployed you get a URL like `https://keydate.onrender.com`. Anyone who opens it
+Deployed, that becomes `https://play.keydate.ca/the-floor/`. Anyone who opens it
 lands on the public floor; anyone who types the same **session code** lands in a private
 world together.
 

@@ -37,6 +37,19 @@ export const config = {
   gameSlug,
   /** `/the-floor`, or `''` when serving from the root of a domain. */
   basePath: normalizeBasePath(process.env.BASE_PATH ?? gameSlug),
+
+  /**
+   * Slugs the game used to be served under, comma-separated.
+   *
+   * Renaming a game breaks every bookmark, shared link and — worse — every
+   * already-installed app that had the old address compiled into it. Listing
+   * the old slug here keeps those working: requests to it are redirected to
+   * the current one, path and all.
+   */
+  legacySlugs: (process.env.LEGACY_SLUGS ?? '')
+    .split(',')
+    .map((entry) => normalizeBasePath(entry))
+    .filter((entry) => entry !== ''),
   /** Shown on the join screen and in the browser tab. */
   gameTitle: process.env.GAME_TITLE ?? 'The Keydate Floor',
 

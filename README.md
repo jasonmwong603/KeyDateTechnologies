@@ -19,7 +19,7 @@ npm install
 npm start
 ```
 
-Open <http://localhost:8080>. That is the whole setup — the client is a web page, so
+Open <http://localhost:8080/the-floor/>. That is the whole setup — the client is a web page, so
 **nothing installs on any device**: Windows, macOS, Linux, Android and iOS all just open
 a browser.
 
@@ -28,10 +28,10 @@ On boot the server prints every address it can be reached on:
 ```
   The Keydate Floor — world server running at 30Hz
 
-  On this computer:   http://localhost:8080
+  On this computer:   http://localhost:8080/the-floor/
 
   On your phone or another device (same Wi-Fi):
-    http://192.168.1.24:8080
+    http://192.168.1.24:8080/the-floor/
 ```
 
 **To play on your phone**, type that second address into its browser — both devices need

@@ -80,6 +80,15 @@ const httpServer = createServer((request, response) => {
     return;
   }
 
+  // A previous name for this game. Redirect rather than 404 so links shared
+  // before the rename, and apps built against the old address, keep working.
+  for (const legacy of config.legacySlugs) {
+    if (url.pathname !== legacy && !url.pathname.startsWith(`${legacy}/`)) continue;
+    const remainder = url.pathname.slice(legacy.length);
+    response.writeHead(301, { location: `${base}${remainder === '' ? '/' : remainder}` }).end();
+    return;
+  }
+
   void staticServer.handle(request, response).then((handled) => {
     if (!handled) response.writeHead(404).end('Not found');
   });
