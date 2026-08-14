@@ -20,6 +20,9 @@ services:
       # The platform assigns the port; the server reads it.
       - key: PORT
         value: '8080'
+      # The path the game is served under. Empty serves it at the domain root.
+      - key: GAME_SLUG
+        value: 'the-floor'
       - key: STARTING_CHIPS
         value: '2500'
       - key: MAX_PLAYERS_PER_WORLD

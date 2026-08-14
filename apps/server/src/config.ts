@@ -7,9 +7,38 @@ function intFromEnv(name: string, fallback: number): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+/**
+ * Normalises a game slug into a URL base path.
+ *
+ * Accepts what someone would naturally set — `floor`, `/floor`, `/floor/` —
+ * and returns either `/floor` or `''` for a root mount. Everything the server
+ * exposes hangs off this, so getting it consistent in one place avoids a
+ * double-slash bug in one route and a missing slash in another.
+ */
+export function normalizeBasePath(slug: string): string {
+  const trimmed = slug.trim().replace(/^\/+|\/+$/g, '');
+  return trimmed === '' ? '' : `/${trimmed}`;
+}
+
+/**
+ * The path segment this game is served under, e.g. `the-floor` in
+ * `play.keydate.ca/the-floor`.
+ *
+ * This is the knob to turn when the game is renamed. Nothing else in the
+ * codebase hard-codes it: the client discovers its own base path from the
+ * document, and the WebSocket endpoint is derived from the same value.
+ */
+const gameSlug = process.env.GAME_SLUG ?? 'the-floor';
+
 export const config = {
   port: intFromEnv('PORT', 8080),
   host: process.env.HOST ?? '0.0.0.0',
+
+  gameSlug,
+  /** `/the-floor`, or `''` when serving from the root of a domain. */
+  basePath: normalizeBasePath(process.env.BASE_PATH ?? gameSlug),
+  /** Shown on the join screen and in the browser tab. */
+  gameTitle: process.env.GAME_TITLE ?? 'The Keydate Floor',
 
   /** Players per world instance. Beyond this, joins are refused. */
   maxPlayersPerWorld: intFromEnv('MAX_PLAYERS_PER_WORLD', 32),

@@ -85,20 +85,61 @@ keydate.example.com {
 }
 ```
 
+## Where the game gets mounted
+
+The game serves everything — client, assets and the WebSocket — under one
+configurable path prefix, so it can share a host with other properties instead of
+owning the domain root.
+
+```bash
+GAME_SLUG=the-floor npm run serve     # served at  https://<host>/the-floor/
+GAME_SLUG= npm run serve              # served at  https://<host>/
+```
+
+`GAME_SLUG` is the only place the name appears. Renaming the game later, or standing
+a second one up beside it, is a change to this value and nothing else — the client
+discovers its own base path from the document at runtime rather than being built for a
+particular URL.
+
+The host root and the slug without a trailing slash both `301` to the canonical
+`/<slug>/`, and `/healthz` stays at the domain root so platform probes do not need to
+know where the game is mounted.
+
+### Behind a reverse proxy
+
+To serve the game at `play.example.com/the-floor` while other things live on the same
+host, forward the prefix and leave everything else alone:
+
+```nginx
+location /the-floor/ {
+    proxy_pass http://127.0.0.1:8080;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_read_timeout 900s;
+}
+```
+
+Note the game keeps its own prefix — do **not** strip it in the proxy, because the
+server uses it to build the page's `<base href>` and the socket path.
+
 ## Configuration
 
 All optional — the defaults are playable.
 
-| Variable                  | Default   | Meaning                                               |
-| ------------------------- | --------- | ----------------------------------------------------- |
-| `PORT`                    | `8080`    | HTTP + WebSocket port                                 |
-| `HOST`                    | `0.0.0.0` | Bind address                                          |
-| `MAX_PLAYERS_PER_WORLD`   | `32`      | Players per world instance                            |
-| `STARTING_CHIPS`          | `2500`    | Opening stack                                         |
-| `BAILOUT_CHIPS`           | `500`     | Granted at exactly zero chips                         |
-| `RESUME_GRACE_MS`         | `90000`   | How long a dropped player's avatar and chips are held |
-| `SOCKET_TIMEOUT_MS`       | `30000`   | Idle socket cull                                      |
-| `MAX_MESSAGES_PER_SECOND` | `120`     | Per-socket rate limit                                 |
+| Variable                  | Default             | Meaning                                               |
+| ------------------------- | ------------------- | ----------------------------------------------------- |
+| `GAME_SLUG`               | `the-floor`         | Path the game is served under; empty means the root   |
+| `GAME_TITLE`              | `The Keydate Floor` | Name shown on the join screen                         |
+| `PORT`                    | `8080`              | HTTP + WebSocket port                                 |
+| `HOST`                    | `0.0.0.0`           | Bind address                                          |
+| `MAX_PLAYERS_PER_WORLD`   | `32`                | Players per world instance                            |
+| `STARTING_CHIPS`          | `2500`              | Opening stack                                         |
+| `BAILOUT_CHIPS`           | `500`               | Granted at exactly zero chips                         |
+| `RESUME_GRACE_MS`         | `90000`             | How long a dropped player's avatar and chips are held |
+| `SOCKET_TIMEOUT_MS`       | `30000`             | Idle socket cull                                      |
+| `MAX_MESSAGES_PER_SECOND` | `120`               | Per-socket rate limit                                 |
 
 ## Before anyone outside a trusted group plays
 

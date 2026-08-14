@@ -1,5 +1,5 @@
 import { createReadStream } from 'node:fs';
-import { stat } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
 
@@ -38,9 +38,19 @@ export interface StaticMount {
 }
 
 export class StaticFileServer {
+  /** The transformed index HTML, built once on first request. */
+  private indexHtml: string | null = null;
+
   constructor(
     private readonly mounts: StaticMount[],
     private readonly indexFile: string,
+    /**
+     * Where the game is mounted, e.g. `/the-floor`, or `''` for a domain root.
+     *
+     * The index page's `<base href>` is rewritten to this, which is what lets
+     * one build of the client work at any mount point.
+     */
+    private readonly basePath: string = '',
   ) {}
 
   /** Serves the request, returning false when no mount matches. */
@@ -50,8 +60,8 @@ export class StaticFileServer {
     const url = new URL(request.url ?? '/', 'http://localhost');
     const pathname = decodeURIComponent(url.pathname);
 
-    if (pathname === '/' || pathname === '/index.html') {
-      await this.sendFile(response, this.indexFile, request.method === 'HEAD');
+    if (pathname === `${this.basePath}/` || pathname === `${this.basePath}/index.html`) {
+      await this.sendIndex(response, request.method === 'HEAD');
       return true;
     }
 
@@ -76,6 +86,28 @@ export class StaticFileServer {
     }
 
     return false;
+  }
+
+  /**
+   * Serves the index page with its `<base href>` pointed at the mount point.
+   *
+   * Rewriting one attribute is enough because every other URL on the page is
+   * relative — the alternative, rewriting every path at build time, would mean
+   * a different client build per deployment path.
+   */
+  private async sendIndex(response: ServerResponse, headOnly: boolean): Promise<void> {
+    if (this.indexHtml === null) {
+      const source = await readFile(this.indexFile, 'utf8');
+      this.indexHtml = source.replace('<base href="/" />', `<base href="${this.basePath}/" />`);
+    }
+
+    const body = Buffer.from(this.indexHtml, 'utf8');
+    response.writeHead(200, {
+      'content-type': 'text/html; charset=utf-8',
+      'content-length': body.byteLength,
+      'cache-control': 'no-cache',
+    });
+    response.end(headOnly ? undefined : body);
   }
 
   private async sendFile(

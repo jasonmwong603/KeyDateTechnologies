@@ -4,8 +4,16 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 // discoverable by reinstalling it on a phone.
 import { resolveServerUrl, toWebSocketUrl } from './src/config.js';
 
-function setLocation(protocol: string, host = 'example.com') {
-  vi.stubGlobal('location', { protocol, host });
+/**
+ * Stands in for a loaded page.
+ *
+ * `baseURI` is what `<base href>` controls, and it is how the client works out
+ * where it is mounted without being told.
+ */
+function setPage(baseURI: string) {
+  const url = new URL(baseURI);
+  vi.stubGlobal('location', { protocol: url.protocol, host: url.host });
+  vi.stubGlobal('document', { baseURI });
 }
 
 afterEach(() => {
@@ -47,18 +55,30 @@ describe('toWebSocketUrl', () => {
 });
 
 describe('resolveServerUrl', () => {
-  it('uses the same origin when served over the web', () => {
-    setLocation('https:', 'play.example.com');
+  it('uses the same origin when served from a domain root', () => {
+    setPage('https://play.example.com/');
     expect(resolveServerUrl()).toBe('wss://play.example.com/ws');
   });
 
+  it('follows the mount point when served under a path prefix', () => {
+    // The whole point of the base-relative resolution: at
+    // play.keydate.ca/the-floor/ the socket is /the-floor/ws, not /ws.
+    setPage('https://play.keydate.ca/the-floor/');
+    expect(resolveServerUrl()).toBe('wss://play.keydate.ca/the-floor/ws');
+  });
+
+  it('handles a nested mount point', () => {
+    setPage('https://play.keydate.ca/games/the-floor/');
+    expect(resolveServerUrl()).toBe('wss://play.keydate.ca/games/the-floor/ws');
+  });
+
   it('uses plain ws when the page itself is plain http', () => {
-    setLocation('http:', '192.168.1.24:8080');
-    expect(resolveServerUrl()).toBe('ws://192.168.1.24:8080/ws');
+    setPage('http://192.168.1.24:8080/the-floor/');
+    expect(resolveServerUrl()).toBe('ws://192.168.1.24:8080/the-floor/ws');
   });
 
   it('prefers an injected endpoint over the page origin', () => {
-    setLocation('https:', 'cdn.example.com');
+    setPage('https://cdn.example.com/');
     (globalThis as Record<string, unknown>).KEYDATE_SERVER_URL = 'wss://play.example.com';
     expect(resolveServerUrl()).toBe('wss://play.example.com/ws');
   });
@@ -67,14 +87,17 @@ describe('resolveServerUrl', () => {
     // Guessing same-origin here points the app at the device itself, which
     // surfaces much later as an unexplained connection failure.
     for (const protocol of ['file:', 'capacitor:', 'ionic:', 'tauri:']) {
-      setLocation(protocol, 'localhost');
+      vi.stubGlobal('location', { protocol, host: 'localhost' });
+      vi.stubGlobal('document', { baseURI: `${protocol}//localhost/` });
       expect(() => resolveServerUrl()).toThrow(/no server address/i);
     }
   });
 
   it('works inside a packaged app once an endpoint is injected', () => {
-    setLocation('capacitor:', 'localhost');
-    (globalThis as Record<string, unknown>).KEYDATE_SERVER_URL = 'https://play.example.com';
-    expect(resolveServerUrl()).toBe('wss://play.example.com/ws');
+    vi.stubGlobal('location', { protocol: 'capacitor:', host: 'localhost' });
+    vi.stubGlobal('document', { baseURI: 'capacitor://localhost/' });
+    (globalThis as Record<string, unknown>).KEYDATE_SERVER_URL =
+      'https://play.keydate.ca/the-floor';
+    expect(resolveServerUrl()).toBe('wss://play.keydate.ca/the-floor/ws');
   });
 });

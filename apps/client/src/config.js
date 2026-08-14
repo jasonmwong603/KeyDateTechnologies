@@ -41,8 +41,12 @@ export function resolveServerUrl() {
     );
   }
 
-  const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
-  return `${scheme}://${location.host}/ws`;
+  // Resolved against the document's base, not the domain root, so the game
+  // works mounted under a path prefix (play.keydate.ca/the-floor/ws) without
+  // the client being told where it lives.
+  const endpoint = new URL('ws', document.baseURI);
+  const scheme = endpoint.protocol === 'https:' ? 'wss' : 'ws';
+  return `${scheme}://${endpoint.host}${endpoint.pathname}`;
 }
 
 /**

@@ -1,6 +1,14 @@
 <!doctype html>
 <html lang="en">
   <head>
+    <!--
+      Every other URL on this page is relative to this. The server rewrites the
+      href to wherever the game is mounted (e.g. /the-floor/), so the same HTML
+      works at a domain root, under a path prefix, or inside a packaged app.
+      It must stay the first element in <head>: relative URLs above it would
+      resolve before the base is known.
+    -->
+    <base href="/" />
     <meta charset="utf-8" />
     <meta
       name="viewport"
@@ -14,16 +22,19 @@
       iOS launch this without Safari's chrome, which matters here because the
       address bar eats the bottom of a full-screen 3D view.
     -->
-    <link rel="manifest" href="/assets/manifest.webmanifest" />
-    <link rel="icon" href="/assets/icon.svg" type="image/svg+xml" />
-    <link rel="apple-touch-icon" href="/assets/icon-180.png" />
+    <link rel="manifest" href="./assets/manifest.webmanifest" />
+    <link rel="icon" href="./assets/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./assets/icon-180.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Keydate" />
-    <link rel="stylesheet" href="/js/style.css" />
+    <link rel="stylesheet" href="./js/style.css" />
 
     <!--
+      Addresses here must begin with ./ — a bare path like "pkg/sim/index.js"
+      is read as another bare specifier and silently blocked with a null value.
+
       The client runs as plain ES modules with no bundler. This import map
       points the bare specifiers at the same compiled output the server imports,
       so prediction and authority literally share one copy of the simulation.
@@ -31,10 +42,10 @@
     <script type="importmap">
       {
         "imports": {
-          "three": "/vendor/three/three.module.js",
-          "@keydate/sim": "/pkg/sim/index.js",
-          "@keydate/netcode": "/pkg/netcode/index.js",
-          "@keydate/protocol": "/pkg/protocol/index.js"
+          "three": "./vendor/three/three.module.js",
+          "@keydate/sim": "./pkg/sim/index.js",
+          "@keydate/netcode": "./pkg/netcode/index.js",
+          "@keydate/protocol": "./pkg/protocol/index.js"
         }
       }
     </script>
@@ -128,6 +139,6 @@
       </div>
     </div>
 
-    <script type="module" src="/js/main.js"></script>
+    <script type="module" src="./js/main.js"></script>
   </body>
 </html>

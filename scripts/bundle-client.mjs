@@ -77,8 +77,13 @@ async function main() {
 async function writeIndexHtml() {
   const source = await readFile(path.join(repoRoot, 'apps/client/index.html'), 'utf8');
 
-  let html = source.replace(/(src|href)="\/([^"]*)"/g, '$1="./$2"');
-  // The import map's targets are values, not attributes, so they need their own pass.
+  // A packaged app has no web root, so the page resolves everything against its
+  // own directory. Every other URL in the document is already relative to this.
+  let html = source.replace('<base href="/" />', '<base href="./" />');
+
+  // Belt and braces: catch any absolute path a future edit reintroduces, since
+  // one would silently break only in the packaged build.
+  html = html.replace(/(src|href)="\/([^"]+)"/g, '$1="./$2"');
   html = html.replace(/"\/(pkg|vendor|js|assets)\//g, '"./$1/');
 
   const injected = `    <script>

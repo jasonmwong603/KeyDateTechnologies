@@ -21,16 +21,32 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 // dist/ -> apps/server -> apps -> repo root
 const repoRoot = path.resolve(here, '../../..');
 
+/**
+ * Everything the game serves lives under this prefix.
+ *
+ * The whole game is one mount point, so it can sit beside other properties on
+ * the same host — `play.keydate.ca/the-floor` — without owning the domain root.
+ * Renaming the game is a change to `GAME_SLUG` and nothing else.
+ */
+const base = config.basePath;
+
 const staticServer = new StaticFileServer(
   [
-    { urlPrefix: '/js', directory: path.join(repoRoot, 'apps/client/src') },
-    { urlPrefix: '/assets', directory: path.join(repoRoot, 'apps/client/assets') },
-    { urlPrefix: '/pkg/protocol', directory: path.join(repoRoot, 'packages/protocol/dist') },
-    { urlPrefix: '/pkg/netcode', directory: path.join(repoRoot, 'packages/netcode/dist') },
-    { urlPrefix: '/pkg/sim', directory: path.join(repoRoot, 'packages/sim/dist') },
-    { urlPrefix: '/vendor/three', directory: path.join(repoRoot, 'node_modules/three/build') },
+    { urlPrefix: `${base}/js`, directory: path.join(repoRoot, 'apps/client/src') },
+    { urlPrefix: `${base}/assets`, directory: path.join(repoRoot, 'apps/client/assets') },
+    {
+      urlPrefix: `${base}/pkg/protocol`,
+      directory: path.join(repoRoot, 'packages/protocol/dist'),
+    },
+    { urlPrefix: `${base}/pkg/netcode`, directory: path.join(repoRoot, 'packages/netcode/dist') },
+    { urlPrefix: `${base}/pkg/sim`, directory: path.join(repoRoot, 'packages/sim/dist') },
+    {
+      urlPrefix: `${base}/vendor/three`,
+      directory: path.join(repoRoot, 'node_modules/three/build'),
+    },
   ],
   path.join(repoRoot, 'apps/client/index.html'),
+  base,
 );
 
 const registry = new SessionRegistry();
@@ -39,16 +55,28 @@ const gateway = new Gateway(registry);
 const httpServer = createServer((request, response) => {
   const url = new URL(request.url ?? '/', 'http://localhost');
 
-  if (url.pathname === '/healthz') {
+  // Health checks stay at the domain root: platform probes hit `/healthz` and
+  // should not have to know where the game happens to be mounted.
+  if (url.pathname === '/healthz' || url.pathname === `${base}/healthz`) {
     const worlds = registry.all;
     response.writeHead(200, { 'content-type': 'application/json' }).end(
       JSON.stringify({
         status: 'ok',
+        game: config.gameSlug,
+        basePath: base,
         worlds: worlds.length,
         players: worlds.reduce((sum, world) => sum + world.playerCount, 0),
         tickRate: 1 / TICK_DT,
       }),
     );
+    return;
+  }
+
+  // `/the-floor` without the trailing slash, and the host root, both land on
+  // the game. A 301 rather than serving the page directly keeps exactly one
+  // canonical URL, so relative asset paths cannot resolve one level too high.
+  if (base !== '' && (url.pathname === base || url.pathname === '/')) {
+    response.writeHead(301, { location: `${base}/` }).end();
     return;
   }
 
@@ -59,7 +87,8 @@ const httpServer = createServer((request, response) => {
 
 const wss = new WebSocketServer({
   server: httpServer,
-  path: '/ws',
+  // Mounted alongside the client so one reverse-proxy rule covers both.
+  path: `${base}/ws`,
   // Input frames are tiny; anything large is either a bug or an attack.
   maxPayload: 16 * 1024,
 });
@@ -122,15 +151,15 @@ httpServer.listen(config.port, config.host, () => {
   const rate = Math.round(1 / TICK_DT);
   const lines = [
     '',
-    `  The Keydate Floor — world server running at ${rate}Hz`,
+    `  ${config.gameTitle} — world server running at ${rate}Hz`,
     '',
-    `  On this computer:   http://localhost:${config.port}`,
+    `  On this computer:   http://localhost:${config.port}${base}/`,
   ];
 
   const lan = localAddresses();
   if (lan.length > 0) {
     lines.push('', '  On your phone or another device (same Wi-Fi):');
-    for (const address of lan) lines.push(`    http://${address}:${config.port}`);
+    for (const address of lan) lines.push(`    http://${address}:${config.port}${base}/`);
   } else {
     lines.push('', '  No LAN address detected — other devices cannot reach this server.');
   }

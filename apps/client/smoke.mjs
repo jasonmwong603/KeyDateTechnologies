@@ -42,7 +42,15 @@ function launchOptions() {
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, '../..');
 const PORT = Number(process.env.SMOKE_PORT ?? 8099);
-const BASE = `http://127.0.0.1:${PORT}`;
+/**
+ * The game runs under a path prefix here on purpose.
+ *
+ * Production serves it at play.keydate.ca/<slug>, and a client that only works
+ * at a domain root breaks in ways that never appear when testing at `/`.
+ */
+const SLUG = process.env.SMOKE_SLUG ?? 'the-floor';
+const ORIGIN = `http://127.0.0.1:${PORT}`;
+const BASE = `${ORIGIN}/${SLUG}/`;
 const SHOT_DIR = process.env.SMOKE_SHOT_DIR ?? path.join(repoRoot, '.smoke');
 
 let failures = 0;
@@ -58,7 +66,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function startServer() {
   const server = spawn(process.execPath, [path.join(repoRoot, 'apps/server/dist/index.js')], {
-    env: { ...process.env, PORT: String(PORT) },
+    env: { ...process.env, PORT: String(PORT), GAME_SLUG: SLUG },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   server.stdout.on('data', () => {});
@@ -66,7 +74,7 @@ async function startServer() {
 
   for (let attempt = 0; attempt < 40; attempt += 1) {
     try {
-      const response = await fetch(`${BASE}/healthz`);
+      const response = await fetch(`${ORIGIN}/healthz`);
       if (response.ok) return server;
     } catch {
       // Not up yet.
@@ -332,7 +340,7 @@ async function run() {
     // Bundle fresh, pointed at this test's server, so the check proves the real
     // wiring rather than whatever endpoint a previous manual bundle used.
     const bundleDir = path.join(SHOT_DIR, 'bundle');
-    const bundled = await runBundler(bundleDir, `ws://127.0.0.1:${PORT}`);
+    const bundled = await runBundler(bundleDir, `ws://127.0.0.1:${PORT}/${SLUG}`);
     check('bundler produces a client payload', bundled);
 
     if (!bundled) {
