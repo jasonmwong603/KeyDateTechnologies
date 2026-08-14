@@ -50,6 +50,7 @@ const timestep = new FixedTimestep(TICK_DT);
 /** Remote entities: entityId -> { buffer, meta }. */
 const remotes = new Map();
 let world = null;
+let worldBuilt = false;
 let viewMode = 'first-person';
 
 // ---------------------------------------------------------------------------
@@ -89,9 +90,12 @@ connection.on('welcome', (message) => {
   world = message.world;
   sessionStorage.setItem('keydate:resume', message.resumeToken);
 
-  // A reconnect re-sends welcome; the scene must not be built twice.
-  if (renderer.scene.children.length < 5) {
+  // A reconnect re-sends welcome; the scene must not be built twice. Track
+  // this explicitly rather than inferring it from the scene's child count,
+  // which silently breaks the moment the lighting rig gains a light.
+  if (!worldBuilt) {
     renderer.buildWorld(world);
+    worldBuilt = true;
   }
 
   const spawn = world.spawns[0] ?? { x: 0, y: 0, z: 0, yaw: 0 };
@@ -330,7 +334,6 @@ function render(alpha) {
     hud.showInteractPrompt(null);
   }
 
-  hud.setPing(connection.ping);
   renderer.render();
 }
 
@@ -352,3 +355,40 @@ function loop(now) {
 }
 
 requestAnimationFrame(loop);
+
+/**
+ * Introspection hook for the client smoke test (`apps/client/smoke.mjs`).
+ *
+ * The renderer and the prediction loop are entangled with the DOM and WebGL, so
+ * the only way to assert on them is to drive a real browser. This exposes the
+ * few values that test needs to ask about. It reads state rather than driving
+ * the game — the server would reject anything it tried to assert anyway.
+ */
+window.__keydate = {
+  position: () => ({ x: localState.x, y: localState.y, z: localState.z }),
+  viewMode: () => viewMode,
+  remoteCount: () => remotes.size,
+  seatedAt: () => localState.seatedAt,
+  /**
+   * Points the camera at the nearest table and reports how far away it is.
+   *
+   * Deliberately does not teleport: the server is authoritative and would snap
+   * any such move straight back. The test walks there with real input, which
+   * exercises the whole prediction path rather than sidestepping it.
+   */
+  aimAtNearestTable: () => {
+    if (world === null) return null;
+    let nearest = null;
+    let nearestDistance = Infinity;
+    for (const table of world.interactables) {
+      const distance = Math.hypot(table.x - localState.x, table.z - localState.z);
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearest = table;
+      }
+    }
+    if (nearest === null) return null;
+    input.yaw = Math.atan2(nearest.z - localState.z, nearest.x - localState.x);
+    return { id: nearest.id, label: nearest.label, distance: nearestDistance };
+  },
+};

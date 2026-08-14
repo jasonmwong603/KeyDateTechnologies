@@ -1,0 +1,41 @@
+# Fly.io deployment. Run `fly launch --no-deploy` once to claim an app name,
+# then `fly deploy`.
+#
+# Fly is the better choice when latency matters: you can pin the machine to a
+# region near your players. A real-time game at 30Hz feels noticeably worse when
+# the server is on another continent.
+
+app = "keydate-floor"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8080"
+  HOST = "0.0.0.0"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # A world instance lives in memory. Stopping the machine drops every session
+  # and every chip balance with it, so keep one running.
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.http_options]
+    # Idle players send input only when they move; the default idle timeout can
+    # close a WebSocket on someone who is standing still at a table.
+    idle_timeout = 900
+
+[[http_service.checks]]
+  grace_period = "10s"
+  interval = "30s"
+  method = "GET"
+  timeout = "5s"
+  path = "/healthz"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

@@ -8,6 +8,19 @@
     />
     <meta name="theme-color" content="#0b1020" />
     <title>The Keydate Floor</title>
+
+    <!--
+      Phone home-screen support. `apple-mobile-web-app-capable` is what makes
+      iOS launch this without Safari's chrome, which matters here because the
+      address bar eats the bottom of a full-screen 3D view.
+    -->
+    <link rel="manifest" href="/assets/manifest.webmanifest" />
+    <link rel="icon" href="/assets/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/assets/icon-180.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Keydate" />
     <link rel="stylesheet" href="/js/style.css" />
 
     <!--
@@ -110,7 +123,6 @@
 
       <!-- Touch controls, shown only on coarse-pointer devices -->
       <div id="touch-controls" hidden>
-        <div id="touch-stick"><div id="touch-stick-knob"></div></div>
         <button id="touch-jump" type="button">Jump</button>
         <button id="touch-interact" type="button">Use</button>
       </div>

@@ -12,37 +12,58 @@ Chips are virtual, cannot be purchased, and have no cash value. See
 
 ---
 
-## Quick start
+## Play it
 
 ```bash
 npm install
-npm run build
 npm start
 ```
 
-Then open <http://localhost:8080>. Open it again in a second tab, window, or on your
-phone on the same network to play with someone else — every screen is an independent
-client with its own camera.
+Open <http://localhost:8080>. That is the whole setup — the client is a web page, so
+**nothing installs on any device**: Windows, macOS, Linux, Android and iOS all just open
+a browser.
 
-| Command            | What it does                                             |
-| ------------------ | -------------------------------------------------------- |
-| `npm run build`    | Compiles every package via TypeScript project references |
-| `npm start`        | Runs the world server on port 8080 (build first)         |
-| `npm run dev`      | Build, then run                                          |
-| `npm test`         | Runs the full test suite against TypeScript source       |
-| `npm run coverage` | Test suite with a coverage report                        |
-| `npm run format`   | Formats with Prettier                                    |
+On boot the server prints every address it can be reached on:
+
+```
+  The Keydate Floor — world server running at 30Hz
+
+  On this computer:   http://localhost:8080
+
+  On your phone or another device (same Wi-Fi):
+    http://192.168.1.24:8080
+```
+
+**To play on your phone**, type that second address into its browser — both devices need
+to be on the same Wi-Fi. **To play with people who are not**, deploy it: there is a
+`render.yaml` and a `Dockerfile`, and it needs nothing but a port.
+
+- **[docs/playing.md](docs/playing.md)** — full walkthrough, controls, firewall
+  troubleshooting, home-screen install, and what to change first
+- **[docs/deploying.md](docs/deploying.md)** — Render, Fly.io, Docker, plain VPS
 
 ### Controls
 
-|                | Desktop                        | Touch                |
-| -------------- | ------------------------------ | -------------------- |
-| Move           | `W` `A` `S` `D`                | Left half of screen  |
-| Look           | Mouse (click to capture)       | Right half of screen |
-| Sprint / Jump  | `Shift` / `Space`              | Jump button          |
-| Sit at a table | `E`                            | Use button           |
-| Chat           | `Enter`                        | Tap the chat box     |
-| Swap camera    | Third person button, top right | Same                 |
+|                | Computer                       | Phone or tablet    |
+| -------------- | ------------------------------ | ------------------ |
+| Move           | `W` `A` `S` `D`                | Drag on left half  |
+| Look           | Mouse (click to capture)       | Drag on right half |
+| Sprint / Jump  | `Shift` / `Space`              | Jump button        |
+| Sit at a table | `E`                            | Use button         |
+| Chat           | `Enter`                        | Tap the chat box   |
+| Swap camera    | Third person button, top right | Same               |
+
+### Commands
+
+| Command               | What it does                                             |
+| --------------------- | -------------------------------------------------------- |
+| `npm start`           | Build, then run the world server on port 8080            |
+| `npm run serve`       | Run without rebuilding (for deployment)                  |
+| `npm run build`       | Compiles every package via TypeScript project references |
+| `npm test`            | Unit suite, against TypeScript source                    |
+| `npm run test:client` | Drives a real browser — desktop and emulated phone       |
+| `npm run coverage`    | Test suite with a coverage report                        |
+| `npm run format`      | Formats with Prettier                                    |
 
 ---
 
@@ -166,8 +187,17 @@ The wheel is where chips slowly drain, the duel is where they change hands.
 npm test
 ```
 
-153 tests run against TypeScript source rather than compiled output, so the suite needs
+The unit suite runs against TypeScript source rather than compiled output, so it needs
 no build step and can never pass against stale `dist/`.
+
+```bash
+npm run test:client
+```
+
+drives a real Chromium against a real server, on a desktop viewport and an emulated
+phone: it joins, walks with the keyboard, walks by dragging a touch screen, opens a
+table, places a bet, and asserts no page errors accumulated while playing. It writes
+screenshots to `.smoke/`.
 
 The suite concentrates on the things that are expensive to get wrong:
 
@@ -181,6 +211,9 @@ The suite concentrates on the things that are expensive to get wrong:
 - **Paytable drift** — a 200,000-spin simulation asserts each spot's actual return
   against its designed value, so a future edit cannot quietly make a bet a money
   printer.
+- **The client actually working** — headless logic tests cannot see a camera pointed at
+  a wall, a HUD panel swallowing every touch, or a render loop throwing each frame. All
+  three were real bugs here, and all three are what the browser test now covers.
 
 ---
 
@@ -210,6 +243,8 @@ Working today: authoritative 30Hz simulation, client prediction and reconciliati
 entity interpolation, delta-compressed snapshots, both camera modes, desktop and touch
 input, four tables across two games, commit–reveal fairness, chip ledger with bailouts,
 resume-after-disconnect, local and table chat.
+
+Installs to a phone home screen as a full-screen app.
 
 Not built yet: persistence (a world's chips live in memory and reset when it empties),
 interest management (everyone replicates everyone, which is fine for 32 players and not

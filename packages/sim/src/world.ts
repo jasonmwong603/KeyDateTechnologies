@@ -48,10 +48,10 @@ function buildWalls(
   const span = halfWidth * 2 + thickness * 2;
   const depth = halfDepth * 2 + thickness * 2;
   return [
-    aabb(0, 0, -halfDepth - thickness / 2, span, height, thickness),
-    aabb(0, 0, halfDepth + thickness / 2, span, height, thickness),
-    aabb(-halfWidth - thickness / 2, 0, 0, thickness, height, depth),
-    aabb(halfWidth + thickness / 2, 0, 0, thickness, height, depth),
+    { ...aabb(0, 0, -halfDepth - thickness / 2, span, height, thickness), kind: 'wall' as const },
+    { ...aabb(0, 0, halfDepth + thickness / 2, span, height, thickness), kind: 'wall' as const },
+    { ...aabb(-halfWidth - thickness / 2, 0, 0, thickness, height, depth), kind: 'wall' as const },
+    { ...aabb(halfWidth + thickness / 2, 0, 0, thickness, height, depth), kind: 'wall' as const },
   ];
 }
 
@@ -98,12 +98,13 @@ export function buildCasinoFloor(): World {
   const colliders: AABB[] = [
     ...buildWalls(halfWidth, halfDepth, 4, 0.5),
     // Central bar, purely to break sightlines and give the space a middle.
-    aabb(0, 0, 0, 6, 1.1, 6),
+    { ...aabb(0, 0, 0, 6, 1.1, 6), kind: 'prop' as const },
   ];
 
   const interactables: Interactable[] = tablePositions.map((table, index) => {
     // The table body is solid; players walk up to it rather than through it.
-    colliders.push(aabb(table.x, 0, table.z, 2.6, 1.0, 2.6));
+    // Tagged so the client draws its own table mesh here instead of a grey box.
+    colliders.push({ ...aabb(table.x, 0, table.z, 2.6, 1.0, 2.6), kind: 'table' as const });
     return {
       id: index + 1,
       kind: 'table' as const,

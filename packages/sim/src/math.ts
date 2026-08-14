@@ -43,8 +43,15 @@ export function clampLengthXZ(x: number, z: number, max: number): { x: number; z
   return { x: x * scale, z: z * scale };
 }
 
-/** Axis-aligned bounding box, stored as min/max corners. */
+/**
+ * Axis-aligned bounding box, stored as min/max corners.
+ *
+ * `kind` is purely a rendering hint — collision ignores it entirely. It exists
+ * so the client can tell a wall it should draw from a table body that already
+ * has its own, better-looking mesh.
+ */
 export interface AABB {
+  kind?: 'wall' | 'table' | 'prop';
   minX: number;
   minY: number;
   minZ: number;

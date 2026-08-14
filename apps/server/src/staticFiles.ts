@@ -19,6 +19,9 @@ const MIME_TYPES: Record<string, string> = {
   '.mjs': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
+  // Must be served with this exact type or browsers ignore the manifest and
+  // the game cannot be installed to a phone's home screen.
+  '.webmanifest': 'application/manifest+json; charset=utf-8',
   '.map': 'application/json; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',

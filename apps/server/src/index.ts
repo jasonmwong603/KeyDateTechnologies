@@ -1,4 +1,5 @@
 import { createServer } from 'node:http';
+import { networkInterfaces } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TICK_DT } from '@keydate/sim';
@@ -99,11 +100,43 @@ const housekeeping = setInterval(() => {
   registry.collectEmpty();
 }, 5_000);
 
+/**
+ * Every address this machine can be reached on.
+ *
+ * Printing these is the difference between "it runs" and "my friend can join
+ * from their phone": the loopback address in the log is useless to anyone
+ * holding a different device, and finding the LAN IP by hand is the single most
+ * common thing that stops someone trying a local multiplayer build.
+ */
+function localAddresses(): string[] {
+  const addresses: string[] = [];
+  for (const entries of Object.values(networkInterfaces())) {
+    for (const entry of entries ?? []) {
+      if (entry.family === 'IPv4' && !entry.internal) addresses.push(entry.address);
+    }
+  }
+  return addresses;
+}
+
 httpServer.listen(config.port, config.host, () => {
-  process.stdout.write(
-    `keydate world server listening on http://${config.host}:${config.port} ` +
-      `(${Math.round(1 / TICK_DT)}Hz)\n`,
-  );
+  const rate = Math.round(1 / TICK_DT);
+  const lines = [
+    '',
+    `  The Keydate Floor — world server running at ${rate}Hz`,
+    '',
+    `  On this computer:   http://localhost:${config.port}`,
+  ];
+
+  const lan = localAddresses();
+  if (lan.length > 0) {
+    lines.push('', '  On your phone or another device (same Wi-Fi):');
+    for (const address of lan) lines.push(`    http://${address}:${config.port}`);
+  } else {
+    lines.push('', '  No LAN address detected — other devices cannot reach this server.');
+  }
+
+  lines.push('', '  Press Ctrl+C to stop.', '');
+  process.stdout.write(`${lines.join('\n')}\n`);
 });
 
 function shutdown(signal: string): void {

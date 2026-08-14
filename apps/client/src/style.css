@@ -15,6 +15,17 @@
   box-sizing: border-box;
 }
 
+/*
+ * The `hidden` attribute is only `display: none` in the user-agent stylesheet,
+ * so any author rule that sets `display` outranks it. Several panels here are
+ * flex or grid containers, which meant toggling `hidden` on them did nothing at
+ * all — the join overlay stayed on screen covering the game after joining.
+ * This restores `hidden` to meaning hidden, everywhere.
+ */
+[hidden] {
+  display: none !important;
+}
+
 html,
 body {
   margin: 0;
@@ -164,8 +175,7 @@ button:disabled {
 #hud button,
 #hud input,
 #hud #chat,
-#hud #table-panel,
-#hud #touch-controls {
+#hud #table-panel {
   pointer-events: auto;
 }
 
@@ -442,14 +452,23 @@ kbd {
 
 /* --- Touch controls ------------------------------------------------------ */
 
+/*
+ * This container spans the whole viewport so its buttons can be positioned
+ * against the screen edges. It must therefore stay transparent to input: with
+ * `pointer-events: auto` it swallows every touch before the canvas sees it,
+ * which kills movement and camera look on phones entirely while leaving the
+ * buttons working — a failure that looks like the game is simply frozen.
+ */
 #touch-controls {
   position: absolute;
   inset: 0;
+  pointer-events: none;
 }
 
 #touch-jump,
 #touch-interact {
   position: absolute;
+  pointer-events: auto;
   right: max(1.2rem, env(safe-area-inset-right));
   width: 76px;
   height: 76px;
@@ -465,10 +484,6 @@ kbd {
 #touch-interact {
   bottom: max(1.2rem, env(safe-area-inset-bottom));
   background: rgba(255, 95, 138, 0.75);
-}
-
-#touch-stick {
-  display: none;
 }
 
 /* On phones the table panel takes the full width and chat gets out of the way. */

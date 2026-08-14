@@ -1,0 +1,30 @@
+# Render blueprint. Push this repository, then in Render:
+#   New → Blueprint → pick this repo → Apply.
+#
+# Render terminates TLS and proxies WebSockets to the service with no extra
+# configuration, which is why it is the default suggestion here — the game needs
+# both, and a host that does not proxy WebSockets will serve the page and then
+# fail to connect.
+services:
+  - type: web
+    name: keydate-floor
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    # `serve` rather than `start`: the build already ran above.
+    startCommand: npm run serve
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: '22'
+      # The platform assigns the port; the server reads it.
+      - key: PORT
+        value: '8080'
+      - key: STARTING_CHIPS
+        value: '2500'
+      - key: MAX_PLAYERS_PER_WORLD
+        value: '32'
+      # Playwright is a dev dependency used only by the client smoke test.
+      # Without this the build downloads a browser it will never run.
+      - key: PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD
+        value: '1'

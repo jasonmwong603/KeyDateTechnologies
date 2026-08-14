@@ -57,9 +57,12 @@ and neither blocks anything else.
 | Everyone replicates everyone        | Bandwidth is O(n²) in players                      | `WorldInstance.replicate`            |
 | Client spot hints duplicated        | A new game touches the client too                  | `apps/client/src/hud.js`             |
 | Single-process                      | No horizontal scaling; a restart drops every world | `apps/server/src/index.ts`           |
-| No automated client tests           | Renderer and input are covered only by manual play | `apps/client`                        |
+| Client covered by smoke test only   | Broad checks, not fine-grained assertions          | `apps/client/smoke.mjs`              |
 
-The last one is the most uncomfortable. The simulation, protocol and game logic are well
-covered because they are pure and headless; the client's prediction wiring is not,
-because it is entangled with the DOM and WebGL. Extracting the prediction loop from
-`main.js` into something testable is worth doing before the client grows further.
+The last one is worth expanding on. `npm run test:client` drives a real browser and
+catches whole-client breakage — it found a mirrored first-person camera, a third-person
+camera that threw every frame, a full-screen HUD element that swallowed every touch on
+phones, and a world that silently stopped being built at all. What it does not do is
+assert fine-grained behaviour, because the prediction loop is still entangled with the
+DOM and WebGL. Extracting that loop from `main.js` into something unit-testable is still
+worth doing before the client grows further.

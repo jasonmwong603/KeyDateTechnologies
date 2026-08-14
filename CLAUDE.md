@@ -11,7 +11,9 @@ person), walks a shared floor, and wagers virtual chips at tables.
 npm install
 npm run build          # tsc project references across all packages
 npm test               # vitest, runs against TS source (no build needed)
-npm start              # server on :8080, serves client and WebSocket
+npm run test:client    # drives real Chromium: desktop + emulated phone
+npm start              # build, then server on :8080 (client + WebSocket)
+npm run serve          # run without rebuilding (deployment)
 npm run format:check   # prettier
 ```
 
@@ -44,6 +46,7 @@ npm run format:check   # prettier
 
 ## Docs
 
+`docs/playing.md` (how to run it, phones, controls) · `docs/deploying.md` ·
 `docs/architecture.md` (tick loop, replication) · `docs/netcode.md` (prediction,
 interpolation) · `docs/protocol.md` (every message) · `docs/adding-a-table-game.md` ·
 `docs/responsible-play.md` · `docs/roadmap.md` (including known limitations).
@@ -54,5 +57,9 @@ Tests alias `@keydate/*` to TypeScript source via `vitest.config.ts`, so the sui
 passes against stale `dist/`. The suite concentrates on determinism, adversarial client
 input, exact chip conservation, and paytable drift (a 200k-spin expected-return test).
 
-`apps/client` has no automated tests — the prediction loop is entangled with the DOM and
-WebGL. Extracting it is on the roadmap.
+`apps/client` is covered by `npm run test:client`, which drives a real browser against a
+real server on both a desktop viewport and an emulated phone. Whole-client breakage that
+headless tests cannot see — a mirrored camera, a render loop throwing every frame, a HUD
+overlay swallowing touches — has to be caught there. It asserts no page errors at the
+_end_ of play, not just after load; checking only at startup is how a camera that threw
+on every frame once passed as healthy.

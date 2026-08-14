@@ -12,6 +12,21 @@ import { PLAYER_EYE_HEIGHT, PLAYER_HEIGHT, PLAYER_RADIUS } from '@keydate/sim';
 const THIRD_PERSON_DISTANCE = 4.5;
 const THIRD_PERSON_HEIGHT = 1.9;
 
+/**
+ * Converts a simulation yaw into a Three.js camera Y rotation.
+ *
+ * The two use different conventions and the mismatch is easy to get subtly
+ * wrong. The simulation's forward vector is `(cos yaw, 0, sin yaw)`. A Three.js
+ * camera with YXZ order and `rotation.y = t` looks along `(-sin t, 0, -cos t)`.
+ * Equating the two gives `t = -yaw - PI/2`.
+ *
+ * The near-miss here is `yaw - PI/2`, which happens to be correct at yaw 0 and
+ * mirrors the camera everywhere else — turning right swings the view left.
+ */
+function cameraYaw(yaw) {
+  return -yaw - Math.PI / 2;
+}
+
 export class WorldRenderer {
   /** @param {HTMLCanvasElement} canvas */
   constructor(canvas) {
@@ -36,6 +51,15 @@ export class WorldRenderer {
 
     this._raycaster = new THREE.Raycaster();
     this._tableMeshes = [];
+    /**
+     * Solid geometry only — walls and table bodies.
+     *
+     * The third-person camera raycasts against this rather than the whole
+     * scene. Raycasting `scene.children` also hits Sprites (nameplates, table
+     * signs), which three.js cannot test without `Raycaster.camera` and which
+     * made it throw on every single frame, silently killing the render loop.
+     */
+    this._occluders = [];
 
     this._buildLighting();
     this._handleResize();
@@ -43,7 +67,13 @@ export class WorldRenderer {
   }
 
   _buildLighting() {
-    this.scene.add(new THREE.AmbientLight(0x4a5578, 1.4));
+    // A casino floor is a bright room. The palette here is deliberately deep
+    // blue, which means the lighting has to do real work — under a dim rig
+    // these materials render as an almost featureless dark surface.
+    this.scene.add(new THREE.AmbientLight(0x8ea0d0, 2.2));
+    // Sky/ground fill separates the floor plane from the walls without needing
+    // a second shadow-casting light.
+    this.scene.add(new THREE.HemisphereLight(0xbcd0ff, 0x2a1f3d, 1.5));
 
     const key = new THREE.DirectionalLight(0xffe9c4, 1.6);
     key.position.set(12, 22, 8);
@@ -58,9 +88,22 @@ export class WorldRenderer {
     key.shadow.camera.far = 60;
     this.scene.add(key);
 
-    const rim = new THREE.PointLight(0xff5f8a, 60, 40);
-    rim.position.set(0, 6, 0);
+    const rim = new THREE.PointLight(0xff5f8a, 220, 45);
+    rim.position.set(0, 5.5, 0);
     this.scene.add(rim);
+
+    // Warm pools over each corner of the floor, so the room has landmarks to
+    // navigate by rather than reading as one flat box.
+    for (const [px, pz] of [
+      [-12, -8],
+      [12, -8],
+      [-12, 8],
+      [12, 8],
+    ]) {
+      const lamp = new THREE.PointLight(0xffd9a0, 120, 22);
+      lamp.position.set(px, 4.2, pz);
+      this.scene.add(lamp);
+    }
   }
 
   /** Builds the static scene from the world description the server sent. */
@@ -71,15 +114,18 @@ export class WorldRenderer {
 
     const floor = new THREE.Mesh(
       new THREE.PlaneGeometry(width, depth),
-      new THREE.MeshStandardMaterial({ color: 0x14213d, roughness: 0.85, metalness: 0.1 }),
+      new THREE.MeshStandardMaterial({ color: 0x24365f, roughness: 0.8, metalness: 0.15 }),
     );
     floor.rotation.x = -Math.PI / 2;
     floor.position.set((bounds.minX + bounds.maxX) / 2, 0, (bounds.minZ + bounds.maxZ) / 2);
     floor.receiveShadow = true;
     this.scene.add(floor);
 
-    const wallMaterial = new THREE.MeshStandardMaterial({ color: 0x1d2b53, roughness: 0.9 });
+    const wallMaterial = new THREE.MeshStandardMaterial({ color: 0x33477e, roughness: 0.85 });
     for (const box of world.colliders) {
+      // Table bodies get their own mesh in _buildTable. Drawing the collider
+      // too leaves a grey slab poking out from under the felt.
+      if (box.kind === 'table') continue;
       const mesh = new THREE.Mesh(
         new THREE.BoxGeometry(box.maxX - box.minX, box.maxY - box.minY, box.maxZ - box.minZ),
         wallMaterial,
@@ -92,7 +138,18 @@ export class WorldRenderer {
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       this.scene.add(mesh);
+      this._occluders.push(mesh);
     }
+
+    // Without a ceiling the top half of every shot is empty black, which reads
+    // as a rendering failure rather than a room.
+    const ceiling = new THREE.Mesh(
+      new THREE.PlaneGeometry(width, depth),
+      new THREE.MeshStandardMaterial({ color: 0x161f3d, roughness: 1 }),
+    );
+    ceiling.rotation.x = Math.PI / 2;
+    ceiling.position.set((bounds.minX + bounds.maxX) / 2, 4, (bounds.minZ + bounds.maxZ) / 2);
+    this.scene.add(ceiling);
 
     for (const interactable of world.interactables) {
       this._buildTable(interactable);
@@ -105,12 +162,13 @@ export class WorldRenderer {
 
     const felt = new THREE.Mesh(
       new THREE.CylinderGeometry(1.3, 1.3, 0.1, 32),
-      new THREE.MeshStandardMaterial({ color: 0x0f5132, roughness: 0.95 }),
+      new THREE.MeshStandardMaterial({ color: 0x1a7a4a, roughness: 0.9 }),
     );
     felt.position.y = 1.0;
     felt.castShadow = true;
     felt.receiveShadow = true;
     group.add(felt);
+    this._occluders.push(felt);
 
     const base = new THREE.Mesh(
       new THREE.CylinderGeometry(0.4, 0.6, 1.0, 16),
@@ -151,7 +209,17 @@ export class WorldRenderer {
     const ctx = canvas.getContext('2d');
     ctx.fillStyle = 'rgba(11, 16, 32, 0.75)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.font = 'bold 64px system-ui, sans-serif';
+
+    // Shrink until the text fits. A fixed size clipped longer labels — 'Wheel
+    // of Fortune' rendered as 'heel of Fortun'.
+    const padding = 24;
+    let fontSize = 64;
+    do {
+      ctx.font = `bold ${fontSize}px system-ui, sans-serif`;
+      if (ctx.measureText(text).width <= canvas.width - padding * 2) break;
+      fontSize -= 2;
+    } while (fontSize > 16);
+
     ctx.fillStyle = color;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -235,16 +303,16 @@ export class WorldRenderer {
 
     if (this.viewMode === 'first-person') {
       this.camera.position.set(x, eyeY, z);
-      this.camera.rotation.set(0, 0, 0, 'YXZ');
       this.camera.rotation.order = 'YXZ';
-      this.camera.rotation.y = yaw - Math.PI / 2;
-      this.camera.rotation.x = pitch;
+      this.camera.rotation.set(pitch, cameraYaw(yaw), 0, 'YXZ');
       return;
     }
 
     const back = new THREE.Vector3(
       -Math.cos(yaw) * Math.cos(pitch),
-      Math.sin(pitch),
+      // Looking up must swing the camera *down* and behind the player. Getting
+      // this sign wrong lifts it into the ceiling instead.
+      -Math.sin(pitch),
       -Math.sin(yaw) * Math.cos(pitch),
     ).normalize();
 
@@ -253,13 +321,10 @@ export class WorldRenderer {
 
     this._raycaster.set(origin, back);
     this._raycaster.far = THIRD_PERSON_DISTANCE;
-    const hits = this._raycaster.intersectObjects(this.scene.children, true);
-    for (const hit of hits) {
-      // Ignore the player's own avatar and any sprite (nameplates, signs).
-      if (this.localAvatar !== null && this._isDescendantOf(hit.object, this.localAvatar)) continue;
-      if (hit.object.isSprite) continue;
+    const hit = this._raycaster.intersectObjects(this._occluders, false)[0];
+    if (hit !== undefined) {
+      // Stop just short of the surface so the near plane does not clip through it.
       distance = Math.max(0.8, hit.distance - 0.3);
-      break;
     }
 
     this.camera.position.copy(origin).addScaledVector(back, distance);
