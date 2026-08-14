@@ -1,0 +1,19 @@
+{
+  "name": "@keydate/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Authoritative world server",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc --build",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@keydate/netcode": "*",
+    "@keydate/protocol": "*",
+    "@keydate/sim": "*",
+    "@keydate/table-games": "*",
+    "ws": "^8.18.0"
+  }
+}

@@ -1,0 +1,55 @@
+name: Bug report
+description: Something is broken
+labels: ['bug']
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: And what you expected instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Join the public floor
+        2. Sit at the Wheel of Fortune
+        3. ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part
+      options:
+        - Movement or collision
+        - Camera or rendering
+        - Netcode (rubber-banding, desync, lag)
+        - Tables, wagers or chips
+        - Chat
+        - Joining, sessions or reconnecting
+        - Not sure
+    validations:
+      required: true
+
+  - type: input
+    id: players
+    attributes:
+      label: How many players were connected
+      placeholder: '2'
+
+  - type: input
+    id: environment
+    attributes:
+      label: Browser and device
+      placeholder: 'Chrome 131 on Android / Firefox on desktop'
+
+  - type: textarea
+    id: console
+    attributes:
+      label: Console or server output
+      render: text

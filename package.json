@@ -1,0 +1,39 @@
+{
+  "name": "keydate-gaming",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "KeyDate Technologies game development monorepo",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.10"
+  },
+  "workspaces": [
+    "packages/protocol",
+    "packages/netcode",
+    "packages/sim",
+    "packages/games/*",
+    "apps/server"
+  ],
+  "scripts": {
+    "build": "tsc --build",
+    "clean": "tsc --build --clean",
+    "typecheck": "tsc --build --dry",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "coverage": "vitest run --coverage",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "dev": "npm run build && node apps/server/dist/index.js",
+    "start": "node apps/server/dist/index.js"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/ws": "^8.5.13",
+    "@vitest/coverage-v8": "^4.1.10",
+    "prettier": "^3.4.2",
+    "three": "^0.170.0",
+    "typescript": "^5.7.2",
+    "vitest": "^4.1.10"
+  }
+}

@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no"
+    />
+    <meta name="theme-color" content="#0b1020" />
+    <title>The Keydate Floor</title>
+    <link rel="stylesheet" href="/js/style.css" />
+
+    <!--
+      The client runs as plain ES modules with no bundler. This import map
+      points the bare specifiers at the same compiled output the server imports,
+      so prediction and authority literally share one copy of the simulation.
+    -->
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "/vendor/three/three.module.js",
+          "@keydate/sim": "/pkg/sim/index.js",
+          "@keydate/netcode": "/pkg/netcode/index.js",
+          "@keydate/protocol": "/pkg/protocol/index.js"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <canvas id="viewport"></canvas>
+
+    <!-- Join screen -------------------------------------------------------->
+    <div id="join-screen" class="overlay">
+      <form id="join-form" class="panel">
+        <h1>The Keydate Floor</h1>
+        <p class="tagline">
+          A casino floor you walk around in, with friends. Chips are virtual and have no cash value.
+        </p>
+
+        <label for="name-input">Display name</label>
+        <input
+          id="name-input"
+          type="text"
+          maxlength="20"
+          autocomplete="off"
+          placeholder="Your name"
+          required
+        />
+
+        <label for="code-input"
+          >Session code <span class="hint">(blank joins the public floor)</span></label
+        >
+        <input
+          id="code-input"
+          type="text"
+          maxlength="5"
+          autocomplete="off"
+          placeholder="e.g. FRIED"
+        />
+
+        <button type="submit" id="join-button">Enter the floor</button>
+        <p id="join-error" class="error" hidden></p>
+      </form>
+    </div>
+
+    <!-- In-world HUD ------------------------------------------------------->
+    <div id="hud" hidden>
+      <div id="crosshair"></div>
+
+      <div id="top-left" class="hud-block">
+        <div id="chips"><span class="label">Chips</span> <span id="chips-value">0</span></div>
+        <div id="session"><span class="label">Session</span> <span id="session-value">—</span></div>
+      </div>
+
+      <div id="top-right" class="hud-block">
+        <div id="netstat"><span class="label">Ping</span> <span id="ping-value">—</span></div>
+        <button id="view-toggle" type="button">Third person</button>
+      </div>
+
+      <div id="interact-prompt" hidden><kbd>E</kbd> <span id="interact-label"></span></div>
+
+      <!-- Table panel, shown only while seated -->
+      <div id="table-panel" hidden>
+        <header>
+          <h2 id="table-title">Table</h2>
+          <div id="table-phase" class="phase">—</div>
+          <button id="leave-table" type="button">Stand up</button>
+        </header>
+
+        <div id="table-timer"><div id="table-timer-bar"></div></div>
+
+        <div id="table-spots"></div>
+
+        <div id="stake-row">
+          <span class="label">Stake</span>
+          <div id="stake-buttons"></div>
+          <span id="stake-value">50</span>
+          <button id="clear-bets" type="button">Clear bets</button>
+        </div>
+
+        <div id="table-wagers"></div>
+        <div id="table-result" hidden></div>
+        <div id="fairness" class="fairness"></div>
+      </div>
+
+      <div id="chat">
+        <div id="chat-log"></div>
+        <input id="chat-input" type="text" maxlength="200" placeholder="Press Enter to chat" />
+      </div>
+
+      <!-- Touch controls, shown only on coarse-pointer devices -->
+      <div id="touch-controls" hidden>
+        <div id="touch-stick"><div id="touch-stick-knob"></div></div>
+        <button id="touch-jump" type="button">Jump</button>
+        <button id="touch-interact" type="button">Use</button>
+      </div>
+    </div>
+
+    <script type="module" src="/js/main.js"></script>
+  </body>
+</html>

@@ -1,0 +1,10 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/protocol" },
+    { "path": "packages/netcode" },
+    { "path": "packages/sim" },
+    { "path": "packages/games/table-games" },
+    { "path": "apps/server" }
+  ]
+}

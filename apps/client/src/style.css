@@ -1,0 +1,488 @@
+:root {
+  --bg: #0b1020;
+  --panel: rgba(16, 23, 46, 0.92);
+  --edge: rgba(120, 150, 220, 0.24);
+  --text: #e8f1ff;
+  --muted: #93a4c8;
+  --gold: #ffd166;
+  --accent: #ff5f8a;
+  --good: #4ade80;
+  --bad: #f87171;
+  --radius: 10px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
+  /* Stops iOS rubber-banding the whole page while dragging the look stick. */
+  overscroll-behavior: none;
+  touch-action: none;
+}
+
+#viewport {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* --- Join screen --------------------------------------------------------- */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 50% 30%, #1a2650, #070b18 70%);
+  z-index: 20;
+  padding: 1.5rem;
+}
+
+.panel {
+  width: min(420px, 100%);
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: 16px;
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+}
+
+.panel h1 {
+  margin: 0;
+  font-size: 1.7rem;
+  color: var(--gold);
+}
+
+.tagline {
+  margin: 0 0 0.8rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+label {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-top: 0.5rem;
+}
+
+.hint {
+  opacity: 0.65;
+}
+
+input[type='text'] {
+  padding: 0.7rem 0.85rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--edge);
+  background: rgba(8, 12, 26, 0.85);
+  color: var(--text);
+  font-size: 1rem;
+  font-family: inherit;
+}
+
+input[type='text']:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+#code-input {
+  text-transform: uppercase;
+  letter-spacing: 0.32em;
+  font-weight: 700;
+}
+
+button {
+  font-family: inherit;
+  font-size: 0.9rem;
+  padding: 0.6rem 0.9rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--edge);
+  background: rgba(30, 42, 82, 0.9);
+  color: var(--text);
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    transform 0.06s ease;
+}
+
+button:hover:not(:disabled) {
+  background: rgba(48, 66, 122, 0.95);
+}
+
+button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+#join-button {
+  margin-top: 1.2rem;
+  background: var(--accent);
+  border-color: transparent;
+  color: #14001a;
+  font-weight: 700;
+  font-size: 1rem;
+  padding: 0.8rem;
+}
+
+.error {
+  color: var(--bad);
+  font-size: 0.85rem;
+  margin: 0.5rem 0 0;
+}
+
+/* --- HUD ----------------------------------------------------------------- */
+
+#hud {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  /* The HUD is an overlay: only its interactive children take pointer events. */
+  pointer-events: none;
+}
+
+#hud button,
+#hud input,
+#hud #chat,
+#hud #table-panel,
+#hud #touch-controls {
+  pointer-events: auto;
+}
+
+.hud-block {
+  position: absolute;
+  top: max(1rem, env(safe-area-inset-top));
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  padding: 0.6rem 0.9rem;
+  font-size: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+#top-left {
+  left: max(1rem, env(safe-area-inset-left));
+}
+
+#top-right {
+  right: max(1rem, env(safe-area-inset-right));
+  align-items: flex-end;
+}
+
+.label {
+  color: var(--muted);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+#chips-value {
+  color: var(--gold);
+  font-weight: 700;
+  font-size: 1.15rem;
+}
+
+#session-value {
+  letter-spacing: 0.2em;
+  font-weight: 700;
+}
+
+#crosshair {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 -3px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.75);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
+}
+
+#interact-prompt {
+  position: absolute;
+  left: 50%;
+  top: 58%;
+  transform: translateX(-50%);
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.9rem;
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+kbd {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--edge);
+  border-radius: 5px;
+  padding: 0.1rem 0.4rem;
+  font-family: ui-monospace, monospace;
+  font-size: 0.8rem;
+}
+
+/* --- Table panel --------------------------------------------------------- */
+
+#table-panel {
+  position: absolute;
+  left: 50%;
+  bottom: max(1rem, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  width: min(560px, calc(100vw - 2rem));
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: 14px;
+  padding: 0.9rem 1rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+#table-panel header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+#table-panel h2 {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--gold);
+  flex: 1;
+}
+
+.phase {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.phase[data-phase='betting'] {
+  color: var(--good);
+}
+
+.phase[data-phase='resolving'] {
+  color: var(--accent);
+}
+
+#table-timer {
+  height: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+#table-timer-bar {
+  height: 100%;
+  width: 0;
+  background: var(--good);
+  transition: width 0.2s linear;
+}
+
+#table-spots {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 0.5rem;
+}
+
+.spot {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.6rem;
+  text-align: left;
+}
+
+.spot-label {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--gold);
+}
+
+.spot-hint {
+  font-size: 0.68rem;
+  color: var(--muted);
+  line-height: 1.3;
+}
+
+.spot-stake:not(:empty) {
+  margin-top: 0.25rem;
+  font-size: 0.8rem;
+  color: var(--good);
+  font-weight: 700;
+}
+
+.spot.staked {
+  border-color: var(--good);
+}
+
+#stake-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+#stake-buttons {
+  display: flex;
+  gap: 0.3rem;
+}
+
+#stake-buttons button {
+  padding: 0.35rem 0.55rem;
+  font-size: 0.78rem;
+}
+
+#stake-value {
+  font-weight: 700;
+  color: var(--gold);
+  min-width: 3ch;
+}
+
+#clear-bets {
+  margin-left: auto;
+  font-size: 0.78rem;
+  padding: 0.35rem 0.6rem;
+}
+
+#table-wagers,
+#table-result {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+#table-result {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.fairness {
+  font-family: ui-monospace, monospace;
+  font-size: 0.65rem;
+  color: var(--muted);
+  opacity: 0.8;
+  word-break: break-all;
+}
+
+.fairness.bad {
+  color: var(--bad);
+  opacity: 1;
+  font-weight: 700;
+}
+
+/* --- Chat ---------------------------------------------------------------- */
+
+#chat {
+  position: absolute;
+  left: max(1rem, env(safe-area-inset-left));
+  bottom: max(1rem, env(safe-area-inset-bottom));
+  width: min(320px, 45vw);
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+#chat-log {
+  max-height: 26vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 0.8rem;
+  scrollbar-width: thin;
+}
+
+.chat-line {
+  background: rgba(11, 16, 32, 0.7);
+  border-radius: 6px;
+  padding: 0.25rem 0.5rem;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.chat-system {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.chat-table {
+  border-left: 2px solid var(--gold);
+}
+
+#chat-input {
+  font-size: 0.85rem;
+  padding: 0.45rem 0.6rem;
+  opacity: 0.6;
+}
+
+#chat-input:focus {
+  opacity: 1;
+}
+
+/* --- Touch controls ------------------------------------------------------ */
+
+#touch-controls {
+  position: absolute;
+  inset: 0;
+}
+
+#touch-jump,
+#touch-interact {
+  position: absolute;
+  right: max(1.2rem, env(safe-area-inset-right));
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  font-weight: 700;
+  background: rgba(30, 42, 82, 0.75);
+}
+
+#touch-jump {
+  bottom: calc(max(1.2rem, env(safe-area-inset-bottom)) + 96px);
+}
+
+#touch-interact {
+  bottom: max(1.2rem, env(safe-area-inset-bottom));
+  background: rgba(255, 95, 138, 0.75);
+}
+
+#touch-stick {
+  display: none;
+}
+
+/* On phones the table panel takes the full width and chat gets out of the way. */
+@media (max-width: 640px) {
+  #chat {
+    width: min(240px, 55vw);
+  }
+
+  #chat-log {
+    max-height: 16vh;
+  }
+
+  #table-panel {
+    width: calc(100vw - 1rem);
+    bottom: max(0.5rem, env(safe-area-inset-bottom));
+  }
+}

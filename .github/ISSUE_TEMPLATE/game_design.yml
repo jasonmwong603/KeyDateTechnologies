@@ -1,0 +1,42 @@
+name: Game or feature proposal
+description: A new table game, mechanic, or feature
+labels: ['design']
+body:
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What are you proposing
+    validations:
+      required: true
+
+  - type: textarea
+    id: why
+    attributes:
+      label: Why does the game need it
+      description: What is worse about the game today without it?
+    validations:
+      required: true
+
+  - type: textarea
+    id: paytable
+    attributes:
+      label: Paytable (new table games only)
+      description: >
+        Spots, odds, and expected return per spot. Aim for 0.93–1.00; anything
+        above 1.0 is a money printer. See docs/adding-a-table-game.md.
+      placeholder: |
+        heads — 1:1 — 0.5 probability — expected return 1.00
+        tails — 1:1 — 0.5 probability — expected return 1.00
+
+  - type: checkboxes
+    id: responsible-play
+    attributes:
+      label: Responsible play
+      description: See docs/responsible-play.md — these are hard lines.
+      options:
+        - label: This involves no real money, purchases, or cash-out
+          required: true
+        - label: This does not disguise a loss as a win, or manufacture near-misses
+          required: true
+        - label: This creates no pressure to keep playing (streaks, expiring bonuses, loss-chasing prompts)
+          required: true

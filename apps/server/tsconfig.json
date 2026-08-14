@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts"],
+  "references": [
+    { "path": "../../packages/protocol" },
+    { "path": "../../packages/netcode" },
+    { "path": "../../packages/sim" },
+    { "path": "../../packages/games/table-games" }
+  ]
+}

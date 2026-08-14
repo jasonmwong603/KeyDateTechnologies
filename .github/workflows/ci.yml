@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+# A new push to the same branch makes an in-flight run obsolete.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Type-check and build all packages
+        run: npm run build
+
+      - name: Test
+        run: npm test
+
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Audit production dependencies
+        # The server holds a chip ledger and parses untrusted socket traffic, so
+        # a vulnerable runtime dependency is worth failing the build over. Dev
+        # tooling is excluded because it never runs in production.
+        run: npm audit --omit=dev --audit-level=moderate
+
+  smoke:
+    runs-on: ubuntu-latest
+    needs: verify
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Boot the server and check it serves a playable client
+        # Catches the class of break the unit tests cannot: a bad static mount,
+        # a broken import map, or a server that type-checks but will not start.
+        run: |
+          node apps/server/dist/index.js &
+          SERVER_PID=$!
+          trap "kill $SERVER_PID" EXIT
+
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:8080/healthz > /dev/null; then break; fi
+            sleep 1
+          done
+
+          curl -sf http://127.0.0.1:8080/healthz
+          curl -sf http://127.0.0.1:8080/ > /dev/null
+          curl -sf http://127.0.0.1:8080/js/main.js > /dev/null
+          curl -sf http://127.0.0.1:8080/pkg/sim/index.js > /dev/null
+          curl -sf http://127.0.0.1:8080/pkg/netcode/index.js > /dev/null
+          curl -sf http://127.0.0.1:8080/vendor/three/three.module.js > /dev/null
+
+          echo "Static mounts OK"
+
+          # Directory traversal out of a static mount must be refused.
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --path-as-is \
+            "http://127.0.0.1:8080/pkg/sim/%2e%2e%2f%2e%2e%2f%2e%2e%2fpackage.json")
+          if [ "$STATUS" != "403" ]; then
+            echo "Expected 403 for traversal attempt, got $STATUS"
+            exit 1
+          fi
+
+          echo "Traversal guard OK"
