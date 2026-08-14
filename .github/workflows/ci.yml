@@ -57,28 +57,54 @@ jobs:
       - name: Boot the server and check it serves a playable client
         # Catches the class of break the unit tests cannot: a bad static mount,
         # a broken import map, or a server that type-checks but will not start.
+        #
+        # Runs under a path prefix because that is how it is deployed
+        # (play.keydate.ca/<slug>). Checking only the domain root would miss
+        # every mount-point bug.
+        env:
+          GAME_SLUG: the-floor
         run: |
           node apps/server/dist/index.js &
           SERVER_PID=$!
           trap "kill $SERVER_PID" EXIT
 
+          ORIGIN=http://127.0.0.1:8080
+          BASE=$ORIGIN/$GAME_SLUG
+
           for i in $(seq 1 30); do
-            if curl -sf http://127.0.0.1:8080/healthz > /dev/null; then break; fi
+            if curl -sf $ORIGIN/healthz > /dev/null; then break; fi
             sleep 1
           done
 
-          curl -sf http://127.0.0.1:8080/healthz
-          curl -sf http://127.0.0.1:8080/ > /dev/null
-          curl -sf http://127.0.0.1:8080/js/main.js > /dev/null
-          curl -sf http://127.0.0.1:8080/pkg/sim/index.js > /dev/null
-          curl -sf http://127.0.0.1:8080/pkg/netcode/index.js > /dev/null
-          curl -sf http://127.0.0.1:8080/vendor/three/three.module.js > /dev/null
+          curl -sf $ORIGIN/healthz
+          curl -sf $BASE/ > /dev/null
+          curl -sf $BASE/js/main.js > /dev/null
+          curl -sf $BASE/pkg/sim/index.js > /dev/null
+          curl -sf $BASE/pkg/netcode/index.js > /dev/null
+          curl -sf $BASE/vendor/three/three.module.js > /dev/null
+          curl -sf $BASE/assets/manifest.webmanifest > /dev/null
 
           echo "Static mounts OK"
 
+          # The host root must send players to the game rather than 404.
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" $ORIGIN/)
+          if [ "$STATUS" != "301" ]; then
+            echo "Expected 301 from the host root, got $STATUS"
+            exit 1
+          fi
+
+          # Assets must NOT be reachable outside the mount point.
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" $ORIGIN/js/main.js)
+          if [ "$STATUS" != "404" ]; then
+            echo "Expected 404 for an unprefixed asset, got $STATUS"
+            exit 1
+          fi
+
+          echo "Mount point OK"
+
           # Directory traversal out of a static mount must be refused.
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" --path-as-is \
-            "http://127.0.0.1:8080/pkg/sim/%2e%2e%2f%2e%2e%2f%2e%2e%2fpackage.json")
+            "$BASE/pkg/sim/%2e%2e%2f%2e%2e%2f%2e%2e%2fpackage.json")
           if [ "$STATUS" != "403" ]; then
             echo "Expected 403 for traversal attempt, got $STATUS"
             exit 1
