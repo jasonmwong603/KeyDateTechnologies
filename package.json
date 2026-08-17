@@ -29,13 +29,15 @@
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
+  "dependencies": {
+    "three": "^0.170.0"
+  },
   "devDependencies": {
     "@types/node": "^22.10.2",
     "@types/ws": "^8.5.13",
     "@vitest/coverage-v8": "^4.1.10",
     "playwright": "^1.62.1",
     "prettier": "^3.4.2",
-    "three": "^0.170.0",
     "typescript": "^5.7.2",
     "vitest": "^4.1.10"
   }

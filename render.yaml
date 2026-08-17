@@ -10,16 +10,15 @@ services:
     name: keydate-floor
     runtime: node
     plan: free
-    buildCommand: npm ci && npm run build
+    # --include=dev is required: Render sets NODE_ENV=production, which makes
+    # a plain `npm ci` skip devDependencies, and the build needs TypeScript.
+    buildCommand: npm ci --include=dev && npm run build
     # `serve` rather than `start`: the build already ran above.
     startCommand: npm run serve
     healthCheckPath: /healthz
     envVars:
       - key: NODE_VERSION
         value: '22'
-      # The platform assigns the port; the server reads it.
-      - key: PORT
-        value: '8080'
       # The path the game is served under. Empty serves it at the domain root.
       - key: GAME_SLUG
         value: 'the-floor'

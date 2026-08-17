@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { networkInterfaces } from 'node:os';
 import path from 'node:path';
@@ -48,6 +49,35 @@ const staticServer = new StaticFileServer(
   path.join(repoRoot, 'apps/client/index.html'),
   base,
 );
+
+/**
+ * Fail loudly at boot if the client's dependencies are not on disk.
+ *
+ * Without this, a production install that skipped `three` (because the platform
+ * set NODE_ENV=production and it was a devDependency) starts perfectly and then
+ * serves a page whose module graph 404s. The player sees a blank screen and the
+ * server log says nothing at all.
+ */
+function checkClientAssets(): void {
+  const required = [
+    path.join(repoRoot, 'node_modules/three/build/three.module.js'),
+    path.join(repoRoot, 'apps/client/index.html'),
+    path.join(repoRoot, 'packages/sim/dist/index.js'),
+  ];
+
+  const missing = required.filter((file) => !existsSync(file));
+  if (missing.length === 0) return;
+
+  process.stderr.write(
+    `\n  Cannot serve the client — these files are missing:\n` +
+      missing.map((file) => `    ${file}\n`).join('') +
+      `\n  Run \`npm ci --include=dev && npm run build\`. A plain \`npm ci\` under\n` +
+      `  NODE_ENV=production skips devDependencies and will not build.\n\n`,
+  );
+  process.exit(1);
+}
+
+checkClientAssets();
 
 const registry = new SessionRegistry();
 const gateway = new Gateway(registry);
