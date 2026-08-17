@@ -190,6 +190,14 @@ async function run() {
     });
     check('WebGL canvas is sized and rendering', rendering);
 
+    // The environment is built from the world description at join. A silent
+    // failure here — a bad `kind`, a throw partway through buildWorld — leaves
+    // a room that still "works" but is missing its walls or columns.
+    const stats = await pc.evaluate(() => window.__keydate?.sceneStats());
+    check('walls built', stats?.walls > 0, `walls=${stats?.walls}`);
+    check('columns built', stats?.columns === 16, `columns=${stats?.columns}`);
+    check('tables built', stats?.tables === 4, `tables=${stats?.tables}`);
+
     const before = await readPosition(pc);
     await pc.keyboard.down('KeyW');
     await sleep(1200);

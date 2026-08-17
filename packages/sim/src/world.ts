@@ -101,6 +101,25 @@ export function buildCasinoFloor(): World {
     { ...aabb(0, 0, 0, 6, 1.1, 6), kind: 'prop' as const },
   ];
 
+  // Engaged columns down every wall. They are part of the authoritative world
+  // rather than client decoration: a column you can walk through is worse than
+  // no column at all, and putting them here means the server and every client
+  // agree on where they are.
+  //
+  // Each sits flush against its wall, so there is no unreachable pocket behind
+  // it for a player to get wedged in.
+  const COLUMN_HALF = 0.5;
+  for (const z of [-13.5, -4.5, 4.5, 13.5]) {
+    for (const x of [-(halfWidth - COLUMN_HALF), halfWidth - COLUMN_HALF]) {
+      colliders.push({ ...aabb(x, 0, z, 1, 4, 1), kind: 'column' as const });
+    }
+  }
+  for (const x of [-18, -9, 9, 18]) {
+    for (const z of [-(halfDepth - COLUMN_HALF), halfDepth - COLUMN_HALF]) {
+      colliders.push({ ...aabb(x, 0, z, 1, 4, 1), kind: 'column' as const });
+    }
+  }
+
   const interactables: Interactable[] = tablePositions.map((table, index) => {
     // The table body is solid; players walk up to it rather than through it.
     // Tagged so the client draws its own table mesh here instead of a grey box.

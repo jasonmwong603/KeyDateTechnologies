@@ -172,6 +172,7 @@ Fast, self-contained things to try first:
 | Paytable and odds                       | `packages/games/table-games/src/wheelOfFortune.ts`     |
 | Betting window length                   | `bettingWindowMs` in each game definition              |
 | Lighting, colours, camera distance      | `apps/client/src/renderer.js`                          |
+| Carpet, wall and ceiling textures       | `apps/client/src/textures.js`                          |
 | HUD and table panel                     | `apps/client/src/hud.js`, `apps/client/src/style.css`  |
 
 Adding a whole new table game is four files — see

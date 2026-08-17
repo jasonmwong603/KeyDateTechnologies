@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { PLAYER_EYE_HEIGHT, PLAYER_HEIGHT, PLAYER_RADIUS } from '@keydate/sim';
+import { createCarpet, createCofferedStone, createSculptedStone, tiledFor } from './textures.js';
 
 /**
  * Renders the world and both camera modes.
@@ -36,10 +37,16 @@ export class WorldRenderer {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // Without tone mapping the emissive ceiling clips to flat white and drags
+    // the whole frame with it. ACES rolls the highlights off instead.
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.05;
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x0b1020);
-    this.scene.fog = new THREE.Fog(0x0b1020, 25, 70);
+    // Warm, low interior haze. A blue fog fights every warm surface in here
+    // and makes travertine read as grey concrete at distance.
+    this.scene.background = new THREE.Color(0x140b0c);
+    this.scene.fog = new THREE.Fog(0x1d1210, 30, 85);
 
     this.camera = new THREE.PerspectiveCamera(75, 1, 0.1, 200);
     this.viewMode = 'first-person';
@@ -60,6 +67,8 @@ export class WorldRenderer {
      * made it throw on every single frame, silently killing the render loop.
      */
     this._occluders = [];
+    /** What the world build actually produced. Asserted by the client smoke test. */
+    this.stats = { walls: 0, columns: 0, tables: 0 };
 
     this._buildLighting();
     this._handleResize();
@@ -67,18 +76,16 @@ export class WorldRenderer {
   }
 
   _buildLighting() {
-    // A casino floor is a bright room. The palette here is deliberately deep
-    // blue, which means the lighting has to do real work — under a dim rig
-    // these materials render as an almost featureless dark surface.
-    this.scene.add(new THREE.AmbientLight(0x8ea0d0, 2.2));
-    // Sky/ground fill separates the floor plane from the walls without needing
-    // a second shadow-casting light.
-    this.scene.add(new THREE.HemisphereLight(0xbcd0ff, 0x2a1f3d, 1.5));
+    // Everything in this room is warm — crimson carpet, cream stone, gilt. The
+    // rig is lit to match; the previous cool-blue setup turned the travertine
+    // grey and the carpet brown.
+    this.scene.add(new THREE.AmbientLight(0xffe3bd, 1.15));
+    this.scene.add(new THREE.HemisphereLight(0xffeccd, 0x3a0d13, 0.85));
 
-    const key = new THREE.DirectionalLight(0xffe9c4, 1.6);
+    const key = new THREE.DirectionalLight(0xfff0d8, 1.0);
     key.position.set(12, 22, 8);
     key.castShadow = true;
-    key.shadow.mapSize.set(2048, 2048);
+    key.shadow.mapSize.set(1024, 1024);
     // The shadow frustum has to cover the whole floor or shadows pop in and out
     // as players walk toward the edges.
     key.shadow.camera.left = -30;
@@ -88,20 +95,24 @@ export class WorldRenderer {
     key.shadow.camera.far = 60;
     this.scene.add(key);
 
-    const rim = new THREE.PointLight(0xff5f8a, 220, 45);
-    rim.position.set(0, 5.5, 0);
-    this.scene.add(rim);
-
-    // Warm pools over each corner of the floor, so the room has landmarks to
-    // navigate by rather than reading as one flat box.
-    for (const [px, pz] of [
-      [-12, -8],
-      [12, -8],
-      [-12, 8],
-      [12, 8],
-    ]) {
-      const lamp = new THREE.PointLight(0xffd9a0, 120, 22);
-      lamp.position.set(px, 4.2, pz);
+    // Warm pools over each table, plus one over the centre bar.
+    //
+    // Point light count is deliberately small. This is a forward renderer:
+    // every material compiles a shader sized to the whole light list, and every
+    // fragment evaluates all of them. An earlier version had nine point lights
+    // for the sake of coloured fill and the shader compile alone stalled load
+    // for seconds on weak hardware — which is most phones. Five reads
+    // essentially the same and costs a fraction.
+    const lamps = [
+      [-12, -8, 0xffd9a0, 95, 19],
+      [12, -8, 0xffd9a0, 95, 19],
+      [-12, 8, 0xffd9a0, 95, 19],
+      [12, 8, 0xffd9a0, 95, 19],
+      [0, 0, 0xffc98a, 70, 22],
+    ];
+    for (const [px, pz, color, intensity, distance] of lamps) {
+      const lamp = new THREE.PointLight(color, intensity, distance);
+      lamp.position.set(px, 3.5, pz);
       this.scene.add(lamp);
     }
   }
@@ -111,25 +122,78 @@ export class WorldRenderer {
     const { bounds } = world;
     const width = bounds.maxX - bounds.minX;
     const depth = bounds.maxZ - bounds.minZ;
+    const midX = (bounds.minX + bounds.maxX) / 2;
+    const midZ = (bounds.minZ + bounds.maxZ) / 2;
+    const anisotropy = this.renderer.capabilities.getMaxAnisotropy();
 
+    // --- Floor: red and black casino carpet --------------------------------
+    const carpet = createCarpet(Math.round(width / 3.2), Math.round(depth / 3.2));
+    carpet.map.anisotropy = anisotropy;
     const floor = new THREE.Mesh(
       new THREE.PlaneGeometry(width, depth),
-      new THREE.MeshStandardMaterial({ color: 0x24365f, roughness: 0.8, metalness: 0.15 }),
+      // Carpet is pile: fully rough, zero metalness. Any specular at all and it
+      // reads as printed lino.
+      new THREE.MeshStandardMaterial({ map: carpet.map, roughness: 1, metalness: 0 }),
     );
     floor.rotation.x = -Math.PI / 2;
-    floor.position.set((bounds.minX + bounds.maxX) / 2, 0, (bounds.minZ + bounds.maxZ) / 2);
+    floor.position.set(midX, 0, midZ);
     floor.receiveShadow = true;
     this.scene.add(floor);
 
-    const wallMaterial = new THREE.MeshStandardMaterial({ color: 0x33477e, roughness: 0.85 });
+    // --- Ceiling: coffered golden stone -------------------------------------
+    const coffers = createCofferedStone(Math.round(width / 9), Math.round(depth / 9));
+    coffers.map.anisotropy = anisotropy;
+    const ceiling = new THREE.Mesh(
+      new THREE.PlaneGeometry(width, depth),
+      new THREE.MeshStandardMaterial({
+        map: coffers.map,
+        // Real relief, so the coffers catch the lamps below them instead of
+        // being a picture of a coffered ceiling.
+        bumpMap: coffers.bumpMap,
+        bumpScale: 1.4,
+        roughness: 0.82,
+        metalness: 0.04,
+      }),
+    );
+    ceiling.rotation.x = Math.PI / 2;
+    ceiling.position.set(midX, 4, midZ);
+    this.scene.add(ceiling);
+
+    // --- Walls, columns and props: Roman travertine -------------------------
+    const stone = createSculptedStone();
+    stone.map.anisotropy = anisotropy;
+    this._stone = stone;
+    /**
+     * Stone materials, keyed by the surface size they are tiled for.
+     *
+     * `tiledFor` clones a texture, and every clone is a separate GPU upload of
+     * the same bitmap. Cloning per mesh meant ~100 uploads of four identical
+     * 512px images at load, which is seconds of stalled main thread before the
+     * join screen can even be dismissed. Walls come in a handful of sizes and
+     * every column is identical, so caching collapses that to a handful.
+     */
+    this._stoneMaterials = new Map();
+
     for (const box of world.colliders) {
       // Table bodies get their own mesh in _buildTable. Drawing the collider
       // too leaves a grey slab poking out from under the felt.
       if (box.kind === 'table') continue;
-      const mesh = new THREE.Mesh(
-        new THREE.BoxGeometry(box.maxX - box.minX, box.maxY - box.minY, box.maxZ - box.minZ),
-        wallMaterial,
-      );
+      if (box.kind === 'column') {
+        this._buildColumn(box);
+        this.stats.columns += 1;
+        continue;
+      }
+
+      const w = box.maxX - box.minX;
+      const h = box.maxY - box.minY;
+      const d = box.maxZ - box.minZ;
+
+      // Each surface gets its own tiling so the stone keeps a constant scale
+      // whatever the wall's proportions. One shared texture stretches the long
+      // walls into smears.
+      const material = this._stoneMaterialFor(Math.max(w, d), h);
+
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
       mesh.position.set(
         (box.minX + box.maxX) / 2,
         (box.minY + box.maxY) / 2,
@@ -139,20 +203,147 @@ export class WorldRenderer {
       mesh.receiveShadow = true;
       this.scene.add(mesh);
       this._occluders.push(mesh);
+      this.stats.walls += 1;
+
+      // The central bar gets a dark marble counter so it does not read as one
+      // more block of the same stone.
+      if (box.kind === 'prop') {
+        const top = new THREE.Mesh(
+          new THREE.BoxGeometry(w + 0.25, 0.12, d + 0.25),
+          new THREE.MeshStandardMaterial({ color: 0x1d1418, roughness: 0.25, metalness: 0.35 }),
+        );
+        top.position.set(mesh.position.x, box.maxY + 0.06, mesh.position.z);
+        top.castShadow = true;
+        this.scene.add(top);
+      }
     }
 
-    // Without a ceiling the top half of every shot is empty black, which reads
-    // as a rendering failure rather than a room.
-    const ceiling = new THREE.Mesh(
-      new THREE.PlaneGeometry(width, depth),
-      new THREE.MeshStandardMaterial({ color: 0x161f3d, roughness: 1 }),
-    );
-    ceiling.rotation.x = Math.PI / 2;
-    ceiling.position.set((bounds.minX + bounds.maxX) / 2, 4, (bounds.minZ + bounds.maxZ) / 2);
-    this.scene.add(ceiling);
+    this._buildCornice(bounds);
 
     for (const interactable of world.interactables) {
       this._buildTable(interactable);
+    }
+  }
+
+  /** A stone material tiled for a surface of this size, created once and shared. */
+  _stoneMaterialFor(width, height, metresPerTile = 4, extra = {}) {
+    const key = `${Math.round(width)}x${Math.round(height)}x${metresPerTile}x${extra.flatShading ? 1 : 0}`;
+    const cached = this._stoneMaterials.get(key);
+    if (cached !== undefined) return cached;
+
+    const material = new THREE.MeshStandardMaterial({
+      map: tiledFor(this._stone.map, width, height, metresPerTile),
+      bumpMap: tiledFor(this._stone.bumpMap, width, height, metresPerTile),
+      bumpScale: 1.1,
+      roughnessMap: tiledFor(this._stone.roughnessMap, width, height, metresPerTile),
+      roughness: 0.8,
+      metalness: 0.03,
+      ...extra,
+    });
+    this._stoneMaterials.set(key, material);
+    return material;
+  }
+
+  /**
+   * A Tuscan column standing in the footprint of its collider.
+   *
+   * The shaft is drawn flat-shaded on purpose: at twenty radial segments the
+   * facets catch the light as fluting for a fraction of the cost of a real
+   * normal map, which this client has no pipeline to author.
+   */
+  _buildColumn(box) {
+    const cx = (box.minX + box.maxX) / 2;
+    const cz = (box.minZ + box.maxZ) / 2;
+    const height = box.maxY - box.minY;
+    const radius = Math.min(box.maxX - box.minX, box.maxZ - box.minZ) / 2;
+
+    const group = new THREE.Group();
+    group.position.set(cx, 0, cz);
+
+    const shaftMaterial = this._stoneMaterialFor(radius * 4, height, 2.5, {
+      bumpScale: 0.7,
+      flatShading: true,
+    });
+    const trimMaterial = this._stoneMaterialFor(radius * 4, 1, 2);
+
+    const plinth = new THREE.Mesh(
+      new THREE.BoxGeometry(radius * 2.1, 0.18, radius * 2.1),
+      trimMaterial,
+    );
+    plinth.position.y = 0.09;
+    group.add(plinth);
+
+    const base = new THREE.Mesh(
+      new THREE.CylinderGeometry(radius * 0.92, radius * 1.05, 0.2, 20),
+      trimMaterial,
+    );
+    base.position.y = 0.28;
+    group.add(base);
+
+    const shaftHeight = height - 0.95;
+    const shaft = new THREE.Mesh(
+      new THREE.CylinderGeometry(radius * 0.78, radius * 0.9, shaftHeight, 20),
+      shaftMaterial,
+    );
+    shaft.position.y = 0.38 + shaftHeight / 2;
+    shaft.castShadow = true;
+    group.add(shaft);
+
+    const capital = new THREE.Mesh(
+      new THREE.CylinderGeometry(radius * 1.05, radius * 0.8, 0.24, 20),
+      trimMaterial,
+    );
+    capital.position.y = height - 0.33;
+    group.add(capital);
+
+    const abacus = new THREE.Mesh(
+      new THREE.BoxGeometry(radius * 2.3, 0.16, radius * 2.3),
+      trimMaterial,
+    );
+    abacus.position.y = height - 0.13;
+    group.add(abacus);
+
+    this.scene.add(group);
+    // Only the shaft occludes: the camera should tuck past a plinth, not shove
+    // itself away from one.
+    this._occluders.push(shaft);
+  }
+
+  /**
+   * The entablature running the length of every wall.
+   *
+   * Roman interiors are horizontally banded, and a wall that meets the ceiling
+   * in a bare seam reads as a video-game box however good the stone is.
+   */
+  _buildCornice(bounds) {
+    const material = this._stoneMaterialFor(48, 1, 2);
+    const width = bounds.maxX - bounds.minX;
+    const depth = bounds.maxZ - bounds.minZ;
+    const midX = (bounds.minX + bounds.maxX) / 2;
+    const midZ = (bounds.minZ + bounds.maxZ) / 2;
+
+    const bands = [
+      // [w, d, x, z]
+      [width, 0.6, midX, bounds.minZ + 0.3],
+      [width, 0.6, midX, bounds.maxZ - 0.3],
+      [0.6, depth, bounds.minX + 0.3, midZ],
+      [0.6, depth, bounds.maxX - 0.3, midZ],
+    ];
+
+    for (const [w, d, x, z] of bands) {
+      const cornice = new THREE.Mesh(new THREE.BoxGeometry(w, 0.42, d), material);
+      cornice.position.set(x, 3.72, z);
+      cornice.castShadow = true;
+      this.scene.add(cornice);
+
+      // A second, thinner course below it — the architrave. Two bands read as
+      // architecture; one reads as a mistake.
+      const architrave = new THREE.Mesh(
+        new THREE.BoxGeometry(w * 0.995, 0.14, d * 0.995),
+        material,
+      );
+      architrave.position.set(x, 3.44, z);
+      this.scene.add(architrave);
     }
   }
 
@@ -198,6 +389,7 @@ export class WorldRenderer {
     group.userData.interactableId = interactable.id;
     group.userData.label = interactable.label;
     this._tableMeshes.push(group);
+    this.stats.tables += 1;
     this.scene.add(group);
   }
 

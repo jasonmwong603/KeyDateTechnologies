@@ -51,7 +51,7 @@ export function clampLengthXZ(x: number, z: number, max: number): { x: number; z
  * has its own, better-looking mesh.
  */
 export interface AABB {
-  kind?: 'wall' | 'table' | 'prop';
+  kind?: 'wall' | 'table' | 'prop' | 'column';
   minX: number;
   minY: number;
   minZ: number;

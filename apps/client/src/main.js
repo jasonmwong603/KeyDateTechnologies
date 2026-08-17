@@ -376,6 +376,7 @@ window.__keydate = {
   position: () => ({ x: localState.x, y: localState.y, z: localState.z }),
   viewMode: () => viewMode,
   remoteCount: () => remotes.size,
+  sceneStats: () => ({ ...renderer.stats }),
   seatedAt: () => localState.seatedAt,
   /**
    * Points the camera at the nearest table and reports how far away it is.
