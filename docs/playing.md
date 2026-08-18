@@ -89,6 +89,7 @@ world together.
 | Action                           | Key                                                                            |
 | -------------------------------- | ------------------------------------------------------------------------------ |
 | Move                             | `W` `A` `S` `D`                                                                |
+| Hit / stand / double             | Click the buttons in the table panel                                           |
 | Look                             | Move the mouse (click the game once to capture the pointer; `Esc` releases it) |
 | Sprint                           | `Shift`                                                                        |
 | Jump                             | `Space`                                                                        |
@@ -133,19 +134,37 @@ Chips come from exactly one place — the tables — and they buy exactly one th
 The more you drink, the blurrier the room gets, and the harder it is to keep winning the
 chips that pay for the next round.
 
-1. **Walk to a table.** Four tables sit around the central plinth. A prompt appears when
+1. **Walk to a table.** Six tables sit around the central plinth. A prompt appears when
    you are close enough.
 2. **Sit down** with `E` (or **Use**).
 3. **Pick a stake** — 10, 50, 250 or 1000 — then tap a betting spot.
 4. **Watch the timer.** Betting closes when it runs out, or as soon as everyone at the
    table is ready.
-5. **Check the fairness line** under the table panel. Before betting opens the server
+5. **Play your hand**, if the game has one. Blackjack deals and then waits on you; the
+   panel shows the cards and your buttons, and you get 15 seconds. Run out of time and
+   the table plays a sensible hand for you rather than standing on 12.
+6. **Check the fairness line** under the table panel. Before betting opens the server
    publishes a commitment; after the round it reveals the seed, and your browser
    verifies the two match. A mismatch shows in red.
 
-**Wheel of Fortune** is the house game — the `9x` spot is priced at exactly true odds,
-so it is the one bet with no house edge. **High Card Duel** takes no house cut at all:
-everyone antes, highest card takes the pot.
+### The games
+
+| Game                 | Where                                 | What it is                                                                                                                                                             |
+| -------------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Blackjack**        | Two tables, north-west and south-east | Six decks, dealer stands on all 17, blackjack pays 3 to 2. Hit, stand, or double on your first two cards. No splitting.                                                |
+| **Roulette**         | North-east                            | European single zero — one green pocket, not two. Red/black, odd/even, halves, dozens, and the zero straight up at 35 to 1.                                            |
+| **Baccarat**         | South-west                            | Punto banco. Back the player, the banker, or a tie; the drawing rules do the rest. Banker pays 0.95 to 1 after commission, a tie pays 9 to 1 and pushes the other two. |
+| **Wheel of Fortune** | West wall                             | The house game. The `9x` spot is priced at exactly true odds — the one bet on the floor with no house edge at all.                                                     |
+| **High Card Duel**   | East wall                             | No house cut whatsoever. Everyone antes, highest card takes the pot. Needs two players.                                                                                |
+
+Every spot on every felt returns between 93% and 100% of what is staked on it, and there
+is a test that fails if one ever climbs above 100% or drops below 93%. Roulette is
+uniform: all ten spots return exactly 36/37, so where you put your chips is a question of
+variance, not of value.
+
+Two deliberate departures from a real pit, both in your favour: baccarat's tie pays 9 to
+1 rather than the usual 8 (which would make it a bad bet dressed as an exciting one), and
+the Wheel of Fortune is far kinder than the Big Six wheel it is based on.
 
 Then **walk to the bar** in the north-west corner and press `E` to open the menu.
 
@@ -185,7 +204,9 @@ Fast, self-contained things to try first:
 | Starting chips, bailout, player cap     | `apps/server/src/config.ts` (or environment variables) |
 | Walk/sprint speed, jump height, gravity | `packages/sim/src/constants.ts`                        |
 | The floor layout, table positions       | `packages/sim/src/world.ts`                            |
-| Paytable and odds                       | `packages/games/table-games/src/wheelOfFortune.ts`     |
+| Paytables and odds                      | one file per game in `packages/games/table-games/src/` |
+| Blackjack house rules                   | `blackjack.ts` — deck count, S17, the 3:2 payout       |
+| Which game sits where on the floor      | `tablePositions` in `packages/sim/src/world.ts`        |
 | Drink prices, strength, sobering rate   | `apps/server/src/bar.ts`                               |
 | How strong the blur gets                | `setDrunkenness` in `apps/client/src/hud.js`           |
 | Betting window length                   | `bettingWindowMs` in each game definition              |

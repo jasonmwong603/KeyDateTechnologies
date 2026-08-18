@@ -348,6 +348,158 @@ kbd {
   border-color: var(--good);
 }
 
+/*
+ * Roulette puts ten spots on the felt where the wheel puts four. Left on the
+ * default track size they wrap into a column that pushes the stake row off a
+ * phone screen, so a crowded felt gets narrower tiles rather than more rows.
+ */
+#table-spots.dense {
+  grid-template-columns: repeat(auto-fit, minmax(78px, 1fr));
+}
+
+#table-spots.dense .spot-label {
+  font-size: 0.92rem;
+}
+
+#table-spots.dense .spot-hint {
+  /* The full description is still there for a pointer; it just cannot have the
+     vertical space on a felt this busy. */
+  display: none;
+}
+
+/* ---------------------------------------------------------------------------
+   The live hand — blackjack, and anything else that grows a decision phase
+   --------------------------------------------------------------------------- */
+
+#table-hand {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.55rem;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  background: rgba(9, 14, 30, 0.55);
+}
+
+#hand-seats {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.hand-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  font-size: 0.78rem;
+  padding: 0.2rem 0.35rem;
+  border-radius: 6px;
+  border: 1px solid transparent;
+}
+
+/* Whoever is on the clock, highlighted — at a table of six it is the only way
+   to tell whether the game is waiting on you. */
+.hand-row.acting {
+  border-color: var(--gold);
+  background: rgba(255, 209, 102, 0.08);
+}
+
+.hand-row.mine .hand-who {
+  color: var(--gold);
+}
+
+.hand-who {
+  min-width: 5.5rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.hand-cards {
+  display: flex;
+  gap: 0.2rem;
+  flex-wrap: wrap;
+}
+
+.card {
+  display: inline-block;
+  min-width: 2.1rem;
+  padding: 0.1rem 0.28rem;
+  text-align: center;
+  border-radius: 4px;
+  background: #f4f1e8;
+  color: #16181d;
+  font-weight: 700;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.card.red {
+  color: #b3202f;
+}
+
+.card.facedown {
+  background: linear-gradient(135deg, #2b3557, #1a2039);
+  color: rgba(232, 241, 255, 0.55);
+}
+
+.hand-note {
+  margin-left: auto;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+#hand-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+  gap: 0.4rem;
+}
+
+#hand-actions:empty {
+  display: none;
+}
+
+.hand-action {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.55rem 0.5rem;
+  text-align: left;
+  border-color: var(--gold);
+}
+
+.action-label {
+  font-weight: 700;
+  color: var(--gold);
+}
+
+.action-hint {
+  font-size: 0.65rem;
+  color: var(--muted);
+}
+
+.result-cards {
+  margin-top: 0.2rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.result-mine {
+  margin-top: 0.2rem;
+  font-size: 0.78rem;
+}
+
+.result-win,
+.result-blackjack {
+  color: var(--good);
+}
+
+.result-lose,
+.result-bust {
+  color: var(--bad);
+}
+
 #stake-row {
   display: flex;
   align-items: center;

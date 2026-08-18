@@ -5,7 +5,14 @@ import {
   revealPart,
   type RoundCommitment,
 } from '@keydate/netcode';
-import { findSpot, type TableGameDefinition, type TableResolution, type Wager } from './types.js';
+import {
+  findSpot,
+  type InteractiveTableGame,
+  type TableAction,
+  type TableGameDefinition,
+  type TableResolution,
+  type Wager,
+} from './types.js';
 
 /**
  * Drives one table through its round loop.
@@ -22,6 +29,8 @@ export type TablePhase =
   | 'idle'
   /** Bets accepted. Ends on the timer or when everyone declares ready. */
   | 'betting'
+  /** Cards dealt, players acting in seat order. Only interactive games enter it. */
+  | 'decisions'
   /** Bets locked, outcome being played out for the camera. */
   | 'resolving'
   /** Outcome shown and paid; brief pause before the next round. */
@@ -41,6 +50,8 @@ export interface WagerRejection {
 
 export type WagerResult = { ok: true; wager: Wager } | WagerRejection;
 
+export type ActionResult = { ok: true } | WagerRejection;
+
 export interface TableRuntimeHost {
   /**
    * Attempts to take `amount` chips from a player.
@@ -55,16 +66,41 @@ export interface TableRuntimeHost {
   now(): number;
 }
 
+/** The live hand, sent only while an interactive game is in its decision phase. */
+export interface TableDecisionState {
+  /** Player to act. Never null while the table is in `decisions`. */
+  actor: string | null;
+  /** What that player may do. Everyone receives it; only the actor may use it. */
+  actions: TableAction[];
+  /** Milliseconds before the table decides for them. */
+  msRemaining: number;
+  /** Game-specific public view of the hand — cards on the table, totals. */
+  view: Record<string, unknown>;
+}
+
 /** What clients are told about the table. Never includes an unrevealed seed. */
 export interface TablePublicState {
   tableId: number;
   gameId: string;
+  /**
+   * Sent so the client can label the panel without a hardcoded lookup. Adding
+   * a game should not mean editing a switch statement in the HUD.
+   */
+  displayName: string;
   phase: TablePhase;
   round: number;
   seats: { playerId: string; seatIndex: number; ready: boolean }[];
   wagers: { playerId: string; spotId: string; amount: number }[];
+  /** Every spot on this felt, so the client can build the betting UI from it. */
+  spots: { id: string; label: string; payout: number; description: string }[];
+  minWager: number;
+  maxWager: number;
+  /** The full betting window, so a countdown bar knows what it is a fraction of. */
+  bettingWindowMs: number;
   /** Milliseconds left in the betting window; 0 outside it. */
   bettingMsRemaining: number;
+  /** The hand in progress, or null outside the decision phase. */
+  decision: TableDecisionState | null;
   /** Published before bets open so the outcome can be verified afterwards. */
   commitment: { digest: string; nonce: number } | null;
   /** Populated only once the round has resolved. */
@@ -72,11 +108,22 @@ export interface TablePublicState {
     summary: string;
     detail: Record<string, unknown>;
     reveal: { seed: number; nonce: number };
+    /**
+     * Every action taken this round, in order.
+     *
+     * An interactive round is not reproducible from the seed alone — the seed
+     * fixes the shoe, the actions decide what happens to it. Publishing both is
+     * what keeps the round verifiable; see `replayInteractiveRound`.
+     */
+    actions: string[];
   } | null;
 }
 
 /** How long the result stays on screen before the next round opens. */
 const PAYOUT_DISPLAY_MS = 6_000;
+
+/** How long the outcome plays out for the camera once everything is decided. */
+const RESOLVE_BEAT_MS = 3_000;
 
 export class TableRuntime {
   private phase: TablePhase = 'idle';
@@ -86,6 +133,11 @@ export class TableRuntime {
   private phaseEndsAt = 0;
   private commitment: RoundCommitment | null = null;
   private lastResult: TablePublicState['lastResult'] = null;
+
+  /** The interactive game's opaque hand state, or null outside `decisions`. */
+  private decisionState: unknown = null;
+  /** Every action applied this round, in order. Published with the result. */
+  private actionLog: string[] = [];
 
   constructor(
     readonly tableId: number,
@@ -105,6 +157,18 @@ export class TableRuntime {
 
   get seatedCount(): number {
     return this.seats.length;
+  }
+
+  /** The interactive rules, already narrowed, or null for a one-shot game. */
+  private get interactive(): InteractiveTableGame<unknown> | null {
+    return (this.definition.interactive as InteractiveTableGame<unknown> | undefined) ?? null;
+  }
+
+  /** Whose turn it is, or null when the table is not waiting on anybody. */
+  get currentActor(): string | null {
+    const game = this.interactive;
+    if (game === null || this.phase !== 'decisions' || this.decisionState === null) return null;
+    return game.actor(this.decisionState);
   }
 
   // -------------------------------------------------------------------------
@@ -132,6 +196,11 @@ export class TableRuntime {
    * Chips already staked in an open betting round are refunded — standing up
    * mid-round is not a way to lose money, and more importantly it is not a way
    * to dodge a bet, because bets are locked before the wheel is seeded.
+   *
+   * Leaving *mid-hand* is different and is deliberately not a refund. By then
+   * the player has seen their cards, and walking away from a bad one would be
+   * the cheapest possible way to never lose a hand of blackjack. Their seat
+   * goes, their hand stays, and the table plays it out for them.
    */
   stand(playerId: string): void {
     this.seats = this.seats.filter((seat) => seat.playerId !== playerId);
@@ -141,6 +210,20 @@ export class TableRuntime {
         this.host.credit(playerId, wager.amount, 'wager-refunded');
       }
       this.wagers = this.wagers.filter((entry) => entry.playerId !== playerId);
+      return;
+    }
+
+    // Do not leave a table of six waiting fifteen seconds on somebody who has
+    // already walked out of the room. One action is not always enough to end a
+    // hand — an auto-hit that draws a five leaves them still to act — so play
+    // it out until the turn genuinely moves on.
+    let guard = 0;
+    while (this.phase === 'decisions' && this.currentActor === playerId) {
+      this.applyAutoAction();
+      guard += 1;
+      if (guard > 64) {
+        throw new Error(`Table ${this.tableId}: auto-play never released the turn.`);
+      }
     }
   }
 
@@ -220,6 +303,67 @@ export class TableRuntime {
   }
 
   // -------------------------------------------------------------------------
+  // Decisions
+  // -------------------------------------------------------------------------
+
+  /**
+   * Plays one action for the player whose turn it is.
+   *
+   * Every guard here matters: a client can send any action id at any moment,
+   * including one belonging to somebody else's turn, and an action that costs
+   * chips must not be applied before the chips are actually taken.
+   */
+  takeAction(playerId: string, actionId: string): ActionResult {
+    const game = this.interactive;
+    if (game === null || this.phase !== 'decisions' || this.decisionState === null) {
+      return { ok: false, code: 'table_locked', message: 'There is nothing to decide right now.' };
+    }
+    if (game.actor(this.decisionState) !== playerId) {
+      return { ok: false, code: 'invalid_action', message: 'It is not your turn.' };
+    }
+    if (!game.actions(this.decisionState).some((action) => action.id === actionId)) {
+      return { ok: false, code: 'invalid_action', message: `You cannot ${actionId} right now.` };
+    }
+
+    // Doubling down costs chips. Take them first: applying the action and then
+    // discovering the player cannot pay would leave a hand staked with money
+    // that was never debited.
+    const extra = game.stakeDelta(this.decisionState, actionId);
+    if (extra > 0) {
+      if (!this.host.debit(playerId, extra, 'wager')) {
+        return { ok: false, code: 'insufficient_chips', message: 'Not enough chips to double.' };
+      }
+      const wager = this.wagers.find((entry) => entry.playerId === playerId);
+      // Keeps the felt honest: the wager list is what the table shows as staked,
+      // and it must match what the hand is actually playing for.
+      if (wager !== undefined) wager.amount += extra;
+    }
+
+    this.commitAction(game, actionId);
+    return { ok: true };
+  }
+
+  /** Plays the table's default for a player who ran out of time or left. */
+  private applyAutoAction(): void {
+    const game = this.interactive;
+    if (game === null || this.decisionState === null) return;
+    this.commitAction(game, game.autoAction(this.decisionState));
+  }
+
+  /**
+   * Applies an action, records it, and hands the turn on.
+   *
+   * The log is the second half of the fairness proof for an interactive round:
+   * the seed alone no longer determines the outcome, so what was chosen has to
+   * be published alongside it.
+   */
+  private commitAction(game: InteractiveTableGame<unknown>, actionId: string): void {
+    this.decisionState = game.apply(this.decisionState, actionId);
+    this.actionLog.push(actionId);
+    this.enterDecisionOrResolve();
+  }
+
+  // -------------------------------------------------------------------------
   // Phase machine
   // -------------------------------------------------------------------------
 
@@ -247,11 +391,14 @@ export class TableRuntime {
           return null;
         }
         const everyoneReady = this.wagers.length > 0 && this.seats.every((seat) => seat.ready);
-        if (now >= this.phaseEndsAt || everyoneReady) {
-          this.phase = 'resolving';
-          // A short beat so the wheel visibly spins before the result lands.
-          this.phaseEndsAt = now + 3_000;
-        }
+        if (now >= this.phaseEndsAt || everyoneReady) this.closeBetting();
+        return null;
+      }
+
+      case 'decisions': {
+        // One player's clock, not the table's: each seat gets the full window
+        // when its turn arrives, and a slow player upstream cannot eat it.
+        if (now >= this.phaseEndsAt) this.applyAutoAction();
         return null;
       }
 
@@ -274,12 +421,58 @@ export class TableRuntime {
     this.wagers = [];
     this.phase = 'betting';
     this.phaseEndsAt = this.host.now() + this.definition.bettingWindowMs;
+    this.decisionState = null;
+    this.actionLog = [];
 
     // The seed is chosen and committed to *before* a single chip is placed.
     // That ordering is the entire guarantee: the server cannot see the bets and
     // then pick a seed that beats them.
     this.commitment = createCommitment(this.seedSource(), this.round);
     this.lastResult = null;
+  }
+
+  /**
+   * Locks the bets and starts whatever comes next.
+   *
+   * For a one-shot game that is the spin. For an interactive one it is the
+   * deal: the hand is built here, from the seed committed to before betting
+   * opened, and only then does anybody get to choose anything.
+   */
+  private closeBetting(): void {
+    const game = this.interactive;
+    const commitment = this.commitment;
+
+    if (game === null || commitment === null) {
+      this.phase = 'resolving';
+      // A short beat so the wheel visibly spins before the result lands.
+      this.phaseEndsAt = this.host.now() + RESOLVE_BEAT_MS;
+      return;
+    }
+
+    this.decisionState = game.begin(this.wagers, createRng(commitment.seed));
+    this.actionLog = [];
+    this.enterDecisionOrResolve();
+  }
+
+  /**
+   * Parks the table on whoever acts next, or moves on if nobody does.
+   *
+   * A hand where every seat was dealt a natural — or where nobody staked —
+   * reaches this with nothing to decide, and must not sit in `decisions`
+   * waiting for an actor who will never exist.
+   */
+  private enterDecisionOrResolve(): void {
+    const game = this.interactive;
+    const now = this.host.now();
+
+    if (game !== null && this.decisionState !== null && game.actor(this.decisionState) !== null) {
+      this.phase = 'decisions';
+      this.phaseEndsAt = now + game.decisionWindowMs;
+      return;
+    }
+
+    this.phase = 'resolving';
+    this.phaseEndsAt = now + RESOLVE_BEAT_MS;
   }
 
   private resolveRound(): TableResolution {
@@ -290,8 +483,13 @@ export class TableRuntime {
       throw new Error(`Table ${this.tableId} tried to resolve without a commitment.`);
     }
 
-    const rng = createRng(commitment.seed);
-    const resolution = this.definition.resolve(this.wagers, rng);
+    const game = this.interactive;
+    const resolution =
+      game !== null && this.decisionState !== null
+        ? // The hand was already dealt from this seed at `closeBetting`; settling
+          // it again from a fresh RNG would deal a different one.
+          game.settle(this.decisionState)
+        : this.definition.resolve(this.wagers, createRng(commitment.seed));
 
     for (const credit of resolution.credits) {
       if (credit.amount > 0) this.host.credit(credit.playerId, credit.amount, 'wager-won');
@@ -303,9 +501,11 @@ export class TableRuntime {
       // Revealing the seed alongside the result is what lets any client replay
       // the round and confirm it against the digest published before betting.
       reveal: revealPart(commitment),
+      actions: [...this.actionLog],
     };
 
     this.wagers = [];
+    this.decisionState = null;
     this.phase = 'payout';
     this.phaseEndsAt = this.host.now() + PAYOUT_DISPLAY_MS;
 
@@ -327,16 +527,40 @@ export class TableRuntime {
     return {
       tableId: this.tableId,
       gameId: this.definition.id,
+      displayName: this.definition.displayName,
       phase: this.phase,
       round: this.round,
       seats: this.seats.map((seat) => ({ ...seat })),
       wagers: this.wagers.map((wager) => ({ ...wager })),
+      spots: this.definition.spots.map((spot) => ({ ...spot })),
+      minWager: this.definition.minWager,
+      maxWager: this.definition.maxWager,
+      bettingWindowMs: this.definition.bettingWindowMs,
       bettingMsRemaining:
         this.phase === 'betting' ? Math.max(0, this.phaseEndsAt - this.host.now()) : 0,
+      decision: this.publicDecision(),
       // Only the digest goes out while the round is live. The seed stays server
       // side until `lastResult` carries it.
       commitment: this.commitment === null ? null : publicPart(this.commitment),
       lastResult: this.lastResult,
+    };
+  }
+
+  /**
+   * The hand as everyone at the table may see it.
+   *
+   * Built through the rules module's own `view`, never from the raw state: the
+   * state holds the rest of the shoe, and the dealer's hole card is in it.
+   */
+  private publicDecision(): TableDecisionState | null {
+    const game = this.interactive;
+    if (game === null || this.phase !== 'decisions' || this.decisionState === null) return null;
+
+    return {
+      actor: game.actor(this.decisionState),
+      actions: game.actions(this.decisionState),
+      msRemaining: Math.max(0, this.phaseEndsAt - this.host.now()),
+      view: game.view(this.decisionState),
     };
   }
 }

@@ -119,6 +119,36 @@ describe('parseClientMessage', () => {
     ).toBeNull();
   });
 
+  it('accepts a table action and carries the id through untouched', () => {
+    expect(parseClientMessage({ type: 'table:action', actionId: 'hit' })).toEqual({
+      type: 'table:action',
+      actionId: 'hit',
+    });
+  });
+
+  it('rejects a table action with no id, or one that is not a string', () => {
+    expect(parseClientMessage({ type: 'table:action' })).toBeNull();
+    expect(parseClientMessage({ type: 'table:action', actionId: 7 })).toBeNull();
+    expect(parseClientMessage({ type: 'table:action', actionId: null })).toBeNull();
+    expect(parseClientMessage({ type: 'table:action', actionId: ['hit'] })).toBeNull();
+    expect(parseClientMessage({ type: 'table:action', actionId: { id: 'hit' } })).toBeNull();
+  });
+
+  it('rejects an over-long action id', () => {
+    // Bounded before it reaches the table, so a client cannot make the server
+    // hold megabytes of string per message.
+    expect(parseClientMessage({ type: 'table:action', actionId: 'h'.repeat(33) })).toBeNull();
+  });
+
+  it('passes a hostile action id through as an ordinary string', () => {
+    // This layer does not judge meaning — the table rejects anything it did not
+    // offer. What matters is that nothing here treats the id as a key or a
+    // path, so a prototype-polluting name arrives as inert text.
+    const parsed = parseClientMessage({ type: 'table:action', actionId: '__proto__' });
+    expect(parsed).toEqual({ type: 'table:action', actionId: '__proto__' });
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+  });
+
   it('defaults an unknown chat channel to local rather than failing', () => {
     expect(parseClientMessage({ type: 'chat', channel: 'admin', text: 'hi' })).toEqual({
       type: 'chat',

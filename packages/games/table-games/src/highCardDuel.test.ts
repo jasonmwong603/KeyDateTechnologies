@@ -1,6 +1,7 @@
 import { createRng } from '@keydate/netcode';
 import { describe, expect, it } from 'vitest';
-import { buildDeck, highCardDuel, shuffle } from './highCardDuel.js';
+import { buildDeck, shuffle } from './cards.js';
+import { highCardDuel } from './highCardDuel.js';
 import { totalStaked, type Wager } from './types.js';
 
 const ante = (playerId: string, amount: number): Wager => ({ playerId, spotId: 'ante', amount });

@@ -14,18 +14,19 @@ look like a netcode bug.
 
 ## Client → Server
 
-| Message       | Purpose                                                                                       |
-| ------------- | --------------------------------------------------------------------------------------------- |
-| `hello`       | First message on a socket. Carries display name, optional session code, optional resume token |
-| `input`       | A batch of input frames. The only way to move                                                 |
-| `interact`    | Use whatever you are standing at — a table seat                                               |
-| `table:leave` | Stand up                                                                                      |
-| `table:wager` | Stake chips on a betting spot                                                                 |
-| `table:clear` | Pull your chips back while betting is open                                                    |
-| `table:ready` | Declare readiness so the table can resolve early                                              |
-| `chat`        | `local` (whole floor) or `table` (your table only)                                            |
-| `view-mode`   | Cosmetic; which camera you are using                                                          |
-| `ping`        | Latency and clock-offset probe                                                                |
+| Message        | Purpose                                                                                       |
+| -------------- | --------------------------------------------------------------------------------------------- |
+| `hello`        | First message on a socket. Carries display name, optional session code, optional resume token |
+| `input`        | A batch of input frames. The only way to move                                                 |
+| `interact`     | Use whatever you are standing at — a table seat                                               |
+| `table:leave`  | Stand up                                                                                      |
+| `table:wager`  | Stake chips on a betting spot                                                                 |
+| `table:clear`  | Pull your chips back while betting is open                                                    |
+| `table:ready`  | Declare readiness so the table can resolve early                                              |
+| `table:action` | Take your turn at a table that has one — `hit`, `stand`, `double`                             |
+| `chat`         | `local` (whole floor) or `table` (your table only)                                            |
+| `view-mode`    | Cosmetic; which camera you are using                                                          |
+| `ping`         | Latency and clock-offset probe                                                                |
 
 ### Input frames
 
@@ -82,7 +83,37 @@ Events are for things that _happen_, as opposed to state that _is_: `table:seate
 `player:left`. They are queued per client and flushed with each tick's snapshot.
 
 Table state is pushed at ~5Hz to seated players, but phase changes push immediately —
-betting opening and bets locking are the moments the UI must not miss.
+betting opening, bets locking, and the turn passing to you are the moments the UI must
+not miss.
+
+### Table state
+
+`table:state` carries everything the client needs to draw the felt without knowing which
+game it is: `displayName`, the full `spots` list, `minWager`, `maxWager`,
+`bettingWindowMs`, the seats, the wagers, the commitment, and the last result. Adding a
+game does not mean editing the client.
+
+The `phase` runs `idle → betting → [decisions] → resolving → payout`. `decisions` is
+entered only by games that have a per-player turn — blackjack, so far — and when it is
+active a `decision` block rides along:
+
+```ts
+{
+  actor: string | null,        // whose turn; everyone sees it, only they may act
+  actions: { id, label, hint }[],
+  msRemaining: number,         // before the table decides for them
+  view: Record<string, unknown> // the hand, as everyone may see it
+}
+```
+
+`view` is produced by the rules module, never dumped from its state — the rest of the
+shoe and the dealer's hole card are in that state, and neither goes out until the hand is
+over.
+
+`lastResult` carries the revealed seed **and the round's action log**. A one-shot round is
+reproducible from its seed alone; an interactive one is reproducible from (seed, actions),
+because the seed fixes the shoe and the log fixes what was done with it. See
+`replayInteractiveRound` in `packages/games/table-games`.
 
 ## Validation
 

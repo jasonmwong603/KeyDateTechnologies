@@ -88,11 +88,20 @@ export function buildCasinoFloor(): World {
   const halfWidth = 24;
   const halfDepth = 18;
 
+  // The four corner positions are the room's prime real estate — visible from
+  // the door, on the walk to the bar — so the three headline games take them,
+  // with blackjack twice because it is the one that seats people longest. The
+  // house oddities sit out on the east and west walls.
+  //
+  // Nothing is placed on the z = ±14 line: that is where players spawn, and a
+  // spawn point inside a seat ring drops somebody onto the felt.
   const tablePositions = [
-    { x: -12, z: -8, label: 'Wheel of Fortune', gameId: 'wheel-of-fortune' },
-    { x: 12, z: -8, label: 'High Card Duel', gameId: 'high-card-duel' },
-    { x: -12, z: 8, label: 'Wheel of Fortune', gameId: 'wheel-of-fortune' },
-    { x: 12, z: 8, label: 'High Card Duel', gameId: 'high-card-duel' },
+    { x: -12, z: -8, label: 'Blackjack', gameId: 'blackjack' },
+    { x: 12, z: -8, label: 'Roulette', gameId: 'roulette' },
+    { x: -12, z: 8, label: 'Baccarat', gameId: 'baccarat' },
+    { x: 12, z: 8, label: 'Blackjack', gameId: 'blackjack' },
+    { x: -19, z: 0, label: 'Wheel of Fortune', gameId: 'wheel-of-fortune' },
+    { x: 19, z: 0, label: 'High Card Duel', gameId: 'high-card-duel' },
   ];
 
   const colliders: AABB[] = [

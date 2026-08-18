@@ -304,6 +304,35 @@ export class WorldInstance {
   }
 
   /**
+   * Takes a player's turn at a table with a decision phase.
+   *
+   * Every guard that matters lives in the runtime — whose turn it is, whether
+   * the action is legal, whether it can be paid for. This only routes.
+   */
+  handleTableAction(playerId: string, actionId: string): void {
+    const record = this.players.get(playerId);
+    if (record === undefined) return;
+
+    const tableId = record.state.seatedAt;
+    if (tableId === null) {
+      this.sendError(record, 'invalid_action', 'You are not at a table.');
+      return;
+    }
+
+    const table = this.tables.get(tableId);
+    if (table === undefined) return;
+
+    const result = table.takeAction(playerId, actionId);
+    if (!result.ok) {
+      this.sendError(record, result.code, result.message);
+      return;
+    }
+    // Everyone at the table watches the hand, so the whole table is refreshed
+    // rather than just the player who acted.
+    this.broadcastTableState(tableId, true);
+  }
+
+  /**
    * Sells a drink.
    *
    * Range is re-checked here rather than trusted from the earlier interact: a
@@ -438,6 +467,7 @@ export class WorldInstance {
   private updateTables(): void {
     for (const [tableId, table] of this.tables) {
       const previousPhase = table.currentPhase;
+      const previousActor = table.currentActor;
       const resolution = table.update();
 
       if (resolution !== null) {
@@ -459,9 +489,9 @@ export class WorldInstance {
       }
 
       // Phase changes are the moments the UI must not miss (betting opening,
-      // bets locking), so they push immediately rather than waiting for the
-      // periodic refresh.
-      if (table.currentPhase !== previousPhase) {
+      // bets locking, the turn passing to you), so they push immediately rather
+      // than waiting for the periodic refresh.
+      if (table.currentPhase !== previousPhase || table.currentActor !== previousActor) {
         this.broadcastTableState(tableId, true);
       } else if (this.tick % TABLE_STATE_INTERVAL_TICKS === 0) {
         this.broadcastTableState(tableId, false);

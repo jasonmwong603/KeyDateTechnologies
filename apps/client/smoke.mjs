@@ -197,7 +197,7 @@ async function run() {
     check('walls built', stats?.walls > 0, `walls=${stats?.walls}`);
     check('columns built', stats?.columns === 16, `columns=${stats?.columns}`);
     check('bar built', stats?.bar > 0, `bar pieces=${stats?.bar}`);
-    check('tables built', stats?.tables === 4, `tables=${stats?.tables}`);
+    check('tables built', stats?.tables === 6, `tables=${stats?.tables}`);
 
     const before = await readPosition(pc);
     await pc.keyboard.down('KeyW');
@@ -376,6 +376,126 @@ async function run() {
       'placing a bet debits chips',
       chipsBefore !== chipsAfter,
       `${chipsBefore} -> ${chipsAfter}`,
+    );
+
+    // ---------------------------------------------------------- blackjack
+    // The only game with a decision phase, and the only part of the client that
+    // has to react to the server saying "it is your turn". Headless tests cover
+    // the rules; what they cannot see is an action panel that never renders, or
+    // buttons wired to a message the server rejects.
+    console.log('\nBlackjack');
+    await pc.click('#leave-table');
+    await sleep(400);
+
+    let bjDistance = Infinity;
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+      const target = await pc.evaluate(() => window.__keydate?.aimAtNearestTable('blackjack'));
+      if (target === null) break;
+      bjDistance = target.distance;
+      if (bjDistance < 2.0) break;
+      await pc.keyboard.down('KeyW');
+      await sleep(250);
+      await pc.keyboard.up('KeyW');
+      await sleep(60);
+    }
+    check(
+      'player can walk to a blackjack table',
+      bjDistance < 2.0,
+      `distance ${bjDistance.toFixed(2)}m`,
+    );
+
+    await pc.keyboard.press('KeyE');
+    await sleep(1200);
+    check('sitting at blackjack opens the table panel', await pc.isVisible('#table-panel'));
+
+    const bjTitle = await pc.textContent('#table-title');
+    check(
+      'the panel is labelled from the server, not a lookup table',
+      bjTitle === 'Blackjack',
+      `title=${bjTitle}`,
+    );
+
+    const anteVisible = await pc.isVisible('.spot[data-spot-id="ante"]');
+    check('blackjack offers its ante spot', anteVisible);
+
+    const bjChipsBefore = await pc.textContent('#chips-value');
+    await pc.click('.spot[data-spot-id="ante"]');
+    await sleep(600);
+    check(
+      'anteing debits chips',
+      bjChipsBefore !== (await pc.textContent('#chips-value')),
+      `${bjChipsBefore} -> ${await pc.textContent('#chips-value')}`,
+    );
+
+    // Wait out the betting window so the hand is actually dealt. Longer than
+    // the window itself, because the table only closes on a server tick.
+    let dealt = false;
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      await sleep(600);
+      if (await pc.isVisible('#table-hand')) {
+        dealt = true;
+        break;
+      }
+    }
+    check('the hand is dealt once betting closes', dealt);
+
+    const dealerCards = await pc.evaluate(
+      () => document.querySelectorAll('#hand-dealer .card').length,
+    );
+    check('the dealer shows two cards', dealerCards === 2, `cards=${dealerCards}`);
+
+    const facedown = await pc.evaluate(
+      () => document.querySelectorAll('#hand-dealer .card.facedown').length,
+    );
+    check('one dealer card is face down', facedown === 1, `facedown=${facedown}`);
+
+    const myCards = await pc.evaluate(
+      () => document.querySelectorAll('#hand-seats .hand-row.mine .card').length,
+    );
+    check('the player is dealt two cards', myCards === 2, `cards=${myCards}`);
+
+    await pc.screenshot({ path: path.join(SHOT_DIR, 'desktop-blackjack.png') });
+
+    const actions = await pc.evaluate(() =>
+      [...document.querySelectorAll('#hand-actions .hand-action')].map((b) => b.dataset.actionId),
+    );
+    check(
+      'the table offers hit, stand and double',
+      actions.includes('hit') && actions.includes('stand'),
+      `actions=${actions.join(',')}`,
+    );
+
+    // Standing has to actually end the turn — a button that sends a message the
+    // server rejects looks identical from the outside until you check this.
+    await pc.click('.hand-action[data-action-id="stand"]');
+    let handOver = false;
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      await sleep(400);
+      if (!(await pc.isVisible('#table-hand'))) {
+        handOver = true;
+        break;
+      }
+    }
+    check('standing ends the turn and the hand resolves', handOver);
+
+    // The hand ending is not the round ending: the table still plays the dealer
+    // out for the camera before it pays. Wait for the result itself.
+    let bjResolved = false;
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      await sleep(500);
+      if (await pc.isVisible('#table-result')) {
+        bjResolved = true;
+        break;
+      }
+    }
+    const bjResult = await pc.textContent('#table-result');
+    check('the hand reports a result', bjResolved, bjResult?.slice(0, 60));
+
+    const bjFairness = await pc.textContent('#fairness');
+    check(
+      'the interactive round verifies against its commitment',
+      Boolean(bjFairness && bjFairness.includes('Verified')),
+      bjFairness?.slice(0, 70),
     );
 
     // ------------------------------------------------------------------ bar

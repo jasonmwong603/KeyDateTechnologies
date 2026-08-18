@@ -1,7 +1,9 @@
-import { verifyCommitment } from '@keydate/netcode';
+import { createRng, verifyCommitment } from '@keydate/netcode';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { blackjack } from './blackjack.js';
 import { highCardDuel } from './highCardDuel.js';
 import { TableRuntime, type TableRuntimeHost } from './tableRuntime.js';
+import { replayInteractiveRound } from './types.js';
 import { wheelOfFortune } from './wheelOfFortune.js';
 
 /**
@@ -342,5 +344,250 @@ describe('TableRuntime fairness transcript', () => {
     }
 
     expect(digests.size).toBe(3);
+  });
+});
+
+describe('a table with a decision phase', () => {
+  let bjHost: FakeHost;
+  let bjTable: TableRuntime;
+
+  beforeEach(() => {
+    bjHost = new FakeHost(1_000, ['a', 'b']);
+    bjTable = new TableRuntime(2, blackjack, bjHost, () => 4242);
+  });
+
+  /** Seats everyone, stakes an ante each, and closes the betting window. */
+  function dealIn(players: string[] = ['a'], stake = 100): void {
+    for (const player of players) bjTable.sit(player);
+    bjTable.update();
+    for (const player of players) bjTable.placeWager(player, 'ante', stake);
+    bjHost.advance(blackjack.bettingWindowMs + 1);
+    bjTable.update();
+  }
+
+  it('enters the decision phase when betting closes rather than resolving', () => {
+    dealIn();
+    expect(bjTable.currentPhase).toBe('decisions');
+    expect(bjTable.currentActor).toBe('a');
+  });
+
+  it('publishes the hand, the legal actions and a clock', () => {
+    dealIn();
+    const decision = bjTable.toPublicState().decision!;
+
+    expect(decision.actor).toBe('a');
+    expect(decision.actions.map((action) => action.id)).toContain('hit');
+    expect(decision.msRemaining).toBeGreaterThan(0);
+    expect(decision.view.dealerUpcard).toBeDefined();
+  });
+
+  it('never publishes the dealer hole card while the hand is live', () => {
+    dealIn();
+    const view = bjTable.toPublicState().decision!.view as { dealerCards: unknown };
+    // The hole card is in the shoe the seed committed to, but publishing it
+    // mid-hand would hand every player the one thing the game is built on not
+    // knowing.
+    expect(view.dealerCards).toBeNull();
+  });
+
+  it('refuses an action from a player whose turn it is not', () => {
+    dealIn(['a', 'b']);
+    const result = bjTable.takeAction('b', 'hit');
+    expect(result).toEqual({
+      ok: false,
+      code: 'invalid_action',
+      message: 'It is not your turn.',
+    });
+  });
+
+  it('refuses an action the table did not offer', () => {
+    dealIn();
+    // A modified client can name any action it likes, including one from
+    // another game entirely.
+    expect(bjTable.takeAction('a', 'split')).toMatchObject({ code: 'invalid_action' });
+    expect(bjTable.takeAction('a', '__proto__')).toMatchObject({ code: 'invalid_action' });
+  });
+
+  it('refuses an action from somebody who is not even at the table', () => {
+    dealIn();
+    expect(bjTable.takeAction('nobody', 'hit')).toMatchObject({ code: 'invalid_action' });
+  });
+
+  it('refuses any action outside the decision phase', () => {
+    for (const player of ['a']) bjTable.sit(player);
+    bjTable.update();
+    expect(bjTable.takeAction('a', 'hit')).toMatchObject({ code: 'table_locked' });
+  });
+
+  it('debits the extra stake when a player doubles down', () => {
+    dealIn(['a'], 100);
+    const before = bjHost.balances.get('a')!;
+    const actions = bjTable.toPublicState().decision!.actions.map((action) => action.id);
+
+    if (actions.includes('double')) {
+      expect(bjTable.takeAction('a', 'double')).toEqual({ ok: true });
+      expect(bjHost.balances.get('a')).toBe(before - 100);
+      // The felt must agree with the hand: what is shown as staked is what the
+      // hand is actually playing for.
+      const staked = bjTable
+        .toPublicState()
+        .wagers.filter((wager) => wager.playerId === 'a')
+        .reduce((sum, wager) => sum + wager.amount, 0);
+      expect(staked).toBe(200);
+    }
+  });
+
+  it('refuses a double the player cannot cover, and does not apply it', () => {
+    bjTable.sit('a');
+    bjTable.update();
+    // Stake everything, so there is nothing left to double with.
+    bjTable.placeWager('a', 'ante', 1_000);
+    bjHost.advance(blackjack.bettingWindowMs + 1);
+    bjTable.update();
+
+    const before = bjHost.balances.get('a')!;
+    const result = bjTable.takeAction('a', 'double');
+    if (result.ok) throw new Error('Expected the double to be refused.');
+    expect(result.code).toBe('insufficient_chips');
+    expect(bjHost.balances.get('a')).toBe(before);
+    // Crucially the hand is untouched: it is still this player's turn.
+    expect(bjTable.currentActor).toBe('a');
+  });
+
+  it('decides for a player who runs out of time', () => {
+    dealIn(['a', 'b']);
+    expect(bjTable.currentActor).toBe('a');
+
+    bjHost.advance(20_000);
+    bjTable.update();
+
+    expect(bjTable.currentActor).not.toBe('a');
+  });
+
+  it('gives each seat its own clock rather than one shared window', () => {
+    dealIn(['a', 'b']);
+    // Burn most of a's window, then let a act.
+    bjHost.advance(14_000);
+    bjTable.update();
+    if (bjTable.currentActor === 'a') bjTable.takeAction('a', 'stand');
+
+    if (bjTable.currentActor === 'b') {
+      expect(bjTable.toPublicState().decision!.msRemaining).toBeGreaterThan(10_000);
+    }
+  });
+
+  it('plays out the hand of somebody who walks away mid-deal, without refunding', () => {
+    dealIn(['a', 'b']);
+    const before = bjHost.balances.get('a')!;
+
+    bjTable.stand('a');
+
+    // Leaving after seeing your cards is not a way to un-bet: the stake stays
+    // on the table and the hand is played out.
+    expect(bjHost.balances.get('a')).toBe(before);
+    expect(bjTable.currentActor).not.toBe('a');
+  });
+
+  it('reaches a payout even if every player walks out mid-hand', () => {
+    dealIn(['a', 'b']);
+    bjTable.stand('a');
+    bjTable.stand('b');
+
+    bjHost.advance(3_001);
+    const resolution = bjTable.update();
+    expect(resolution).not.toBeNull();
+    expect(bjTable.currentPhase).toBe('payout');
+  });
+
+  it('skips the decision phase entirely when there is nothing to decide', () => {
+    // Nobody staked, so there are no hands and no turns to take.
+    bjTable.sit('a');
+    bjTable.update();
+    bjHost.advance(blackjack.bettingWindowMs + 1);
+    bjTable.update();
+    expect(bjTable.currentPhase).toBe('resolving');
+  });
+
+  it('publishes the action log with the result, so the round can be replayed', () => {
+    dealIn(['a']);
+    const wagers = bjTable.toPublicState().wagers.map((wager) => ({ ...wager }));
+
+    while (bjTable.currentActor !== null) {
+      bjTable.takeAction(bjTable.currentActor, 'stand');
+    }
+    bjHost.advance(3_001);
+    const resolution = bjTable.update()!;
+
+    const result = bjTable.toPublicState().lastResult!;
+    expect(result.actions).toEqual(['stand']);
+
+    // The whole point: seed plus log reproduces what the table just paid.
+    const replayed = replayInteractiveRound(
+      blackjack,
+      wagers,
+      createRng(result.reveal.seed),
+      result.actions,
+    );
+    expect(replayed).toEqual(resolution);
+  });
+
+  it('reveals a seed that verifies against the commitment, same as any table', () => {
+    dealIn(['a']);
+    const published = bjTable.toPublicState().commitment!;
+
+    while (bjTable.currentActor !== null) bjTable.takeAction(bjTable.currentActor, 'stand');
+    bjHost.advance(3_001);
+    bjTable.update();
+
+    const reveal = bjTable.toPublicState().lastResult!.reveal;
+    expect(verifyCommitment(published.digest, reveal.seed, reveal.nonce)).toBe(true);
+  });
+
+  it('clears the decision state between rounds', () => {
+    dealIn(['a']);
+    while (bjTable.currentActor !== null) bjTable.takeAction(bjTable.currentActor, 'stand');
+    bjHost.advance(3_001);
+    bjTable.update();
+    expect(bjTable.toPublicState().decision).toBeNull();
+
+    // One update to close the payout display, one more to open the next round.
+    bjHost.advance(6_001);
+    bjTable.update();
+    bjTable.update();
+    expect(bjTable.toPublicState().lastResult).toBeNull();
+    expect(bjTable.currentPhase).toBe('betting');
+  });
+
+  it('runs a one-shot table through no decision phase at all', () => {
+    // The wheel must be entirely unaffected by any of this.
+    openBetting();
+    table.placeWager('a', 'x2', 100);
+    host.advance(wheelOfFortune.bettingWindowMs + 1);
+    table.update();
+    expect(table.currentPhase).toBe('resolving');
+    expect(table.currentActor).toBeNull();
+    expect(table.toPublicState().decision).toBeNull();
+  });
+});
+
+describe('the public table state', () => {
+  it('carries everything the client needs to draw the felt', () => {
+    openBetting();
+    const state = table.toPublicState();
+
+    // Adding a game must not mean editing a lookup table in the HUD, so the
+    // name, the spots and the window all travel with the state.
+    expect(state.displayName).toBe('Wheel of Fortune');
+    expect(state.spots.map((spot) => spot.id)).toEqual(['x2', 'x3', 'x9', 'x50']);
+    expect(state.bettingWindowMs).toBe(wheelOfFortune.bettingWindowMs);
+    expect(state.minWager).toBe(wheelOfFortune.minWager);
+    expect(state.maxWager).toBe(wheelOfFortune.maxWager);
+  });
+
+  it('hands out copies, so nothing a client is sent can mutate the definition', () => {
+    openBetting();
+    const state = table.toPublicState();
+    state.spots[0]!.payout = 9_999;
+    expect(wheelOfFortune.spots[0]!.payout).toBe(1);
   });
 });

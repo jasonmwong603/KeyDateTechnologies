@@ -6,7 +6,8 @@ Ordered by what unblocks the most, not by what is most fun to build.
 
 Authoritative 30Hz simulation · client prediction and reconciliation · entity
 interpolation · delta-compressed snapshots · first and third person cameras · desktop
-and touch input · four tables across two games · commit–reveal fairness verified
+and touch input · six tables across five games · blackjack with real hit/stand/double
+decisions · commit–reveal fairness verified
 client-side · chip ledger with bailouts · resume after disconnect · local and table chat
 · private worlds by session code.
 
@@ -40,10 +41,21 @@ map into something that has to move players between instances.
 **Server-side lag compensation.** Not needed for a casino floor, where nothing is
 aim-dependent. It becomes necessary the moment any interaction is timing-critical.
 
-**More games.** The registry pattern means a new one touches four files — see
-[adding-a-table-game.md](adding-a-table-game.md). Blackjack is the obvious next: it is
-the first game needing per-player sequential decisions, which the current
-all-bets-then-one-resolution phase machine does not model.
+**More games.** The registry pattern means a new one touches three files — see
+[adding-a-table-game.md](adding-a-table-game.md). Blackjack, roulette and baccarat are
+built; blackjack brought the `decisions` phase with it, so a game needing per-player
+sequential choices no longer needs a new phase machine, only an `InteractiveTableGame`.
+
+**Splitting in blackjack.** Left out deliberately. A split turns one seat into several
+simultaneous hands, and the turn order, the action panel and the wire state are all built
+around one hand per player — so it is a real change rather than a switch. Insurance and
+surrender are the same shape of decision and are absent for the same reason. Doubling
+down is in, because it fits one hand per seat.
+
+**Sequential betting.** Poker, and anything else where a bet depends on what the person
+before you bet, still does not fit: the betting window is one shared window, not a
+rotation. The `decisions` phase is close to what that needs but is currently only
+reachable _after_ betting closes.
 
 **Avatar customisation and voice.** The social half of a social casino. Both are large
 and neither blocks anything else.
@@ -60,14 +72,15 @@ Only usable from a Capacitor or Electron build, since browsers cannot do UDP. Se
 | Non-cryptographic commitment digest | Fairness proof is weaker than the UI implies       | `packages/netcode/src/commitment.ts` |
 | No persistence                      | Chips reset when a world empties                   | `apps/server/src/ledger.ts`          |
 | Everyone replicates everyone        | Bandwidth is O(n²) in players                      | `WorldInstance.replicate`            |
-| Client spot hints duplicated        | A new game touches the client too                  | `apps/client/src/hud.js`             |
+| No splitting in blackjack           | The one basic-strategy move a player cannot make   | `packages/games/.../blackjack.ts`    |
 | Single-process                      | No horizontal scaling; a restart drops every world | `apps/server/src/index.ts`           |
 | Client covered by smoke test only   | Broad checks, not fine-grained assertions          | `apps/client/smoke.mjs`              |
 
 The last one is worth expanding on. `npm run test:client` drives a real browser and
 catches whole-client breakage — it found a mirrored first-person camera, a third-person
 camera that threw every frame, a full-screen HUD element that swallowed every touch on
-phones, and a world that silently stopped being built at all. What it does not do is
+phones, a world that silently stopped being built at all, and a blackjack Stand button
+that rebuilt itself out from under the click. What it does not do is
 assert fine-grained behaviour, because the prediction loop is still entangled with the
 DOM and WebGL. Extracting that loop from `main.js` into something unit-testable is still
 worth doing before the client grows further.

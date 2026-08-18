@@ -1,4 +1,5 @@
 import type { Rng } from '@keydate/netcode';
+import { buildDeck, shuffle, type Card } from './cards.js';
 import {
   totalStaked,
   type TableGameDefinition,
@@ -16,52 +17,6 @@ import {
  * That is the deliberate counterweight to the wheel. The wheel is where chips
  * slowly drain; the duel is where they change hands.
  */
-
-const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'] as const;
-const SUITS = ['♣', '♦', '♥', '♠'] as const;
-
-export interface Card {
-  rank: (typeof RANKS)[number];
-  suit: (typeof SUITS)[number];
-  /** 2..14, aces high. */
-  value: number;
-  /** Suit rank 0..3, used only to break exact ties deterministically. */
-  suitValue: number;
-}
-
-export function buildDeck(): Card[] {
-  const deck: Card[] = [];
-  for (let suitIndex = 0; suitIndex < SUITS.length; suitIndex += 1) {
-    for (let rankIndex = 0; rankIndex < RANKS.length; rankIndex += 1) {
-      deck.push({
-        rank: RANKS[rankIndex] as Card['rank'],
-        suit: SUITS[suitIndex] as Card['suit'],
-        value: rankIndex + 2,
-        suitValue: suitIndex,
-      });
-    }
-  }
-  return deck;
-}
-
-/**
- * Fisher–Yates, driven entirely by the seeded RNG.
- *
- * Shuffling in place with the supplied RNG (rather than `Array.sort` with a
- * random comparator, which is both biased and non-reproducible) is what lets
- * the deal be replayed from the published seed.
- */
-export function shuffle<T>(items: readonly T[], rng: Rng): T[] {
-  const result = [...items];
-  for (let i = result.length - 1; i > 0; i -= 1) {
-    const j = rng.int(0, i);
-    const a = result[i] as T;
-    const b = result[j] as T;
-    result[i] = b;
-    result[j] = a;
-  }
-  return result;
-}
 
 /** Splits `pot` among winners, giving the odd chips to the earliest seats. */
 function splitPot(pot: number, winners: string[]): { playerId: string; amount: number }[] {

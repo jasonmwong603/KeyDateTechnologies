@@ -168,6 +168,33 @@ mismatch is reported in red.
 
 ## The games
 
+Five games across six tables. Every spot on every felt returns between 93% and 100% of
+what is staked on it, and a test fails if one ever climbs above 100% or drops below 93% —
+a spot with a positive expected return is a money printer and will be found.
+
+**Blackjack** — two tables, and the only game where you actually play rather than bet.
+Six-deck shoe reshuffled each round, dealer stands on all 17, blackjack pays 3 to 2,
+double down on any first two cards. No splitting, no insurance, no surrender: a split
+turns one seat into several simultaneous hands, which the turn order and the wire state
+are not built for, and half-implementing it is worse than leaving it out.
+
+It is also the reason the table phase machine grew a `decisions` phase — see
+[Fairness with a decision in it](#fairness-with-a-decision-in-it) below.
+
+**Roulette** — European single zero. One green pocket, not two: the American double-zero
+wheel doubles the house edge to 5.26% for no extra gameplay. Every spot is priced at
+exactly 36/37 — red/black, odd/even, halves, dozens, and the zero straight up at 35 to 1
+all return 0.973. There is no trap bet and no secretly-better bet; the choice is variance,
+not value.
+
+**Baccarat** — punto banco, eight decks, with the full third-card drawing table (the part
+everyone gets wrong from memory, so it is asserted cell by cell in the tests). Banker pays
+0.95 to 1 after commission; a tie pays 9 to 1 and pushes the player and banker bets.
+
+That 9 is the one deliberate departure from a real pit. At the usual 8 to 1 the tie
+returns 85.6% and is a bad bet dressed up as an exciting one; at 9 to 1 it returns 95.2%
+and sits alongside everything else on the felt.
+
 **Wheel of Fortune** — the house game. A 54-segment wheel; stake on a multiplier and
 you are paid it if the wheel stops there. The paytable is far kinder than a real Big
 Six wheel (which runs an 11–24% house edge): edges here are ~4–7%, and the 9x spot is
@@ -184,6 +211,22 @@ priced at exactly true odds, so there is one bet that rewards knowing the maths.
 **High Card Duel** — the social game. Everyone antes into one pot and gets one card;
 highest takes it, ties split it. There is no house: every chip staked is paid back out.
 The wheel is where chips slowly drain, the duel is where they change hands.
+
+### Fairness with a decision in it
+
+Every other game here is decided the instant bets close, so the round is reproducible
+from one number: the seed the server committed to before a single chip was placed.
+
+Blackjack breaks that, because what you are paid depends on whether you hit. So the proof
+grows by exactly one term rather than being abandoned. The seed fixes the **shoe** — dealt
+and committed to before anybody sees a card — and the published **action log** fixes what
+was done with it. `replayInteractiveRound(definition, wagers, rng, actions)` recomputes
+the outcome from the two, and the client runs it.
+
+Only `begin` may touch the RNG. Every step after it reads cards off a shoe that was
+already shuffled and already committed to, so no later step can introduce randomness the
+seed does not account for. The dealer's hole card is in that state the whole time and
+never leaves the server until the hand is over.
 
 ---
 
@@ -247,7 +290,8 @@ service to deploy, no CORS, and no separate origin to configure.
 
 Working today: authoritative 30Hz simulation, client prediction and reconciliation,
 entity interpolation, delta-compressed snapshots, both camera modes, desktop and touch
-input, four tables across two games, commit–reveal fairness, chip ledger with bailouts,
+input, six tables across five games including blackjack with real hit/stand/double
+decisions, commit–reveal fairness, chip ledger with bailouts,
 resume-after-disconnect, local and table chat.
 
 Installs to a phone home screen as a full-screen app.

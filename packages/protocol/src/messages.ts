@@ -75,6 +75,18 @@ export interface ClientPlaceWager {
   amount: number;
 }
 
+/**
+ * Take your turn at a table that has one — hit, stand, double.
+ *
+ * Carries no target: the server knows whose turn it is, and a client asserting
+ * which hand it is playing would be a client asserting state.
+ */
+export interface ClientTableAction {
+  type: 'table:action';
+  /** An action id the table offered, e.g. 'hit'. Anything else is rejected. */
+  actionId: string;
+}
+
 /** Buy a round at the bar. Paid from the same balance used to wager. */
 export interface ClientBuyDrink {
   type: 'bar:buy';
@@ -116,6 +128,7 @@ export type ClientMessage =
   | ClientInteract
   | ClientLeaveTable
   | ClientPlaceWager
+  | ClientTableAction
   | ClientBuyDrink
   | ClientClearWagers
   | ClientTableReady

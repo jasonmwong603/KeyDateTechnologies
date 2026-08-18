@@ -427,19 +427,40 @@ export class WorldRenderer {
     }
   }
 
+  /**
+   * What each game's table looks like from across the room.
+   *
+   * With five games on one floor, identical green discs mean walking up to
+   * every table to read its sign. The felt colour is the cheap half of the fix
+   * and the centrepiece is the other: a wheel is a wheel at any distance.
+   */
+  _tableStyle(gameId) {
+    const styles = {
+      blackjack: { felt: 0x1c5c3a, centre: 'shoe' },
+      roulette: { felt: 0x14304f, centre: 'wheel' },
+      baccarat: { felt: 0x5a1830, centre: 'shoe' },
+      'wheel-of-fortune': { felt: 0x1a7a4a, centre: 'wheel' },
+      'high-card-duel': { felt: 0x2c2350, centre: 'none' },
+    };
+    return styles[gameId] ?? { felt: 0x1a7a4a, centre: 'none' };
+  }
+
   _buildTable(interactable) {
     const group = new THREE.Group();
     group.position.set(interactable.x, 0, interactable.z);
+    const style = this._tableStyle(interactable.gameId);
 
     const felt = new THREE.Mesh(
       new THREE.CylinderGeometry(1.3, 1.3, 0.1, 32),
-      new THREE.MeshStandardMaterial({ color: 0x1a7a4a, roughness: 0.9 }),
+      new THREE.MeshStandardMaterial({ color: style.felt, roughness: 0.9 }),
     );
     felt.position.y = 1.0;
     felt.castShadow = true;
     felt.receiveShadow = true;
     group.add(felt);
     this._occluders.push(felt);
+
+    this._buildTableCentre(group, style.centre);
 
     const base = new THREE.Mesh(
       new THREE.CylinderGeometry(0.4, 0.6, 1.0, 16),
@@ -472,6 +493,61 @@ export class WorldRenderer {
     this._tableMeshes.push(group);
     this.stats.tables += 1;
     this.scene.add(group);
+  }
+
+  /**
+   * The prop in the middle of the felt.
+   *
+   * Deliberately a handful of primitives sharing no textures: this runs once
+   * per table on a phone GPU that already has a room to compile, and a detailed
+   * roulette wheel would buy nothing at the distance you actually see it from.
+   */
+  _buildTableCentre(group, kind) {
+    if (kind === 'wheel') {
+      const wheel = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.62, 0.62, 0.1, 24),
+        new THREE.MeshStandardMaterial({ color: 0x14100e, roughness: 0.35, metalness: 0.5 }),
+      );
+      wheel.position.y = 1.1;
+      wheel.castShadow = true;
+      group.add(wheel);
+
+      const rim = new THREE.Mesh(
+        new THREE.TorusGeometry(0.62, 0.055, 8, 28),
+        new THREE.MeshStandardMaterial({ color: 0xc9a227, roughness: 0.3, metalness: 0.85 }),
+      );
+      rim.rotation.x = Math.PI / 2;
+      rim.position.y = 1.15;
+      group.add(rim);
+
+      // A single spoke, so the wheel reads as a wheel rather than as a coaster.
+      const spoke = new THREE.Mesh(
+        new THREE.BoxGeometry(1.16, 0.03, 0.06),
+        new THREE.MeshStandardMaterial({ color: 0xc9a227, roughness: 0.3, metalness: 0.85 }),
+      );
+      spoke.position.y = 1.17;
+      group.add(spoke);
+      return;
+    }
+
+    if (kind === 'shoe') {
+      const shoe = new THREE.Mesh(
+        new THREE.BoxGeometry(0.42, 0.22, 0.3),
+        new THREE.MeshStandardMaterial({ color: 0x241a12, roughness: 0.55 }),
+      );
+      shoe.position.set(0, 1.16, -0.55);
+      shoe.rotation.y = 0.25;
+      shoe.castShadow = true;
+      group.add(shoe);
+
+      const deck = new THREE.Mesh(
+        new THREE.BoxGeometry(0.26, 0.09, 0.2),
+        new THREE.MeshStandardMaterial({ color: 0xf4f1e8, roughness: 0.7 }),
+      );
+      deck.position.set(0.42, 1.09, -0.42);
+      deck.rotation.y = -0.4;
+      group.add(deck);
+    }
   }
 
   /** Renders text to a canvas and returns it as a camera-facing sprite. */

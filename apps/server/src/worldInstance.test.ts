@@ -216,15 +216,33 @@ describe('WorldInstance tables', () => {
     record.state.z = table.z + 1.5;
   }
 
+  /**
+   * The Wheel of Fortune table.
+   *
+   * These tests are about the seams — seating, debiting, refunding, replication
+   * — not about any particular game, so they use the simplest table on the
+   * floor: one spot, one player, resolved the instant betting closes. Looking
+   * it up by game rather than hardcoding an id means rearranging the floor plan
+   * cannot silently point them at a game with different rules.
+   */
+  function wheelTable(): number {
+    return world.world.interactables.find((entry) => entry.gameId === 'wheel-of-fortune')!.id;
+  }
+
+  /** The nearest blackjack table, for the tests that need a decision phase. */
+  function blackjackTable(): number {
+    return world.world.interactables.find((entry) => entry.gameId === 'blackjack')!.id;
+  }
+
   it('seats a player who interacts in range', () => {
     const client = new FakeClient();
     world.addPlayer('p1', 'Sam', client.send, 't1');
-    seatPlayerNear('p1', 1);
+    seatPlayerNear('p1', wheelTable());
 
-    world.handleInteract('p1', 1);
+    world.handleInteract('p1', wheelTable());
     tick();
 
-    expect(world.getPlayer('p1')!.state.seatedAt).toBe(1);
+    expect(world.getPlayer('p1')!.state.seatedAt).toBe(wheelTable());
     expect(client.events('table:seated')).toHaveLength(1);
   });
 
@@ -232,7 +250,7 @@ describe('WorldInstance tables', () => {
     const client = new FakeClient();
     world.addPlayer('p1', 'Sam', client.send, 't1');
     // Range is checked against the server's own position, never the client's claim.
-    world.handleInteract('p1', 1);
+    world.handleInteract('p1', wheelTable());
 
     expect(world.getPlayer('p1')!.state.seatedAt).toBeNull();
     expect(client.errors().at(-1)?.code).toBe('invalid_action');
@@ -274,8 +292,8 @@ describe('WorldInstance tables', () => {
   it('flags a seated player in the snapshot', () => {
     const client = new FakeClient();
     const record = world.addPlayer('p1', 'Sam', client.send, 't1');
-    seatPlayerNear('p1', 1);
-    world.handleInteract('p1', 1);
+    seatPlayerNear('p1', wheelTable());
+    world.handleInteract('p1', wheelTable());
     tick();
 
     const entity = client.snapshots
@@ -296,8 +314,8 @@ describe('WorldInstance tables', () => {
   it('debits a wager placed at a seated table', () => {
     const client = new FakeClient();
     world.addPlayer('p1', 'Sam', client.send, 't1');
-    seatPlayerNear('p1', 1);
-    world.handleInteract('p1', 1);
+    seatPlayerNear('p1', wheelTable());
+    world.handleInteract('p1', wheelTable());
     tick();
 
     const before = world.balanceOf('p1');
@@ -309,8 +327,8 @@ describe('WorldInstance tables', () => {
   it('refuses a wager the player cannot cover', () => {
     const client = new FakeClient();
     world.addPlayer('p1', 'Sam', client.send, 't1');
-    seatPlayerNear('p1', 1);
-    world.handleInteract('p1', 1);
+    seatPlayerNear('p1', wheelTable());
+    world.handleInteract('p1', wheelTable());
     tick();
 
     const before = world.balanceOf('p1');
@@ -323,8 +341,8 @@ describe('WorldInstance tables', () => {
   it('refunds a live wager when the player stands up', () => {
     const client = new FakeClient();
     world.addPlayer('p1', 'Sam', client.send, 't1');
-    seatPlayerNear('p1', 1);
-    world.handleInteract('p1', 1);
+    seatPlayerNear('p1', wheelTable());
+    world.handleInteract('p1', wheelTable());
     tick();
 
     const before = world.balanceOf('p1');
@@ -338,8 +356,8 @@ describe('WorldInstance tables', () => {
   it('refunds a live wager when the player disconnects', () => {
     const client = new FakeClient();
     world.addPlayer('p1', 'Sam', client.send, 't1');
-    seatPlayerNear('p1', 1);
-    world.handleInteract('p1', 1);
+    seatPlayerNear('p1', wheelTable());
+    world.handleInteract('p1', wheelTable());
     tick();
 
     const before = world.balanceOf('p1');
@@ -354,8 +372,8 @@ describe('WorldInstance tables', () => {
   it('plays a full round through to a payout event', () => {
     const client = new FakeClient();
     world.addPlayer('p1', 'Sam', client.send, 't1');
-    seatPlayerNear('p1', 1);
-    world.handleInteract('p1', 1);
+    seatPlayerNear('p1', wheelTable());
+    world.handleInteract('p1', wheelTable());
     tick();
 
     world.handleWager('p1', 'x2', 100);
@@ -370,11 +388,78 @@ describe('WorldInstance tables', () => {
     expect(resolved.length).toBeGreaterThan(0);
   });
 
+  it('routes a table action to the table and refuses one from the floor', () => {
+    const client = new FakeClient();
+    world.addPlayer('p1', 'Sam', client.send, 't1');
+
+    world.handleTableAction('p1', 'hit');
+
+    expect(client.errors().at(-1)?.code).toBe('invalid_action');
+  });
+
+  it('runs a blackjack hand through its decision phase to a payout', () => {
+    const client = new FakeClient();
+    world.addPlayer('p1', 'Sam', client.send, 't1');
+    seatPlayerNear('p1', blackjackTable());
+    world.handleInteract('p1', blackjackTable());
+    tick();
+
+    world.handleWager('p1', 'ante', 100);
+
+    // Close betting; the table should deal rather than resolve outright.
+    advance(30_000);
+    tick();
+
+    const dealt = (client.events('table:state') as { state: { phase: string } }[]).at(-1)!;
+    expect(dealt.state.phase).toBe('decisions');
+
+    // Stand until nobody is left to act, then run out the resolve beat.
+    for (let i = 0; i < 8; i += 1) {
+      world.handleTableAction('p1', 'stand');
+      tick();
+    }
+    for (let i = 0; i < 30; i += 1) {
+      advance(1_000);
+      tick();
+    }
+
+    expect(client.events('table:resolved').length).toBeGreaterThan(0);
+  });
+
+  it('rejects an action from a player at a table that has no decisions', () => {
+    const client = new FakeClient();
+    world.addPlayer('p1', 'Sam', client.send, 't1');
+    seatPlayerNear('p1', wheelTable());
+    world.handleInteract('p1', wheelTable());
+    tick();
+
+    world.handleTableAction('p1', 'hit');
+
+    expect(client.errors().at(-1)?.code).toBe('table_locked');
+  });
+
+  it('does not refund a blackjack stake when the player leaves mid-hand', () => {
+    const client = new FakeClient();
+    world.addPlayer('p1', 'Sam', client.send, 't1');
+    seatPlayerNear('p1', blackjackTable());
+    world.handleInteract('p1', blackjackTable());
+    tick();
+
+    const before = world.balanceOf('p1');
+    world.handleWager('p1', 'ante', 200);
+    advance(30_000);
+    tick();
+
+    // Walking away after seeing the cards must not be a way to un-bet.
+    world.handleLeaveTable('p1');
+    expect(world.balanceOf('p1')).toBeLessThan(before);
+  });
+
   it('publishes a commitment to seated players before bets are placed', () => {
     const client = new FakeClient();
     world.addPlayer('p1', 'Sam', client.send, 't1');
-    seatPlayerNear('p1', 1);
-    world.handleInteract('p1', 1);
+    seatPlayerNear('p1', wheelTable());
+    world.handleInteract('p1', wheelTable());
     tick(2);
 
     const states = client.events('table:state') as { state: { commitment: unknown } }[];
