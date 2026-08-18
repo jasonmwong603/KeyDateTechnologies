@@ -7,7 +7,7 @@
 # fail to connect.
 services:
   - type: web
-    name: keydate-floor
+    name: beer-bets
     runtime: node
     plan: free
     # --include=dev is required: Render sets NODE_ENV=production, which makes
@@ -21,7 +21,7 @@ services:
         value: '22'
       # The path the game is served under. Empty serves it at the domain root.
       - key: GAME_SLUG
-        value: 'the-floor'
+        value: 'beer-bets'
       - key: STARTING_CHIPS
         value: '2500'
       - key: MAX_PLAYERS_PER_WORLD

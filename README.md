@@ -2,10 +2,13 @@
 
 This repository holds KeyDate Technologies' game development work, and nothing else.
 
-The current title is **The Keydate Floor**: a cross-platform, real-time multiplayer
-social casino world. Every player gets their own independent camera — first or third
-person, MMO-style — walks around a shared floor, sits down at wagering tables, and
-plays against the house or against their friends.
+The current title is **Beer Bets**: a cross-platform, real-time multiplayer game where
+every player has their own independent camera — first or third person, MMO-style — and
+walks a shared casino floor.
+
+**The loop:** chips come from exactly one place, the tables. They buy exactly one thing,
+drinks at the bar in the corner. And the more you drink, the blurrier the room gets —
+so every round you buy makes the next one harder to win.
 
 Chips are virtual, cannot be purchased, and have no cash value. See
 [docs/responsible-play.md](docs/responsible-play.md) for what that means for the design.
@@ -19,19 +22,19 @@ npm install
 npm start
 ```
 
-Open <http://localhost:8080/the-floor/>. That is the whole setup — the client is a web page, so
+Open <http://localhost:8080/beer-bets/>. That is the whole setup — the client is a web page, so
 **nothing installs on any device**: Windows, macOS, Linux, Android and iOS all just open
 a browser.
 
 On boot the server prints every address it can be reached on:
 
 ```
-  The Keydate Floor — world server running at 30Hz
+  Beer Bets — world server running at 30Hz
 
-  On this computer:   http://localhost:8080/the-floor/
+  On this computer:   http://localhost:8080/beer-bets/
 
   On your phone or another device (same Wi-Fi):
-    http://192.168.1.24:8080/the-floor/
+    http://192.168.1.24:8080/beer-bets/
 ```
 
 **To play on your phone**, type that second address into its browser — both devices need

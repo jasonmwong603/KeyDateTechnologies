@@ -7,7 +7,7 @@ import { aabb, type AABB } from './math.js';
  * per tick — it does not change. Both sides collide against exactly this data.
  */
 
-export type InteractableKind = 'table' | 'door' | 'vendor';
+export type InteractableKind = 'table' | 'bar' | 'door' | 'vendor';
 
 export interface Interactable {
   id: number;
@@ -136,8 +136,28 @@ export function buildCasinoFloor(): World {
     };
   });
 
+  // The bar, in the north-west corner. Everything you drink is bought here and
+  // paid for out of the same chips you gamble with, which is the whole loop.
+  const BAR_X = -20;
+  const BAR_Z = -12;
+  colliders.push({ ...aabb(BAR_X, 0, BAR_Z, 1.5, 1.15, 6), kind: 'bar' as const });
+  // Back-bar shelving against the wall behind it.
+  colliders.push({ ...aabb(-23, 0, BAR_Z, 1.4, 2.4, 6), kind: 'bar' as const });
+
+  interactables.push({
+    id: 100,
+    kind: 'bar',
+    label: 'The Tap Room',
+    // Sits on the customer side of the counter, so range is measured from where
+    // a player can actually stand rather than from inside the woodwork.
+    x: BAR_X + 1.4,
+    y: 0,
+    z: BAR_Z,
+    seats: [],
+  });
+
   return {
-    name: 'The Keydate Floor',
+    name: 'Beer Bets',
     bounds: {
       minX: -halfWidth,
       maxX: halfWidth,

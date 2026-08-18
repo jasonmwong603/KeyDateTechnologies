@@ -383,6 +383,148 @@ describe('WorldInstance tables', () => {
   });
 });
 
+describe('WorldInstance bar', () => {
+  /** Puts a player within arm's reach of the counter. */
+  function standAtBar(playerId: string): { id: number; x: number; z: number } {
+    const bar = world.world.interactables.find((entry) => entry.kind === 'bar')!;
+    const record = world.getPlayer(playerId)!;
+    record.state.x = bar.x + 0.6;
+    record.state.z = bar.z;
+    return bar;
+  }
+
+  it('opens the menu when a player interacts with the bar', () => {
+    const client = new FakeClient();
+    world.addPlayer('p1', 'Sam', client.send, 't1');
+    const bar = standAtBar('p1');
+
+    world.handleInteract('p1', bar.id);
+    tick();
+
+    const menus = client.events('bar:menu');
+    expect(menus).toHaveLength(1);
+    expect((menus[0] as { menu: unknown[] }).menu.length).toBeGreaterThan(0);
+  });
+
+  it('refuses to open the menu from across the room', () => {
+    const client = new FakeClient();
+    world.addPlayer('p1', 'Sam', client.send, 't1');
+    const bar = world.world.interactables.find((entry) => entry.kind === 'bar')!;
+
+    world.handleInteract('p1', bar.id);
+    tick();
+
+    expect(client.events('bar:menu')).toHaveLength(0);
+  });
+
+  it('charges for a drink and makes the player drunker', () => {
+    const client = new FakeClient();
+    world.addPlayer('p1', 'Sam', client.send, 't1');
+    const bar = standAtBar('p1');
+    world.handleInteract('p1', bar.id);
+
+    const before = world.balanceOf('p1');
+    world.handleBuyDrink('p1', 'lager');
+    tick();
+
+    expect(world.balanceOf('p1')).toBeLessThan(before);
+    expect(world.drunkennessOf('p1')).toBeGreaterThan(0);
+    expect(client.events('drink:served')).toHaveLength(1);
+  });
+
+  it('refuses a drink the player cannot afford, and takes nothing', () => {
+    const client = new FakeClient();
+    world.addPlayer('p1', 'Sam', client.send, 't1');
+    const bar = standAtBar('p1');
+    world.handleInteract('p1', bar.id);
+
+    // Drain the balance by buying until it runs out.
+    for (let i = 0; i < 200; i += 1) world.handleBuyDrink('p1', 'lager');
+
+    const before = world.balanceOf('p1');
+    client.clear();
+    world.handleBuyDrink('p1', 'whiskey');
+
+    expect(world.balanceOf('p1')).toBe(before);
+    expect(client.errors().at(-1)?.code).toBe('insufficient_chips');
+  });
+
+  it('rejects a drink that is not on the menu', () => {
+    const client = new FakeClient();
+    world.addPlayer('p1', 'Sam', client.send, 't1');
+    const bar = standAtBar('p1');
+    world.handleInteract('p1', bar.id);
+
+    world.handleBuyDrink('p1', 'absinthe');
+
+    expect(client.errors().at(-1)?.code).toBe('invalid_action');
+    expect(world.drunkennessOf('p1')).toBe(0);
+  });
+
+  it('refuses to serve a player who opened the menu and then walked away', () => {
+    const client = new FakeClient();
+    world.addPlayer('p1', 'Sam', client.send, 't1');
+    const bar = standAtBar('p1');
+    world.handleInteract('p1', bar.id);
+
+    // The menu is open, but range is re-checked at the point of sale.
+    const record = world.getPlayer('p1')!;
+    record.state.x = 0;
+    record.state.z = 0;
+
+    const before = world.balanceOf('p1');
+    world.handleBuyDrink('p1', 'lager');
+
+    expect(world.balanceOf('p1')).toBe(before);
+    expect(world.drunkennessOf('p1')).toBe(0);
+  });
+
+  it('sobers a player up over time', () => {
+    const client = new FakeClient();
+    world.addPlayer('p1', 'Sam', client.send, 't1');
+    const bar = standAtBar('p1');
+    world.handleInteract('p1', bar.id);
+    world.handleBuyDrink('p1', 'whiskey');
+
+    const drunk = world.drunkennessOf('p1');
+    expect(drunk).toBeGreaterThan(0);
+
+    // One minute of ticks.
+    tick(TICK_RATE * 60);
+    expect(world.drunkennessOf('p1')).toBeLessThan(drunk);
+  });
+
+  it('replicates drunkenness to the player', () => {
+    const client = new FakeClient();
+    const record = world.addPlayer('p1', 'Sam', client.send, 't1');
+    const bar = standAtBar('p1');
+    world.handleInteract('p1', bar.id);
+    world.handleBuyDrink('p1', 'stout');
+    tick();
+
+    const entity = client.snapshots
+      .flatMap((snapshot) => snapshot.entities)
+      .findLast((candidate) => candidate.id === record.entityId);
+    expect(entity?.drunkenness).toBeGreaterThan(0);
+  });
+
+  it('closes the menu when a player wanders off', () => {
+    const client = new FakeClient();
+    world.addPlayer('p1', 'Sam', client.send, 't1');
+    const bar = standAtBar('p1');
+    world.handleInteract('p1', bar.id);
+    tick();
+    client.clear();
+
+    const record = world.getPlayer('p1')!;
+    record.state.x = 0;
+    record.state.z = 0;
+    tick();
+
+    expect(client.events('bar:left')).toHaveLength(1);
+  });
+});
+
 describe('WorldInstance chat', () => {
   it('delivers local chat to everyone on the floor', () => {
     const a = new FakeClient();

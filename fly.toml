@@ -5,7 +5,7 @@
 # region near your players. A real-time game at 30Hz feels noticeably worse when
 # the server is on another continent.
 
-app = "keydate-floor"
+app = "beer-bets"
 primary_region = "iad"
 
 [build]
@@ -15,7 +15,7 @@ primary_region = "iad"
   PORT = "8080"
   HOST = "0.0.0.0"
   # The path the game is served under. Empty serves it at the domain root.
-  GAME_SLUG = "the-floor"
+  GAME_SLUG = "beer-bets"
 
 [http_service]
   internal_port = 8080

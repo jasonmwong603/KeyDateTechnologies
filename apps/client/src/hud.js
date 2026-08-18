@@ -48,6 +48,13 @@ export class Hud {
       stakeValue: document.getElementById('stake-value'),
       clearBets: document.getElementById('clear-bets'),
       leaveTable: document.getElementById('leave-table'),
+      drunkRow: document.getElementById('drunk-row'),
+      drunkBar: document.getElementById('drunk-bar'),
+      barPanel: document.getElementById('bar-panel'),
+      barTitle: document.getElementById('bar-title'),
+      barMenu: document.getElementById('bar-menu'),
+      leaveBar: document.getElementById('leave-bar'),
+      viewport: document.getElementById('viewport'),
       chatLog: document.getElementById('chat-log'),
       chatInput: document.getElementById('chat-input'),
     };
@@ -77,10 +84,86 @@ export class Hud {
     this.elements.leaveTable.addEventListener('click', () => {
       this.connection.send({ type: 'table:leave' });
     });
+    this.elements.leaveBar.addEventListener('click', () => this.hideBar());
   }
 
   setChips(value) {
+    this.chips = value;
     this.elements.chips.textContent = value.toLocaleString();
+    // Affordability is re-evaluated whenever the balance moves, so a round that
+    // just cleaned you out greys the menu out immediately.
+    if (!this.elements.barPanel.hidden) this._refreshAffordability();
+  }
+
+  /**
+   * Applies the drunk state: the meter, and the blur.
+   *
+   * The blur is a CSS filter on the canvas rather than a post-processing pass.
+   * It costs nothing, it is GPU-accelerated everywhere including phones, and it
+   * needs no addons beyond the three.js core this client already serves. A real
+   * depth-of-field pass would look better and would be the first thing to reach
+   * for if the effect ever needs to be more than "the room goes soft".
+   */
+  setDrunkenness(level) {
+    const clamped = Math.max(0, Math.min(1, level ?? 0));
+    this.drunkenness = clamped;
+    if (this.onDrunkenness) this.onDrunkenness(clamped);
+
+    this.elements.drunkRow.hidden = clamped <= 0.005;
+    this.elements.drunkBar.style.width = `${clamped * 100}%`;
+
+    // Deliberately gentle at the bottom of the range and steep at the top: one
+    // pint should be a nudge, the fourth should hurt.
+    const blur = 7 * clamped ** 1.7;
+    const saturate = 1 + clamped * 0.35;
+    this.elements.viewport.style.filter =
+      clamped <= 0.005 ? '' : `blur(${blur.toFixed(2)}px) saturate(${saturate.toFixed(2)})`;
+  }
+
+  showBar(label, menu) {
+    this.elements.barPanel.hidden = false;
+    this.elements.barTitle.textContent = label;
+    this.menu = menu;
+
+    this.elements.barMenu.replaceChildren();
+    for (const item of menu) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = item.effect < 0 ? 'drink sobering' : 'drink';
+      button.dataset.drinkId = item.id;
+      button.dataset.price = String(item.price);
+
+      const name = document.createElement('span');
+      name.className = 'drink-name';
+      name.textContent = item.name;
+
+      const price = document.createElement('span');
+      price.className = 'drink-price';
+      price.textContent = `${item.price}`;
+
+      const description = document.createElement('span');
+      description.className = 'drink-desc';
+      description.textContent = item.description;
+
+      button.append(name, price, description);
+      button.addEventListener('click', () => {
+        this.connection.send({ type: 'bar:buy', drinkId: item.id });
+      });
+      this.elements.barMenu.append(button);
+    }
+
+    this._refreshAffordability();
+  }
+
+  hideBar() {
+    this.elements.barPanel.hidden = true;
+  }
+
+  /** Greys out anything the player cannot currently pay for. */
+  _refreshAffordability() {
+    for (const button of this.elements.barMenu.querySelectorAll('.drink')) {
+      button.disabled = Number(button.dataset.price) > (this.chips ?? 0);
+    }
   }
 
   setSession(code) {
@@ -91,13 +174,14 @@ export class Hud {
     this.elements.ping.textContent = `${Math.round(ms)}ms`;
   }
 
-  showInteractPrompt(label) {
-    if (label === null) {
+  /** @param {string | null} prompt Full prompt text, or null to hide it. */
+  showInteractPrompt(prompt) {
+    if (prompt === null || prompt === undefined) {
       this.elements.interactPrompt.hidden = true;
       return;
     }
     this.elements.interactPrompt.hidden = false;
-    this.elements.interactLabel.textContent = `Sit at ${label}`;
+    this.elements.interactLabel.textContent = prompt;
   }
 
   /** Renders the table panel from a server table state event. */

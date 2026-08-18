@@ -19,15 +19,15 @@ npm start
 reached on:
 
 ```
-  The Keydate Floor — world server running at 30Hz
+  Beer Bets — world server running at 30Hz
 
-  On this computer:   http://localhost:8080/the-floor/
+  On this computer:   http://localhost:8080/beer-bets/
 
   On your phone or another device (same Wi-Fi):
-    http://192.168.1.24:8080/the-floor/
+    http://192.168.1.24:8080/beer-bets/
 ```
 
-Open <http://localhost:8080/the-floor/>, type a name, press **Enter the floor**.
+Open <http://localhost:8080/beer-bets/>, type a name, press **Enter the floor**.
 
 To play against yourself while testing, open a second browser window — each tab is an
 independent player with its own camera. Use two different browsers (or one normal and
@@ -76,7 +76,7 @@ shared Wi-Fi. See [deploying.md](deploying.md) for the full walkthrough — ther
 `Dockerfile` and a `render.yaml` in the repository, and the server needs nothing but a
 port.
 
-Deployed, that becomes `https://play.keydate.ca/the-floor/`. Anyone who opens it
+Deployed, that becomes `https://play.keydate.ca/beer-bets/`. Anyone who opens it
 lands on the public floor; anyone who types the same **session code** lands in a private
 world together.
 
@@ -86,26 +86,26 @@ world together.
 
 ### Computer
 
-| Action                    | Key                                                                            |
-| ------------------------- | ------------------------------------------------------------------------------ |
-| Move                      | `W` `A` `S` `D`                                                                |
-| Look                      | Move the mouse (click the game once to capture the pointer; `Esc` releases it) |
-| Sprint                    | `Shift`                                                                        |
-| Jump                      | `Space`                                                                        |
-| Sit at a table / stand up | `E`                                                                            |
-| Chat                      | `Enter`, type, `Enter` again                                                   |
-| Switch camera             | **Third person** button, top right                                             |
+| Action                           | Key                                                                            |
+| -------------------------------- | ------------------------------------------------------------------------------ |
+| Move                             | `W` `A` `S` `D`                                                                |
+| Look                             | Move the mouse (click the game once to capture the pointer; `Esc` releases it) |
+| Sprint                           | `Shift`                                                                        |
+| Jump                             | `Space`                                                                        |
+| Sit at a table, order at the bar | `E`                                                                            |
+| Chat                             | `Enter`, type, `Enter` again                                                   |
+| Switch camera                    | **Third person** button, top right                                             |
 
 ### Phone or tablet
 
-| Action                    | Gesture                                          |
-| ------------------------- | ------------------------------------------------ |
-| Move                      | Drag anywhere on the **left half** of the screen |
-| Look                      | Drag anywhere on the **right half**              |
-| Jump                      | **Jump** button                                  |
-| Sit at a table / stand up | **Use** button                                   |
-| Chat                      | Tap the chat box                                 |
-| Switch camera             | **Third person** button, top right               |
+| Action                           | Gesture                                          |
+| -------------------------------- | ------------------------------------------------ |
+| Move                             | Drag anywhere on the **left half** of the screen |
+| Look                             | Drag anywhere on the **right half**              |
+| Jump                             | **Jump** button                                  |
+| Sit at a table, order at the bar | **Use** button                                   |
+| Chat                             | Tap the chat box                                 |
+| Switch camera                    | **Third person** button, top right               |
 
 There is no on-screen joystick to hit precisely — anywhere on the left half works as a
 virtual stick from wherever your thumb lands.
@@ -127,9 +127,13 @@ Your session code is shown in the top-left corner once you are in.
 
 ---
 
-## What to do in there
+## The loop
 
-1. **Walk to a table.** Four tables sit around the central bar. A prompt appears when
+Chips come from exactly one place — the tables — and they buy exactly one thing: drinks.
+The more you drink, the blurrier the room gets, and the harder it is to keep winning the
+chips that pay for the next round.
+
+1. **Walk to a table.** Four tables sit around the central plinth. A prompt appears when
    you are close enough.
 2. **Sit down** with `E` (or **Use**).
 3. **Pick a stake** — 10, 50, 250 or 1000 — then tap a betting spot.
@@ -142,6 +146,18 @@ Your session code is shown in the top-left corner once you are in.
 **Wheel of Fortune** is the house game — the `9x` spot is priced at exactly true odds,
 so it is the one bet with no house edge. **High Card Duel** takes no house cut at all:
 everyone antes, highest card takes the pot.
+
+Then **walk to the bar** in the north-west corner and press `E` to open the menu.
+
+| Drink         | Cost | Effect                             |
+| ------------- | ---- | ---------------------------------- |
+| Lager         | 40   | A nudge                            |
+| Stout         | 75   | Noticeable                         |
+| House Whiskey | 130  | The short road to a blurry evening |
+| Soda Water    | 25   | Buys back some of your eyesight    |
+
+Intoxication wears off on its own — about two minutes from completely drunk back to
+sober — so the question is never "can I recover", it is "can I afford to wait".
 
 Chips are virtual, cannot be bought, and have no cash value. If you hit zero you are
 topped back up automatically.
@@ -170,6 +186,8 @@ Fast, self-contained things to try first:
 | Walk/sprint speed, jump height, gravity | `packages/sim/src/constants.ts`                        |
 | The floor layout, table positions       | `packages/sim/src/world.ts`                            |
 | Paytable and odds                       | `packages/games/table-games/src/wheelOfFortune.ts`     |
+| Drink prices, strength, sobering rate   | `apps/server/src/bar.ts`                               |
+| How strong the blur gets                | `setDrunkenness` in `apps/client/src/hud.js`           |
 | Betting window length                   | `bettingWindowMs` in each game definition              |
 | Lighting, colours, camera distance      | `apps/client/src/renderer.js`                          |
 | Carpet, wall and ceiling textures       | `apps/client/src/textures.js`                          |

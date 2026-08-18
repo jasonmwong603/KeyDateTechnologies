@@ -1,6 +1,6 @@
 {
-  "appId": "com.keydatetechnologies.floor",
-  "appName": "The Keydate Floor",
+  "appId": "com.keydatetechnologies.beerbets",
+  "appName": "Beer Bets",
   "webDir": "dist-client",
   "server": {
     "androidScheme": "https"

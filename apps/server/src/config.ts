@@ -28,7 +28,7 @@ export function normalizeBasePath(slug: string): string {
  * codebase hard-codes it: the client discovers its own base path from the
  * document, and the WebSocket endpoint is derived from the same value.
  */
-const gameSlug = process.env.GAME_SLUG ?? 'the-floor';
+const gameSlug = process.env.GAME_SLUG ?? 'beer-bets';
 
 export const config = {
   port: intFromEnv('PORT', 8080),
@@ -46,12 +46,12 @@ export const config = {
    * the old slug here keeps those working: requests to it are redirected to
    * the current one, path and all.
    */
-  legacySlugs: (process.env.LEGACY_SLUGS ?? '')
+  legacySlugs: (process.env.LEGACY_SLUGS ?? 'the-floor')
     .split(',')
     .map((entry) => normalizeBasePath(entry))
     .filter((entry) => entry !== ''),
   /** Shown on the join screen and in the browser tab. */
-  gameTitle: process.env.GAME_TITLE ?? 'The Keydate Floor',
+  gameTitle: process.env.GAME_TITLE ?? 'Beer Bets',
 
   /** Players per world instance. Beyond this, joins are refused. */
   maxPlayersPerWorld: intFromEnv('MAX_PLAYERS_PER_WORLD', 32),

@@ -48,7 +48,7 @@ const PORT = Number(process.env.SMOKE_PORT ?? 8099);
  * Production serves it at play.keydate.ca/<slug>, and a client that only works
  * at a domain root breaks in ways that never appear when testing at `/`.
  */
-const SLUG = process.env.SMOKE_SLUG ?? 'the-floor';
+const SLUG = process.env.SMOKE_SLUG ?? 'beer-bets';
 const ORIGIN = `http://127.0.0.1:${PORT}`;
 const BASE = `${ORIGIN}/${SLUG}/`;
 const SHOT_DIR = process.env.SMOKE_SHOT_DIR ?? path.join(repoRoot, '.smoke');
@@ -196,6 +196,7 @@ async function run() {
     const stats = await pc.evaluate(() => window.__keydate?.sceneStats());
     check('walls built', stats?.walls > 0, `walls=${stats?.walls}`);
     check('columns built', stats?.columns === 16, `columns=${stats?.columns}`);
+    check('bar built', stats?.bar > 0, `bar pieces=${stats?.bar}`);
     check('tables built', stats?.tables === 4, `tables=${stats?.tables}`);
 
     const before = await readPosition(pc);
@@ -376,6 +377,57 @@ async function run() {
       chipsBefore !== chipsAfter,
       `${chipsBefore} -> ${chipsAfter}`,
     );
+
+    // ------------------------------------------------------------------ bar
+    // The whole premise in one pass: walk to the bar, buy a drink, confirm it
+    // costs chips and that the screen actually goes blurry.
+    console.log('\nBar');
+    await pc.click('#leave-table');
+    await sleep(400);
+
+    let barDistance = Infinity;
+    for (let attempt = 0; attempt < 60; attempt += 1) {
+      const target = await pc.evaluate(() => window.__keydate?.aimAtBar());
+      if (target === null) break;
+      barDistance = target.distance;
+      if (barDistance < 2.0) break;
+      await pc.keyboard.down('KeyW');
+      await sleep(250);
+      await pc.keyboard.up('KeyW');
+      await sleep(50);
+    }
+    check('player can walk to the bar', barDistance < 2.0, `distance ${barDistance.toFixed(2)}m`);
+
+    await pc.keyboard.press('KeyE');
+    await sleep(800);
+    check('the bar menu opens', await pc.isVisible('#bar-panel'));
+
+    const chipsBeforeDrink = await pc.textContent('#chips-value');
+    const soberBlur = await pc.evaluate(
+      () => document.getElementById('viewport').style.filter || '',
+    );
+    check('vision is clear while sober', soberBlur === '', `filter="${soberBlur}"`);
+
+    await pc.click('.drink[data-drink-id="whiskey"]');
+    await sleep(900);
+
+    const chipsAfterDrink = await pc.textContent('#chips-value');
+    check(
+      'a drink costs chips',
+      chipsBeforeDrink !== chipsAfterDrink,
+      `${chipsBeforeDrink} -> ${chipsAfterDrink}`,
+    );
+
+    const drunkLevel = await pc.evaluate(() => window.__keydate?.drunkenness());
+    check('drinking makes you drunk', drunkLevel > 0, `drunkenness=${drunkLevel?.toFixed(2)}`);
+
+    const drunkBlur = await pc.evaluate(
+      () => document.getElementById('viewport').style.filter || '',
+    );
+    check('vision blurs once drunk', drunkBlur.includes('blur('), `filter="${drunkBlur}"`);
+    check('the drunk meter is shown', await pc.isVisible('#drunk-row'));
+
+    await pc.screenshot({ path: path.join(SHOT_DIR, 'bar-drunk.png') });
 
     // ------------------------------------------------- packaged app payload
     // Proves the scenario every native wrapper is in: the page loads from a

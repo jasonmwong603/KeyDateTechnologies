@@ -1,9 +1,10 @@
 # Repository guide
 
 This repository holds KeyDate Technologies' game development work, and nothing else.
-Current title: **The Keydate Floor** — a cross-platform, real-time multiplayer social
-casino world where every player has their own independent camera (first or third
-person), walks a shared floor, and wagers virtual chips at tables.
+Current title: **Beer Bets** — a cross-platform, real-time multiplayer game where every
+player has their own independent camera (first or third person) and walks a shared
+casino floor. Chips come only from the tables; they buy only drinks at the corner bar;
+and drinking blurs your vision, so every round you buy makes the next harder to win.
 
 ## Commands
 
@@ -44,8 +45,11 @@ npm run format:check   # prettier
    longer reproduces the outcome and the fairness proof breaks.
 6. **Validate every new message type** in `parseClientMessage`, with adversarial tests.
 7. **No real money.** See `docs/responsible-play.md` — these are hard lines.
-8. **Nothing hard-codes the mount point.** The game is served under `GAME_SLUG`
-   (`play.keydate.ca/the-floor`). The page carries one `<base href>` the server
+8. **Intoxication is server state, not simulation state.** It is bought with chips, so
+   the server owns it, but it only affects rendering — keep it out of `packages/sim`,
+   which exists solely for movement that must replay identically during reconciliation.
+9. **Nothing hard-codes the mount point.** The game is served under `GAME_SLUG`
+   (`play.keydate.ca/beer-bets`). The page carries one `<base href>` the server
    rewrites; every other URL is relative to it, and the socket endpoint is derived
    from it. Import map addresses must start with `./` — a bare path is read as a
    bare specifier and silently blocked.

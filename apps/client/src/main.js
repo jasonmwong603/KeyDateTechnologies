@@ -38,6 +38,11 @@ const connection = new Connection();
 const input = new InputController(canvas);
 const renderer = new WorldRenderer(canvas);
 const hud = new Hud(connection);
+// The blur lives in CSS on the canvas; the sway lives in the camera. Both are
+// driven from the same replicated value.
+hud.onDrunkenness = (level) => {
+  renderer.drunkenness = level;
+};
 
 /** Authoritative-ish local player state, corrected by every snapshot. */
 let localState = createPlayerState(0, 0, 0, 0);
@@ -150,6 +155,7 @@ connection.on('snapshot', (snapshot) => {
     if (entityId === connection.entityId) {
       applyLocalCorrection(entity, snapshot.ackedInput);
       hud.setChips(entity.chips ?? 0);
+      if (entity.drunkenness !== undefined) hud.setDrunkenness(entity.drunkenness);
       continue;
     }
 
@@ -221,6 +227,12 @@ connection.on('event:table:resolved', (event) => {
 });
 connection.on('event:chips:changed', (event) => {
   hud.setChips(event.balance);
+});
+connection.on('event:bar:menu', (event) => hud.showBar(event.label, event.menu));
+connection.on('event:bar:left', () => hud.hideBar());
+connection.on('event:drink:served', (event) => {
+  hud.setDrunkenness(event.drunkenness);
+  hud.addChatLine(null, `You drink a ${event.name}.`, 'system');
 });
 connection.on('event:chat', (event) => hud.addChatLine(event.from, event.text, event.channel));
 connection.on('event:player:joined', (event) =>
@@ -337,7 +349,7 @@ function render(alpha) {
 
   if (localState.seatedAt === null) {
     const target = renderer.findInteractableInRange(localState.x, localState.z, INTERACT_RANGE);
-    hud.showInteractPrompt(target === null ? null : target.label);
+    hud.showInteractPrompt(target === null ? null : target.prompt);
   } else {
     hud.showInteractPrompt(null);
   }
@@ -378,6 +390,15 @@ window.__keydate = {
   remoteCount: () => remotes.size,
   sceneStats: () => ({ ...renderer.stats }),
   yaw: () => input.yaw,
+  drunkenness: () => hud.drunkenness ?? 0,
+  /** Points the camera at the bar and reports the distance to it. */
+  aimAtBar: () => {
+    if (world === null) return null;
+    const bar = world.interactables.find((entry) => entry.kind === 'bar');
+    if (bar === undefined) return null;
+    input.yaw = Math.atan2(bar.z - localState.z, bar.x - localState.x);
+    return { id: bar.id, distance: Math.hypot(bar.x - localState.x, bar.z - localState.z) };
+  },
   seatedAt: () => localState.seatedAt,
   /**
    * Points the camera at the nearest table and reports how far away it is.

@@ -26,7 +26,7 @@ awareness of it.
 - and **the server address injected as a constant**.
 
 ```bash
-KEYDATE_SERVER_URL=wss://play.keydate.ca/the-floor npm run bundle:client
+KEYDATE_SERVER_URL=wss://play.keydate.ca/beer-bets npm run bundle:client
 ```
 
 That directory is the payload every wrapper below consumes. It is verified in CI: the
@@ -62,7 +62,7 @@ Capacitor wraps `dist-client/` into genuine Android and iOS projects. The output
 ```bash
 npm install --save-dev @capacitor/cli @capacitor/core @capacitor/android @capacitor/ios
 
-KEYDATE_SERVER_URL=wss://play.keydate.ca/the-floor npm run bundle:client
+KEYDATE_SERVER_URL=wss://play.keydate.ca/beer-bets npm run bundle:client
 
 npx cap add android
 npx cap add ios
@@ -155,7 +155,7 @@ payload, so you can change your mind later without rebuilding the client.
 ## The one thing to decide early
 
 **Where the server lives**, because the address gets compiled into every build you ship.
-Point builds at `wss://play.keydate.ca/the-floor`, a domain you control, rather than a
+Point builds at `wss://play.keydate.ca/beer-bets`, a domain you control, rather than a
 raw Render or Fly hostname. Baking a platform hostname into an app that people have
 installed means a migration requires all of them to reinstall.
 

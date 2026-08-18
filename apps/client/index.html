@@ -15,7 +15,7 @@
       content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no"
     />
     <meta name="theme-color" content="#0b1020" />
-    <title>The Keydate Floor</title>
+    <title>Beer Bets</title>
 
     <!--
       Phone home-screen support. `apple-mobile-web-app-capable` is what makes
@@ -28,7 +28,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="Keydate" />
+    <meta name="apple-mobile-web-app-title" content="Beer Bets" />
     <link rel="stylesheet" href="./js/style.css" />
 
     <!--
@@ -56,7 +56,7 @@
     <!-- Join screen -------------------------------------------------------->
     <div id="join-screen" class="overlay">
       <form id="join-form" class="panel">
-        <h1>The Keydate Floor</h1>
+        <h1>Beer Bets</h1>
         <p class="tagline">
           A casino floor you walk around in, with friends. Chips are virtual and have no cash value.
         </p>
@@ -94,6 +94,10 @@
       <div id="top-left" class="hud-block">
         <div id="chips"><span class="label">Chips</span> <span id="chips-value">0</span></div>
         <div id="session"><span class="label">Session</span> <span id="session-value">—</span></div>
+        <div id="drunk-row" hidden>
+          <span class="label">Drunk</span>
+          <div id="drunk-meter"><div id="drunk-bar"></div></div>
+        </div>
       </div>
 
       <div id="top-right" class="hud-block">
@@ -125,6 +129,16 @@
         <div id="table-wagers"></div>
         <div id="table-result" hidden></div>
         <div id="fairness" class="fairness"></div>
+      </div>
+
+      <!-- Bar menu, shown when standing at the counter -->
+      <div id="bar-panel" hidden>
+        <header>
+          <h2 id="bar-title">The Tap Room</h2>
+          <button id="leave-bar" type="button">Close</button>
+        </header>
+        <div id="bar-menu"></div>
+        <p class="bar-note">Chips come from the tables. Nothing here is for sale for real money.</p>
       </div>
 
       <div id="chat">

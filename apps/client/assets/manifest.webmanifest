@@ -1,7 +1,7 @@
 {
-  "name": "The Keydate Floor",
-  "short_name": "Keydate",
-  "description": "A social casino world you walk around in, with friends. Virtual chips only.",
+  "name": "Beer Bets",
+  "short_name": "Beer Bets",
+  "description": "Gamble for chips, spend them at the bar, and watch your aim get worse. Virtual chips only.",
   "start_url": "../",
   "scope": "../",
   "display": "fullscreen",

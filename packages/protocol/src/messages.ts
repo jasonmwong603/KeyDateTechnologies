@@ -75,6 +75,12 @@ export interface ClientPlaceWager {
   amount: number;
 }
 
+/** Buy a round at the bar. Paid from the same balance used to wager. */
+export interface ClientBuyDrink {
+  type: 'bar:buy';
+  drinkId: string;
+}
+
 /** Withdraw a wager before the table locks. */
 export interface ClientClearWagers {
   type: 'table:clear';
@@ -110,6 +116,7 @@ export type ClientMessage =
   | ClientInteract
   | ClientLeaveTable
   | ClientPlaceWager
+  | ClientBuyDrink
   | ClientClearWagers
   | ClientTableReady
   | ClientChat
@@ -148,6 +155,16 @@ export interface EntitySnapshot {
   chips?: number;
   /** Table the entity is seated at, or null when standing. */
   seatedAt?: EntityId | null;
+  /**
+   * How drunk this player is, 0..1.
+   *
+   * Replicated rather than tracked client-side because it is bought with
+   * chips, and the ledger is authoritative. The *effect* is purely visual, so
+   * a modified client can always choose not to blur itself — the same is true
+   * of every screen effect in every game, and it costs a cheater the money
+   * they spent either way.
+   */
+  drunkenness?: number;
 }
 
 /**
@@ -175,6 +192,9 @@ export type ServerEvent =
   | { kind: 'table:state'; tableId: EntityId; state: unknown }
   | { kind: 'table:resolved'; tableId: EntityId; result: unknown }
   | { kind: 'chips:changed'; delta: number; balance: number; reason: string }
+  | { kind: 'bar:menu'; barId: EntityId; label: string; menu: unknown }
+  | { kind: 'bar:left'; barId: EntityId }
+  | { kind: 'drink:served'; drinkId: string; name: string; drunkenness: number }
   | { kind: 'chat'; from: string; channel: 'local' | 'table' | 'system'; text: string }
   | { kind: 'player:joined'; name: string }
   | { kind: 'player:left'; name: string };

@@ -68,7 +68,9 @@ export class WorldRenderer {
      */
     this._occluders = [];
     /** What the world build actually produced. Asserted by the client smoke test. */
-    this.stats = { walls: 0, columns: 0, tables: 0 };
+    this.stats = { walls: 0, columns: 0, tables: 0, bar: 0 };
+    /** 0..1, set from replicated state. Drives the camera sway only. */
+    this.drunkenness = 0;
 
     this._buildLighting();
     this._handleResize();
@@ -183,6 +185,10 @@ export class WorldRenderer {
         this.stats.columns += 1;
         continue;
       }
+      if (box.kind === 'bar') {
+        this._buildBarFitting(box);
+        continue;
+      }
 
       const w = box.maxX - box.minX;
       const h = box.maxY - box.minY;
@@ -221,7 +227,8 @@ export class WorldRenderer {
     this._buildCornice(bounds);
 
     for (const interactable of world.interactables) {
-      this._buildTable(interactable);
+      if (interactable.kind === 'bar') this._buildBarSign(interactable);
+      else this._buildTable(interactable);
     }
   }
 
@@ -242,6 +249,79 @@ export class WorldRenderer {
     });
     this._stoneMaterials.set(key, material);
     return material;
+  }
+
+  /** The hanging sign that tells you where the bar is from across the room. */
+  _buildBarSign(interactable) {
+    const group = new THREE.Group();
+    group.position.set(interactable.x, 0, interactable.z);
+
+    const sign = this._makeLabelSprite(interactable.label, '#ffd166');
+    sign.position.y = 3.1;
+    sign.scale.set(3.4, 0.85, 1);
+    group.add(sign);
+
+    group.userData.interactableId = interactable.id;
+    group.userData.label = interactable.label;
+    group.userData.prompt = `Order at ${interactable.label}`;
+    this._tableMeshes.push(group);
+    this.scene.add(group);
+  }
+
+  /**
+   * Counter and back-bar joinery.
+   *
+   * Timber rather than the room's stone: the bar should read as furniture
+   * somebody installed, not as more architecture.
+   */
+  _buildBarFitting(box) {
+    const w = box.maxX - box.minX;
+    const h = box.maxY - box.minY;
+    const d = box.maxZ - box.minZ;
+
+    const body = new THREE.Mesh(
+      new THREE.BoxGeometry(w, h, d),
+      new THREE.MeshStandardMaterial({ color: 0x3a2118, roughness: 0.65, metalness: 0.05 }),
+    );
+    body.position.set(
+      (box.minX + box.maxX) / 2,
+      (box.minY + box.maxY) / 2,
+      (box.minZ + box.maxZ) / 2,
+    );
+    body.castShadow = true;
+    body.receiveShadow = true;
+    this.scene.add(body);
+    this._occluders.push(body);
+    this.stats.bar += 1;
+
+    // A polished counter lip, overhanging slightly so it catches the light.
+    const top = new THREE.Mesh(
+      new THREE.BoxGeometry(w + 0.28, 0.1, d + 0.28),
+      new THREE.MeshStandardMaterial({ color: 0x14100e, roughness: 0.2, metalness: 0.45 }),
+    );
+    top.position.set(body.position.x, box.maxY + 0.05, body.position.z);
+    top.castShadow = true;
+    this.scene.add(top);
+
+    // Bottles along anything tall enough to be back-bar shelving.
+    if (h < 1.6) return;
+    const bottleColours = [0x6b8f3a, 0x8a3a2a, 0xc8a14a, 0x2f5d7c, 0x7a3f6d];
+    for (let i = 0; i < 14; i += 1) {
+      const bottle = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.05, 0.06, 0.3, 8),
+        new THREE.MeshStandardMaterial({
+          color: bottleColours[i % bottleColours.length],
+          roughness: 0.25,
+          metalness: 0.1,
+        }),
+      );
+      bottle.position.set(
+        body.position.x + (i % 2 === 0 ? 0.16 : -0.1),
+        box.maxY - 0.55,
+        box.minZ + 0.4 + (i / 14) * (d - 0.8),
+      );
+      this.scene.add(bottle);
+    }
   }
 
   /**
@@ -388,6 +468,7 @@ export class WorldRenderer {
 
     group.userData.interactableId = interactable.id;
     group.userData.label = interactable.label;
+    group.userData.prompt = `Sit at ${interactable.label}`;
     this._tableMeshes.push(group);
     this.stats.tables += 1;
     this.scene.add(group);
@@ -493,6 +574,17 @@ export class WorldRenderer {
   updateCamera(x, y, z, yaw, pitch) {
     const eyeY = y + PLAYER_EYE_HEIGHT;
 
+    // Drunk sway. Purely a camera offset: the player's actual position and
+    // facing are untouched, so this never enters the shared simulation and
+    // cannot desync prediction. Two prime-ish frequencies keep it from settling
+    // into an obvious loop.
+    if (this.drunkenness > 0.01) {
+      const t = performance.now() / 1000;
+      const amount = this.drunkenness;
+      yaw += Math.sin(t * 0.73) * 0.05 * amount;
+      pitch += Math.sin(t * 0.51 + 1.3) * 0.035 * amount;
+    }
+
     if (this.viewMode === 'first-person') {
       this.camera.position.set(x, eyeY, z);
       this.camera.rotation.order = 'YXZ';
@@ -548,7 +640,11 @@ export class WorldRenderer {
     }
     return closest === null
       ? null
-      : { id: closest.userData.interactableId, label: closest.userData.label };
+      : {
+          id: closest.userData.interactableId,
+          label: closest.userData.label,
+          prompt: closest.userData.prompt,
+        };
   }
 
   _handleResize() {

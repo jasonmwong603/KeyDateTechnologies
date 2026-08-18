@@ -46,8 +46,8 @@ prediction papers over that less and less as it grows.
 ## Docker anywhere
 
 ```bash
-docker build -t keydate-floor .
-docker run -p 8080:8080 keydate-floor
+docker build -t beer-bets .
+docker run -p 8080:8080 beer-bets
 ```
 
 The image is multi-stage, runs as the unprivileged `node` user, and exposes `/healthz`.
@@ -87,7 +87,7 @@ keydate.example.com {
 
 ## Putting it on play.keydate.ca
 
-The target layout is `https://play.keydate.ca/the-floor/`. The apex domain is left
+The target layout is `https://play.keydate.ca/beer-bets/`. The apex domain is left
 completely alone — this is a new subdomain, so nothing about keydate.ca's DNS,
 hosting or content changes.
 
@@ -116,8 +116,8 @@ dig +short play.keydate.ca   # points at your game host
 
 | URL                          | What happens            |
 | ---------------------------- | ----------------------- |
-| `play.keydate.ca/the-floor/` | The game                |
-| `play.keydate.ca/the-floor`  | 301 to the above        |
+| `play.keydate.ca/beer-bets/` | The game                |
+| `play.keydate.ca/beer-bets`  | 301 to the above        |
 | `play.keydate.ca/`           | 301 to the current game |
 | `play.keydate.ca/healthz`    | Health probe            |
 | `keydate.ca`                 | Untouched               |
@@ -128,10 +128,10 @@ Change one variable, and list the old name so nothing breaks:
 
 ```bash
 GAME_SLUG=high-roller
-LEGACY_SLUGS=the-floor
+LEGACY_SLUGS=beer-bets
 ```
 
-Requests to `/the-floor/...` then 301 to `/high-roller/...` with the rest of the path
+Requests to `/beer-bets/...` then 301 to `/high-roller/...` with the rest of the path
 intact. This matters more than it looks: shared links and bookmarks survive, and so do
 **already-installed apps**, which have their address compiled in and cannot be updated
 by you. Keep old slugs listed indefinitely — they cost nothing.
@@ -145,7 +145,7 @@ configurable path prefix, so it can share a host with other properties instead o
 owning the domain root.
 
 ```bash
-GAME_SLUG=the-floor npm run serve     # served at  https://<host>/the-floor/
+GAME_SLUG=beer-bets npm run serve     # served at  https://<host>/beer-bets/
 GAME_SLUG= npm run serve              # served at  https://<host>/
 ```
 
@@ -160,11 +160,11 @@ know where the game is mounted.
 
 ### Behind a reverse proxy
 
-To serve the game at `play.example.com/the-floor` while other things live on the same
+To serve the game at `play.example.com/beer-bets` while other things live on the same
 host, forward the prefix and leave everything else alone:
 
 ```nginx
-location /the-floor/ {
+location /beer-bets/ {
     proxy_pass http://127.0.0.1:8080;
     proxy_http_version 1.1;
     proxy_set_header Upgrade $http_upgrade;
@@ -181,18 +181,18 @@ server uses it to build the page's `<base href>` and the socket path.
 
 All optional — the defaults are playable.
 
-| Variable                  | Default             | Meaning                                               |
-| ------------------------- | ------------------- | ----------------------------------------------------- |
-| `GAME_SLUG`               | `the-floor`         | Path the game is served under; empty means the root   |
-| `GAME_TITLE`              | `The Keydate Floor` | Name shown on the join screen                         |
-| `PORT`                    | `8080`              | HTTP + WebSocket port                                 |
-| `HOST`                    | `0.0.0.0`           | Bind address                                          |
-| `MAX_PLAYERS_PER_WORLD`   | `32`                | Players per world instance                            |
-| `STARTING_CHIPS`          | `2500`              | Opening stack                                         |
-| `BAILOUT_CHIPS`           | `500`               | Granted at exactly zero chips                         |
-| `RESUME_GRACE_MS`         | `90000`             | How long a dropped player's avatar and chips are held |
-| `SOCKET_TIMEOUT_MS`       | `30000`             | Idle socket cull                                      |
-| `MAX_MESSAGES_PER_SECOND` | `120`               | Per-socket rate limit                                 |
+| Variable                  | Default     | Meaning                                               |
+| ------------------------- | ----------- | ----------------------------------------------------- |
+| `GAME_SLUG`               | `beer-bets` | Path the game is served under; empty means the root   |
+| `GAME_TITLE`              | `Beer Bets` | Name shown on the join screen                         |
+| `PORT`                    | `8080`      | HTTP + WebSocket port                                 |
+| `HOST`                    | `0.0.0.0`   | Bind address                                          |
+| `MAX_PLAYERS_PER_WORLD`   | `32`        | Players per world instance                            |
+| `STARTING_CHIPS`          | `2500`      | Opening stack                                         |
+| `BAILOUT_CHIPS`           | `500`       | Granted at exactly zero chips                         |
+| `RESUME_GRACE_MS`         | `90000`     | How long a dropped player's avatar and chips are held |
+| `SOCKET_TIMEOUT_MS`       | `30000`     | Idle socket cull                                      |
+| `MAX_MESSAGES_PER_SECOND` | `120`       | Per-socket rate limit                                 |
 
 ## Before anyone outside a trusted group plays
 

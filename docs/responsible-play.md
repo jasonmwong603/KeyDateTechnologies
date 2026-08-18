@@ -34,6 +34,19 @@ single chip and cashing repeated top-ups.
 | House edge stays mild              | 4–7%, with one spot at true odds; asserted by a 200k-spin test                    |
 | A dropped connection costs nothing | Resume tokens; live wagers refunded on disconnect                                 |
 
+## On the drinking mechanic
+
+The game is built around buying drinks, so it is worth being explicit about how that is
+framed. Alcohol here is a **cost**, not a reward: it is bought with chips that could
+have been wagered, and its only effect is to make you worse at the game. There is no
+bonus for drinking, no penalty for staying sober, and a cheap option that reverses it.
+
+Nothing about it is tied to real drinking. There is no purchase, no brand, no
+encouragement to match a round in the game with one outside it. The mechanic is closer
+to a handicap system than to a depiction of drinking, and it should stay that way — if a
+future change makes being drunk _advantageous_, that is worth stopping to think about,
+because it inverts the whole point.
+
 ## Things to keep out
 
 Mechanics that are standard in real-money gambling products and deliberately absent here:

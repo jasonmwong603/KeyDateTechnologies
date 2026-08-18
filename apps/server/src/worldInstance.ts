@@ -23,6 +23,7 @@ import {
   type PlayerPhysicsState,
   type World,
 } from '@keydate/sim';
+import { clampIntoxication, drink, findDrink, publicMenu, soberUp } from './bar.js';
 import { config } from './config.js';
 import { ChipLedger } from './ledger.js';
 
@@ -60,6 +61,10 @@ interface PlayerRecord extends PlayerConnection {
   /** Events queued for delivery on the next tick. */
   pendingEvents: ServerEvent[];
   lastTableStateSentTick: number;
+  /** How drunk this player is, 0..1. Bought at the bar, wears off with time. */
+  drunkenness: number;
+  /** The bar this player has open, or null. Purely so the menu can be closed. */
+  atBar: number | null;
 }
 
 /** Entity ids are partitioned so a client can tell players from props on sight. */
@@ -150,6 +155,8 @@ export class WorldInstance {
       baseline: { tick: -1, entities: new Map() },
       pendingEvents: [],
       lastTableStateSentTick: -TABLE_STATE_INTERVAL_TICKS,
+      drunkenness: 0,
+      atBar: null,
     };
 
     this.players.set(playerId, record);
@@ -238,6 +245,17 @@ export class WorldInstance {
       return;
     }
 
+    if (interactable.kind === 'bar') {
+      record.atBar = interactable.id;
+      this.enqueueEvent(record, {
+        kind: 'bar:menu',
+        barId: interactable.id,
+        label: interactable.label,
+        menu: publicMenu(),
+      });
+      return;
+    }
+
     const table = this.tables.get(interactable.id);
     if (table === undefined) return;
 
@@ -285,6 +303,62 @@ export class WorldInstance {
     this.broadcastTableState(tableId, true);
   }
 
+  /**
+   * Sells a drink.
+   *
+   * Range is re-checked here rather than trusted from the earlier interact: a
+   * client that opened the menu and then walked away — or never walked over at
+   * all — must not be able to keep ordering.
+   */
+  handleBuyDrink(playerId: string, drinkId: string): void {
+    const record = this.players.get(playerId);
+    if (record === undefined) return;
+
+    const beverage = findDrink(drinkId);
+    if (beverage === undefined) {
+      this.sendError(record, 'invalid_action', 'No such drink.');
+      return;
+    }
+
+    const bar = this.world.interactables.find(
+      (entry) => entry.kind === 'bar' && entry.id === record.atBar,
+    );
+    if (bar === undefined) {
+      this.sendError(record, 'invalid_action', 'You are not at the bar.');
+      return;
+    }
+
+    const distance = distanceXZ(record.state.x, record.state.z, bar.x, bar.z);
+    if (distance > INTERACT_RANGE + INTERACT_RANGE_SERVER_TOLERANCE) {
+      record.atBar = null;
+      this.enqueueEvent(record, { kind: 'bar:left', barId: bar.id });
+      this.sendError(record, 'invalid_action', 'You are too far from the bar.');
+      return;
+    }
+
+    if (!this.debit(playerId, beverage.price, `drink:${beverage.id}`)) {
+      this.sendError(record, 'insufficient_chips', 'You cannot afford that.');
+      return;
+    }
+
+    record.drunkenness = drink(record.drunkenness, beverage);
+    this.enqueueEvent(record, {
+      kind: 'drink:served',
+      drinkId: beverage.id,
+      name: beverage.name,
+      drunkenness: record.drunkenness,
+    });
+  }
+
+  /** Closes the bar menu, e.g. when the player walks away or presses escape. */
+  handleLeaveBar(playerId: string): void {
+    const record = this.players.get(playerId);
+    if (record === undefined || record.atBar === null) return;
+    const barId = record.atBar;
+    record.atBar = null;
+    this.enqueueEvent(record, { kind: 'bar:left', barId });
+  }
+
   handleClearWagers(playerId: string): void {
     const record = this.players.get(playerId);
     if (record === undefined || record.state.seatedAt === null) return;
@@ -323,6 +397,7 @@ export class WorldInstance {
     this.tick += 1;
 
     this.simulatePlayers();
+    this.updateBar();
     this.updateTables();
     this.expireDisconnected();
     this.replicate();
@@ -409,6 +484,31 @@ export class WorldInstance {
     }
   }
 
+  /**
+   * Wears off intoxication, and closes the menu of anyone who has wandered off.
+   *
+   * Sobering is driven by tick count rather than wall-clock deltas so it stays
+   * in step with everything else the world does, and cannot be accelerated by a
+   * client that stalls its own connection.
+   */
+  private updateBar(): void {
+    for (const record of this.players.values()) {
+      if (record.drunkenness > 0) {
+        record.drunkenness = soberUp(record.drunkenness, TICK_DT);
+      }
+
+      if (record.atBar === null) continue;
+      const bar = this.world.interactables.find((entry) => entry.id === record.atBar);
+      if (bar === undefined) continue;
+      const distance = distanceXZ(record.state.x, record.state.z, bar.x, bar.z);
+      if (distance > INTERACT_RANGE + INTERACT_RANGE_SERVER_TOLERANCE + 1) {
+        const barId = record.atBar;
+        record.atBar = null;
+        this.enqueueEvent(record, { kind: 'bar:left', barId });
+      }
+    }
+  }
+
   private expireDisconnected(): void {
     const now = this.now();
     for (const record of [...this.players.values()]) {
@@ -484,6 +584,10 @@ export class WorldInstance {
       // most of the fun of playing with friends.
       chips: this.ledger.balanceOf(record.playerId),
       seatedAt: record.state.seatedAt,
+      // Quantised to 1/100. Replicating raw floats would mark every player as
+      // changed on every single tick purely from sobering up, defeating the
+      // whole point of delta encoding.
+      drunkenness: Math.round(clampIntoxication(record.drunkenness) * 100) / 100,
     };
   }
 
@@ -560,5 +664,9 @@ export class WorldInstance {
 
   balanceOf(playerId: string): number {
     return this.ledger.balanceOf(playerId);
+  }
+
+  drunkennessOf(playerId: string): number {
+    return this.players.get(playerId)?.drunkenness ?? 0;
   }
 }

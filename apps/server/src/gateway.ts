@@ -135,6 +135,9 @@ export class Gateway {
       case 'table:wager':
         world.handleWager(playerId, parsed.spotId, parsed.amount);
         break;
+      case 'bar:buy':
+        world.handleBuyDrink(playerId, parsed.drinkId);
+        break;
       case 'table:clear':
         world.handleClearWagers(playerId);
         break;

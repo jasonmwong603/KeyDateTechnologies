@@ -175,7 +175,8 @@ button:disabled {
 #hud button,
 #hud input,
 #hud #chat,
-#hud #table-panel {
+#hud #table-panel,
+#hud #bar-panel {
   pointer-events: auto;
 }
 
@@ -499,5 +500,133 @@ kbd {
   #table-panel {
     width: calc(100vw - 1rem);
     bottom: max(0.5rem, env(safe-area-inset-bottom));
+  }
+}
+
+/* --- Drunkenness ---------------------------------------------------------- */
+
+#drunk-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+#drunk-meter {
+  width: 84px;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+#drunk-bar {
+  height: 100%;
+  width: 0;
+  border-radius: 3px;
+  /* Amber to red: the colour itself should tell you when to stop. */
+  background: linear-gradient(90deg, #ffd166, #ff8a3c 60%, #f2545b);
+  transition: width 0.4s ease-out;
+}
+
+/*
+ * The blur is applied to the canvas, not to the HUD.
+ *
+ * Blurring the readouts too would mean a drunk player cannot read their own
+ * chip count, which is punishing rather than funny — and on a phone it would
+ * make the game genuinely unplayable rather than harder.
+ */
+#viewport {
+  transition: filter 0.5s ease-out;
+}
+
+/* --- Bar ------------------------------------------------------------------ */
+
+#bar-panel {
+  position: absolute;
+  right: max(1rem, env(safe-area-inset-right));
+  bottom: max(1rem, env(safe-area-inset-bottom));
+  width: min(340px, calc(100vw - 2rem));
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: 14px;
+  padding: 0.9rem 1rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+#bar-panel header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+#bar-panel h2 {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--gold);
+  flex: 1;
+}
+
+#bar-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.drink {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.15rem 0.6rem;
+  text-align: left;
+  padding: 0.55rem 0.7rem;
+}
+
+/*
+ * Explicit placement. Auto-placement puts the price in the first column
+ * because its `grid-row` span makes it skip the slot the name already took,
+ * which lands the number on the wrong side of the row.
+ */
+.drink-name {
+  grid-column: 1;
+  grid-row: 1;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.drink-desc {
+  grid-column: 1;
+  grid-row: 2;
+  font-size: 0.7rem;
+  color: var(--muted);
+  line-height: 1.3;
+}
+
+.drink-price {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+  font-weight: 700;
+  color: var(--gold);
+}
+
+.drink.sobering .drink-price {
+  color: var(--good);
+}
+
+.drink:disabled .drink-price {
+  color: var(--bad);
+}
+
+.bar-note {
+  margin: 0;
+  font-size: 0.68rem;
+  color: var(--muted);
+  opacity: 0.8;
+}
+
+@media (max-width: 640px) {
+  #bar-panel {
+    width: calc(100vw - 1rem);
   }
 }

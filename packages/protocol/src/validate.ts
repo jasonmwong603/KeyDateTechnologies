@@ -147,6 +147,13 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       return { type: 'table:wager', spotId: raw.spotId, amount };
     }
 
+    case 'bar:buy': {
+      if (typeof raw.drinkId !== 'string' || raw.drinkId.length > 32) return null;
+      // Whether the drink exists, and whether it can be afforded, is the
+      // server's business — this layer only rejects nonsense shapes.
+      return { type: 'bar:buy', drinkId: raw.drinkId };
+    }
+
     case 'table:clear':
       return { type: 'table:clear' };
 
