@@ -207,6 +207,38 @@ async function run() {
     const moved = before && after ? Math.hypot(after.x - before.x, after.z - before.z) : 0;
     check('W walks the player forward', moved > 1, `moved ${moved.toFixed(2)}m`);
 
+    // Direction, not just displacement. A negated strafe term moves the player
+    // exactly as fast and collides exactly the same — it just sends them the
+    // wrong way, which no distance-based check would ever notice.
+    const facing = await pc.evaluate(() => window.__keydate?.yaw() ?? 0);
+    const right = { x: -Math.sin(facing), z: Math.cos(facing) };
+    const forward = { x: Math.cos(facing), z: Math.sin(facing) };
+    const along = (from, to, axis) => (to.x - from.x) * axis.x + (to.z - from.z) * axis.z;
+
+    const beforeStrafe = await readPosition(pc);
+    await pc.keyboard.down('KeyD');
+    await sleep(900);
+    await pc.keyboard.up('KeyD');
+    await sleep(250);
+    const afterStrafe = await readPosition(pc);
+    check(
+      'D strafes right, not left',
+      along(beforeStrafe, afterStrafe, right) > 0.5,
+      `${along(beforeStrafe, afterStrafe, right).toFixed(2)}m to the right`,
+    );
+
+    const beforeBack = await readPosition(pc);
+    await pc.keyboard.down('KeyS');
+    await sleep(900);
+    await pc.keyboard.up('KeyS');
+    await sleep(250);
+    const afterBack = await readPosition(pc);
+    check(
+      'S walks backward',
+      along(beforeBack, afterBack, forward) < -0.5,
+      `${along(beforeBack, afterBack, forward).toFixed(2)}m along facing`,
+    );
+
     await pc.screenshot({ path: path.join(SHOT_DIR, 'desktop-first-person.png') });
 
     await pc.click('#view-toggle');
@@ -301,7 +333,12 @@ async function run() {
     // whole prediction path on the way.
     let distance = Infinity;
     for (let attempt = 0; attempt < 40; attempt += 1) {
-      const target = await pc.evaluate(() => window.__keydate?.aimAtNearestTable());
+      // Specifically the wheel: it runs with a single player, so betting opens
+      // and a commitment is published. High Card Duel needs two and would sit
+      // idle, which looks like a broken table rather than a waiting one.
+      const target = await pc.evaluate(() =>
+        window.__keydate?.aimAtNearestTable('wheel-of-fortune'),
+      );
       if (target === null) break;
       distance = target.distance;
       if (distance < 2.0) break;

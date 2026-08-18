@@ -54,6 +54,78 @@ describe('stepPlayer', () => {
     expect(speed).toBeCloseTo(WALK_SPEED, 5);
   });
 
+  /**
+   * The camera maps sim yaw to `-yaw - PI/2`, so at yaw 0 the player faces +x
+   * and the camera's right axis is +z. These are the vectors every direction
+   * test below is measured against.
+   */
+  const forwardOf = (yaw: number) => ({ x: Math.cos(yaw), z: Math.sin(yaw) });
+  const rightOf = (yaw: number) => ({ x: -Math.sin(yaw), z: Math.cos(yaw) });
+
+  /**
+   * Open floor, clear of the central bar and every table.
+   *
+   * The origin is inside the bar's collider, so a player started there cannot
+   * move in any direction and every direction assertion reads zero.
+   */
+  const OPEN_FLOOR = { x: 0, z: 12 };
+
+  /** How far a step went along `axis`, in metres. */
+  function along(
+    from: { x: number; z: number },
+    to: { x: number; z: number },
+    axis: { x: number; z: number },
+  ): number {
+    return (to.x - from.x) * axis.x + (to.z - from.z) * axis.z;
+  }
+
+  it('walks forward along the facing direction', () => {
+    // Several yaws, because a sign error can be invisible at yaw 0.
+    for (const yaw of [0, Math.PI / 2, Math.PI, -Math.PI / 2, 0.7]) {
+      const start = createPlayerState(OPEN_FLOOR.x, 0, OPEN_FLOOR.z, yaw);
+      const moved = run(start, input({ moveZ: 1, yaw }), 20);
+      expect(along(start, moved, forwardOf(yaw))).toBeGreaterThan(0.5);
+      // And essentially nothing sideways.
+      expect(Math.abs(along(start, moved, rightOf(yaw)))).toBeLessThan(1e-9);
+    }
+  });
+
+  it('walks backward when moveZ is negative', () => {
+    for (const yaw of [0, 1.2, -2.4]) {
+      const start = createPlayerState(OPEN_FLOOR.x, 0, OPEN_FLOOR.z, yaw);
+      const moved = run(start, input({ moveZ: -1, yaw }), 20);
+      expect(along(start, moved, forwardOf(yaw))).toBeLessThan(-0.5);
+    }
+  });
+
+  it('strafes to the right of the facing direction, not the left', () => {
+    // The regression this exists for: negating the strafe term makes D walk
+    // left. Nothing else in the suite would notice, because the speed, the
+    // collision behaviour and the determinism are all unchanged by the sign.
+    for (const yaw of [0, Math.PI / 2, Math.PI, -Math.PI / 2, 2.1]) {
+      const start = createPlayerState(OPEN_FLOOR.x, 0, OPEN_FLOOR.z, yaw);
+      const moved = run(start, input({ moveX: 1, yaw }), 20);
+      expect(along(start, moved, rightOf(yaw))).toBeGreaterThan(0.5);
+      expect(Math.abs(along(start, moved, forwardOf(yaw)))).toBeLessThan(1e-9);
+    }
+  });
+
+  it('strafes left when moveX is negative', () => {
+    for (const yaw of [0, 1.2, -2.4]) {
+      const start = createPlayerState(OPEN_FLOOR.x, 0, OPEN_FLOOR.z, yaw);
+      const moved = run(start, input({ moveX: -1, yaw }), 20);
+      expect(along(start, moved, rightOf(yaw))).toBeLessThan(-0.5);
+    }
+  });
+
+  it('moves forward-right on W and D together', () => {
+    const yaw = 0.4;
+    const start = createPlayerState(OPEN_FLOOR.x, 0, OPEN_FLOOR.z, yaw);
+    const moved = run(start, input({ moveZ: 1, moveX: 1, yaw }), 20);
+    expect(along(start, moved, forwardOf(yaw))).toBeGreaterThan(0.3);
+    expect(along(start, moved, rightOf(yaw))).toBeGreaterThan(0.3);
+  });
+
   it('does not let diagonal movement outrun cardinal movement', () => {
     const start = createPlayerState(0, 0, 10, 0);
     const cardinal = run(start, input({ moveZ: 1 }), 60);

@@ -112,9 +112,16 @@ export function stepPlayer(
   const maxSpeed = input.sprint ? SPRINT_SPEED : WALK_SPEED;
   const sin = Math.sin(input.yaw);
   const cos = Math.cos(input.yaw);
-  // moveZ is "forward along yaw"; moveX is "right of yaw".
-  const rawX = input.moveZ * cos + input.moveX * sin;
-  const rawZ = input.moveZ * sin - input.moveX * cos;
+  // `moveZ` is forward along yaw, `moveX` is to its right.
+  //
+  // Forward is (cos yaw, sin yaw). Right is that turned a quarter turn the way
+  // the camera considers right, which is (-sin yaw, cos yaw) — the camera maps
+  // sim yaw to -yaw - PI/2, so at yaw 0 it faces +x and its right axis is +z.
+  //
+  // Negating the strafe term here is the easy mistake, and it does not look
+  // like a bug in code: the player simply walks left when they press D.
+  const rawX = input.moveZ * cos - input.moveX * sin;
+  const rawZ = input.moveZ * sin + input.moveX * cos;
   const desired = clampLengthXZ(rawX, rawZ, 1);
   const targetVx = desired.x * maxSpeed;
   const targetVz = desired.z * maxSpeed;
@@ -122,13 +129,31 @@ export function stepPlayer(
   const hasInput = desired.x !== 0 || desired.z !== 0;
   const accel = next.grounded ? GROUND_ACCEL : AIR_ACCEL;
 
-  if (hasInput) {
-    next.vx = approach(next.vx, targetVx, accel * dt);
-    next.vz = approach(next.vz, targetVz, accel * dt);
-  } else if (next.grounded) {
-    // Friction only bites on the ground; in the air you keep your momentum.
-    next.vx = approach(next.vx, 0, GROUND_FRICTION * dt);
-    next.vz = approach(next.vz, 0, GROUND_FRICTION * dt);
+  // Accelerate along the velocity error as a vector, not per axis.
+  //
+  // Stepping vx and vz independently by the same amount means the axis with
+  // the smaller change arrives first, so a player starting from rest at, say,
+  // 40 degrees drifts noticeably off their heading for the first few ticks
+  // before straightening out. You aim one way and set off slightly another.
+  //
+  // Friction only bites on the ground; in the air you keep your momentum.
+  const targets = hasInput ? { x: targetVx, z: targetVz } : { x: 0, z: 0 };
+  const maxDelta = hasInput ? accel * dt : next.grounded ? GROUND_FRICTION * dt : 0;
+
+  if (maxDelta > 0) {
+    const dvx = targets.x - next.vx;
+    const dvz = targets.z - next.vz;
+    // Math.sqrt is IEEE-exact; Math.hypot's precision is implementation
+    // defined, which is exactly the kind of thing that desyncs prediction.
+    const distance = Math.sqrt(dvx * dvx + dvz * dvz);
+
+    if (distance <= maxDelta) {
+      next.vx = targets.x;
+      next.vz = targets.z;
+    } else {
+      next.vx += (dvx / distance) * maxDelta;
+      next.vz += (dvz / distance) * maxDelta;
+    }
   }
 
   // --- Vertical ------------------------------------------------------------
@@ -180,11 +205,4 @@ export function stepPlayer(
   next.z = clamp(next.z, world.bounds.minZ + PLAYER_RADIUS, world.bounds.maxZ - PLAYER_RADIUS);
 
   return next;
-}
-
-/** Moves `current` toward `target` by at most `maxDelta`. */
-function approach(current: number, target: number, maxDelta: number): number {
-  const delta = target - current;
-  if (Math.abs(delta) <= maxDelta) return target;
-  return current + Math.sign(delta) * maxDelta;
 }

@@ -67,7 +67,11 @@ export class InputController {
 
     document.addEventListener('mousemove', (event) => {
       if (document.pointerLockElement !== this.canvas) return;
-      this.yaw -= event.movementX * LOOK_SENSITIVITY;
+      // Move the mouse right, turn right. Increasing yaw rotates the facing
+      // toward the camera's right axis, so this must add, not subtract.
+      this.yaw += event.movementX * LOOK_SENSITIVITY;
+      // Pitch subtracts because screen Y grows downward: pushing the mouse
+      // forward gives a negative movementY and should look up.
       this.pitch -= event.movementY * LOOK_SENSITIVITY;
       this.pitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, this.pitch));
     });
@@ -104,7 +108,8 @@ export class InputController {
             this.moveX = Math.max(-1, Math.min(1, dx / 60));
             this.moveZ = Math.max(-1, Math.min(1, -dy / 60));
           } else if (this._touchLook?.id === touch.identifier) {
-            this.yaw -= (touch.clientX - this._touchLook.lastX) * TOUCH_LOOK_SENSITIVITY;
+            // Same convention as the mouse: drag right, look right.
+            this.yaw += (touch.clientX - this._touchLook.lastX) * TOUCH_LOOK_SENSITIVITY;
             this.pitch -= (touch.clientY - this._touchLook.lastY) * TOUCH_LOOK_SENSITIVITY;
             this.pitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, this.pitch));
             this._touchLook.lastX = touch.clientX;

@@ -377,6 +377,7 @@ window.__keydate = {
   viewMode: () => viewMode,
   remoteCount: () => remotes.size,
   sceneStats: () => ({ ...renderer.stats }),
+  yaw: () => input.yaw,
   seatedAt: () => localState.seatedAt,
   /**
    * Points the camera at the nearest table and reports how far away it is.
@@ -385,11 +386,15 @@ window.__keydate = {
    * any such move straight back. The test walks there with real input, which
    * exercises the whole prediction path rather than sidestepping it.
    */
-  aimAtNearestTable: () => {
+  aimAtNearestTable: (gameId = null) => {
     if (world === null) return null;
     let nearest = null;
     let nearestDistance = Infinity;
+    // Optionally restrict to one game. Tables differ in how many players they
+    // need before a round can start, so "the nearest table" is not a stable
+    // target for anything that then expects betting to be open.
     for (const table of world.interactables) {
+      if (gameId !== null && table.gameId !== gameId) continue;
       const distance = Math.hypot(table.x - localState.x, table.z - localState.z);
       if (distance < nearestDistance) {
         nearestDistance = distance;
