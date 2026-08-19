@@ -138,6 +138,16 @@ by you. Keep old slugs listed indefinitely — they cost nothing.
 
 `LEGACY_SLUGS` takes a comma-separated list, so a game can be renamed more than once.
 
+> **Change `GAME_SLUG` on the host, not just in `render.yaml`.** A value set in the
+> Render dashboard overrides the blueprint, and a stale one there means the game is still
+> mounted under its old name while every link you hand out points at the new one.
+>
+> The server now ignores any legacy slug equal to the slug it is actually serving, so a
+> stale variable leaves the game reachable under the old name rather than breaking it.
+> Before that filter existed this combination redirected the old path to itself forever,
+> which took the whole domain down — root included — while `/healthz` stayed green the
+> entire time. Check `/healthz`: it reports the `basePath` actually in use.
+
 ## Where the game gets mounted
 
 The game serves everything — client, assets and the WebSocket — under one

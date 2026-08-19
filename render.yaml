@@ -20,8 +20,18 @@ services:
       - key: NODE_VERSION
         value: '22'
       # The path the game is served under. Empty serves it at the domain root.
+      #
+      # A value set in the Render dashboard overrides this one and is not
+      # updated by re-applying the blueprint, so check the dashboard — and
+      # `/healthz`, which reports the basePath actually in use — after changing
+      # it here.
       - key: GAME_SLUG
         value: 'beer-bets'
+      # Paths the game used to live at. Redirected to GAME_SLUG so old links and
+      # already-installed apps keep working. Never list the current slug: the
+      # server drops it if you do, because it would redirect to itself.
+      - key: LEGACY_SLUGS
+        value: 'the-floor'
       - key: STARTING_CHIPS
         value: '2500'
       - key: MAX_PLAYERS_PER_WORLD

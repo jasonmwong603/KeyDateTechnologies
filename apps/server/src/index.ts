@@ -115,7 +115,13 @@ const httpServer = createServer((request, response) => {
   for (const legacy of config.legacySlugs) {
     if (url.pathname !== legacy && !url.pathname.startsWith(`${legacy}/`)) continue;
     const remainder = url.pathname.slice(legacy.length);
-    response.writeHead(301, { location: `${base}${remainder === '' ? '/' : remainder}` }).end();
+    const location = `${base}${remainder === '' ? '/' : remainder}`;
+    // A redirect to where we already are is an infinite loop, and a browser
+    // shows it as a dead site while the process keeps passing its health check.
+    // `parseLegacySlugs` already prevents the one way this used to happen; this
+    // is the backstop, because the failure is total and the check is free.
+    if (location === url.pathname) break;
+    response.writeHead(301, { location }).end();
     return;
   }
 

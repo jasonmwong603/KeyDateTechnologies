@@ -28,15 +28,42 @@ export function normalizeBasePath(slug: string): string {
  * codebase hard-codes it: the client discovers its own base path from the
  * document, and the WebSocket endpoint is derived from the same value.
  */
+/**
+ * Parses the legacy slug list, dropping anything that is not actually legacy.
+ *
+ * A slug equal to the one currently being served would redirect to itself, and
+ * the server would answer every request under it with an endless 301 loop —
+ * every bookmark, every installed app, and the domain root, all dead at once
+ * with the process still passing its health check.
+ *
+ * That is not hypothetical. `GAME_SLUG` was left at `the-floor` on the host
+ * after the game was renamed, while the default legacy list still named
+ * `the-floor`, and the site went down until this filter was added. A stale
+ * environment variable should at worst leave the game reachable under its old
+ * name; it must never take the whole site off the air.
+ */
+export function parseLegacySlugs(raw: string, basePath: string): string[] {
+  const seen = new Set<string>();
+  return raw
+    .split(',')
+    .map((entry) => normalizeBasePath(entry))
+    .filter((entry) => {
+      if (entry === '' || entry === basePath || seen.has(entry)) return false;
+      seen.add(entry);
+      return true;
+    });
+}
+
 const gameSlug = process.env.GAME_SLUG ?? 'beer-bets';
+const basePath = normalizeBasePath(process.env.BASE_PATH ?? gameSlug);
 
 export const config = {
   port: intFromEnv('PORT', 8080),
   host: process.env.HOST ?? '0.0.0.0',
 
   gameSlug,
-  /** `/the-floor`, or `''` when serving from the root of a domain. */
-  basePath: normalizeBasePath(process.env.BASE_PATH ?? gameSlug),
+  /** `/beer-bets`, or `''` when serving from the root of a domain. */
+  basePath,
 
   /**
    * Slugs the game used to be served under, comma-separated.
@@ -46,10 +73,7 @@ export const config = {
    * the old slug here keeps those working: requests to it are redirected to
    * the current one, path and all.
    */
-  legacySlugs: (process.env.LEGACY_SLUGS ?? 'the-floor')
-    .split(',')
-    .map((entry) => normalizeBasePath(entry))
-    .filter((entry) => entry !== ''),
+  legacySlugs: parseLegacySlugs(process.env.LEGACY_SLUGS ?? 'the-floor', basePath),
   /** Shown on the join screen and in the browser tab. */
   gameTitle: process.env.GAME_TITLE ?? 'Beer Bets',
 
