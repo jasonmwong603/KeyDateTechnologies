@@ -416,53 +416,191 @@ async function run() {
     );
 
     const anteVisible = await pc.isVisible('.spot[data-spot-id="ante"]');
-    check('blackjack offers its ante spot', anteVisible);
+    check('blackjack offers its bet spot', anteVisible);
+
+    // The bet box: any integer from the table minimum to the whole stack.
+    const limits = await pc.evaluate(() => {
+      const input = document.getElementById('stake-input');
+      return {
+        min: input.min,
+        max: input.max,
+        text: document.getElementById('stake-limits').textContent,
+      };
+    });
+    const bankroll = Number((await pc.textContent('#chips-value')).replace(/[^0-9]/g, ''));
+    check('the bet box floors at the table minimum', limits.min === '10', `min=${limits.min}`);
+    check(
+      'the bet box tops out at what the player actually holds',
+      Number(limits.max) === bankroll,
+      `max=${limits.max} chips=${bankroll}`,
+    );
+
+    // Nothing should happen on its own: this table waits to be asked.
+    check(
+      'no betting clock is shown before the deal is called',
+      await pc.evaluate(() => document.getElementById('table-timer-bar').style.width === '0%'),
+    );
+    check(
+      'the deal button refuses to arm without a bet',
+      await pc.evaluate(() => document.getElementById('deal-button').disabled === true),
+    );
+
+    // Type an amount rather than picking one off a fixed list.
+    await pc.fill('#stake-input', '137');
+    await pc.press('#stake-input', 'Enter');
+    await sleep(200);
 
     const bjChipsBefore = await pc.textContent('#chips-value');
     await pc.click('.spot[data-spot-id="ante"]');
-    await sleep(600);
+    await sleep(700);
+    const bjChipsAfter = await pc.textContent('#chips-value');
+    const staked =
+      Number(bjChipsBefore.replace(/[^0-9]/g, '')) - Number(bjChipsAfter.replace(/[^0-9]/g, ''));
+    check('a typed bet is staked exactly as typed', staked === 137, `staked=${staked}`);
+
+    // Ten seconds is a long time to leave a table idle if the deal never comes,
+    // so prove it does not come on its own before pressing the button.
+    await sleep(4_000);
     check(
-      'anteing debits chips',
-      bjChipsBefore !== (await pc.textContent('#chips-value')),
-      `${bjChipsBefore} -> ${await pc.textContent('#chips-value')}`,
+      'the cards stay in the shoe until the deal is called',
+      !(await pc.isVisible('#table-hand')),
     );
 
-    // Wait out the betting window so the hand is actually dealt. Longer than
-    // the window itself, because the table only closes on a server tick.
+    check(
+      'the deal button arms once a bet is down',
+      await pc.evaluate(() => document.getElementById('deal-button').disabled === false),
+    );
+
+    await pc.click('#deal-button');
+    await sleep(500);
+    const lastCall = await pc.textContent('#deal-button');
+    check('calling the deal starts a last call', /last call/i.test(lastCall ?? ''), lastCall);
+
+    // The whole point of the ten seconds: everyone else can still get a bet down.
+    check(
+      'betting stays open during the last call',
+      await pc.evaluate(
+        () => document.querySelector('.spot[data-spot-id="ante"]').disabled === false,
+      ),
+    );
+
     let dealt = false;
-    for (let attempt = 0; attempt < 50; attempt += 1) {
-      await sleep(600);
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      await sleep(500);
       if (await pc.isVisible('#table-hand')) {
         dealt = true;
         break;
       }
     }
-    check('the hand is dealt once betting closes', dealt);
+    check('the hand is dealt once the last call runs out', dealt);
 
-    const dealerCards = await pc.evaluate(
-      () => document.querySelectorAll('#hand-dealer .card').length,
-    );
-    check('the dealer shows two cards', dealerCards === 2, `cards=${dealerCards}`);
+    /** Waits for a dealt hand to either hand us a turn or resolve on its own. */
+    async function awaitTurnOrResult() {
+      for (let attempt = 0; attempt < 60; attempt += 1) {
+        const actions = await pc.evaluate(
+          () => document.querySelectorAll('#hand-actions button').length,
+        );
+        if (actions > 0) return 'turn';
+        if (await pc.isVisible('#table-result')) return 'resolved';
+        await sleep(400);
+      }
+      return 'stuck';
+    }
 
-    const facedown = await pc.evaluate(
-      () => document.querySelectorAll('#hand-dealer .card.facedown').length,
-    );
-    check('one dealer card is face down', facedown === 1, `facedown=${facedown}`);
+    /** Bets and calls the deal once the table is taking bets again. */
+    async function betAndDeal(amount) {
+      for (let attempt = 0; attempt < 60; attempt += 1) {
+        const open = await pc.evaluate(
+          () => document.querySelector('.spot[data-spot-id="ante"]')?.disabled === false,
+        );
+        if (open) break;
+        await sleep(500);
+      }
+      await pc.fill('#stake-input', String(amount));
+      await pc.press('#stake-input', 'Enter');
+      await pc.click('.spot[data-spot-id="ante"]');
+      await sleep(400);
+      await pc.click('#deal-button');
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        await sleep(500);
+        if (await pc.evaluate(() => document.querySelectorAll('#table-hand .card').length > 0)) {
+          return true;
+        }
+      }
+      return false;
+    }
 
-    const myCards = await pc.evaluate(
-      () => document.querySelectorAll('#hand-seats .hand-row.mine .card').length,
+    // The deal animation. Asserted as "the cards were animated in", not by
+    // watching pixels: what breaks in practice is a card element rebuilt every
+    // frame (animating forever) or never given the class at all.
+    const animated = await pc.evaluate(() => {
+      const cards = [...document.querySelectorAll('#table-hand .card')];
+      return {
+        total: cards.length,
+        dealing: cards.filter((card) => card.classList.contains('dealing')).length,
+        staggered: new Set(cards.map((card) => card.style.animationDelay)).size,
+      };
+    });
+    check(
+      'every dealt card is animated in',
+      animated.dealing === animated.total && animated.total >= 4,
+      `${animated.dealing}/${animated.total} animated`,
     );
-    check('the player is dealt two cards', myCards === 2, `cards=${myCards}`);
+    check(
+      'the cards are staggered rather than landing together',
+      animated.staggered > 1,
+      `${animated.staggered} distinct delays`,
+    );
+
+    // Cards must survive the 5Hz table refresh. If the rows were rebuilt each
+    // time, these elements would be different objects a moment later — and the
+    // animation would restart on every one.
+    const cardIdentity = await pc.evaluate(() => {
+      const first = document.querySelector('#hand-seats .card');
+      window.__cardProbe = first;
+      return first?.textContent ?? null;
+    });
+    await sleep(1_200);
+    const cardStable = await pc.evaluate(
+      () => window.__cardProbe === document.querySelector('#hand-seats .card'),
+    );
+    check('dealt cards are not rebuilt on every table update', cardStable, `card=${cardIdentity}`);
 
     await pc.screenshot({ path: path.join(SHOT_DIR, 'desktop-blackjack.png') });
 
-    const actions = await pc.evaluate(() =>
-      [...document.querySelectorAll('#hand-actions .hand-action')].map((b) => b.dataset.actionId),
+    // About one hand in ten is a natural — the player's or the dealer's — and a
+    // natural is settled before anybody gets a turn. That is correct blackjack,
+    // so the test plays on until it draws a hand that actually needs deciding
+    // rather than asserting that a decision phase always happens.
+    let outcome = await awaitTurnOrResult();
+    let hands = 1;
+    while (outcome === 'resolved' && hands < 5) {
+      hands += 1;
+      if (!(await betAndDeal(50))) break;
+      outcome = await awaitTurnOrResult();
+    }
+    check(
+      'a hand needing a decision is reached',
+      outcome === 'turn',
+      `${hands} hand(s), ended ${outcome}`,
     );
+
+    // The state of a live hand, captured while it is still live.
+    const live = await pc.evaluate(() => ({
+      dealerCards: document.querySelectorAll('#hand-dealer .card').length,
+      facedown: document.querySelectorAll('#hand-dealer .card.facedown').length,
+      mine: document.querySelectorAll('#hand-seats .hand-row.mine .card').length,
+      actions: [...document.querySelectorAll('#hand-actions .hand-action')].map(
+        (button) => button.dataset.actionId,
+      ),
+    }));
+    check('the dealer shows two cards', live.dealerCards === 2, `cards=${live.dealerCards}`);
+    check('one dealer card is face down', live.facedown === 1, `facedown=${live.facedown}`);
+    check('the player is dealt at least two cards', live.mine >= 2, `cards=${live.mine}`);
     check(
       'the table offers hit, stand and double',
-      actions.includes('hit') && actions.includes('stand'),
-      `actions=${actions.join(',')}`,
+      live.actions.includes('hit') && live.actions.includes('stand'),
+      `actions=${live.actions.join(',')}`,
     );
 
     // Standing has to actually end the turn — a button that sends a message the
@@ -471,12 +609,28 @@ async function run() {
     let handOver = false;
     for (let attempt = 0; attempt < 40; attempt += 1) {
       await sleep(400);
-      if (!(await pc.isVisible('#table-hand'))) {
+      if (await pc.evaluate(() => document.querySelectorAll('#hand-actions button').length === 0)) {
         handOver = true;
         break;
       }
     }
-    check('standing ends the turn and the hand resolves', handOver);
+    check('standing ends the turn', handOver);
+
+    // The dealer's hole card is the one thing kept back all hand. It has to be
+    // turned over where the player can see it, not folded into a summary line.
+    let revealed = false;
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      await sleep(400);
+      const dealer = await pc.evaluate(() => ({
+        shown: document.querySelectorAll('#hand-dealer .card').length,
+        facedown: document.querySelectorAll('#hand-dealer .card.facedown').length,
+      }));
+      if (dealer.facedown === 0 && dealer.shown >= 2) {
+        revealed = true;
+        break;
+      }
+    }
+    check('the dealer turns the hole card over on screen', revealed);
 
     // The hand ending is not the round ending: the table still plays the dealer
     // out for the camera before it pays. Wait for the result itself.

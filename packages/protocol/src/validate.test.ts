@@ -119,6 +119,19 @@ describe('parseClientMessage', () => {
     ).toBeNull();
   });
 
+  it('accepts a bare deal call', () => {
+    expect(parseClientMessage({ type: 'table:deal' })).toEqual({ type: 'table:deal' });
+  });
+
+  it('ignores anything a client tries to attach to a deal call', () => {
+    // It carries no payload on purpose: which table, and whether this player
+    // has chips down, are the server's to know. Extra fields are dropped rather
+    // than rejected, so a future client sending more cannot break an old server.
+    expect(
+      parseClientMessage({ type: 'table:deal', tableId: 7, playerId: 'someone-else' }),
+    ).toEqual({ type: 'table:deal' });
+  });
+
   it('accepts a table action and carries the id through untouched', () => {
     expect(parseClientMessage({ type: 'table:action', actionId: 'hit' })).toEqual({
       type: 'table:action',

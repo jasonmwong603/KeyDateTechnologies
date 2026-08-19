@@ -174,7 +174,10 @@ a spot with a positive expected return is a money printer and will be found.
 
 **Blackjack** — two tables, and the only game where you actually play rather than bet.
 Six-deck shoe reshuffled each round, dealer stands on all 17, blackjack pays 3 to 2,
-double down on any first two cards. No splitting, no insurance, no surrender: a split
+double down on any first two cards. Bet any whole number from 10 up to your entire stack;
+there is no table maximum, because the house here is not a bankroll anybody has to keep
+solvent. And there is no betting clock — the table waits until a player with chips down
+calls the deal, then gives everyone ten seconds of last call. No splitting, no insurance, no surrender: a split
 turns one seat into several simultaneous hands, which the turn order and the wire state
 are not built for, and half-implementing it is worse than leaving it out.
 

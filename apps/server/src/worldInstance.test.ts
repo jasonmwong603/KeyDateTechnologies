@@ -406,7 +406,8 @@ describe('WorldInstance tables', () => {
 
     world.handleWager('p1', 'ante', 100);
 
-    // Close betting; the table should deal rather than resolve outright.
+    // Blackjack waits to be asked. Call the deal, then run out the last call.
+    world.handleCallDeal('p1');
     advance(30_000);
     tick();
 
@@ -447,6 +448,7 @@ describe('WorldInstance tables', () => {
 
     const before = world.balanceOf('p1');
     world.handleWager('p1', 'ante', 200);
+    world.handleCallDeal('p1');
     advance(30_000);
     tick();
 
@@ -702,5 +704,147 @@ describe('WorldInstance disconnection', () => {
 
     const removed = b.snapshots.flatMap((snapshot) => snapshot.removed);
     expect(removed).toContain(gone.entityId);
+  });
+});
+
+describe('WorldInstance blackjack betting', () => {
+  function seatAtBlackjack(playerId: string): number {
+    const table = world.world.interactables.find((entry) => entry.gameId === 'blackjack')!;
+    const record = world.getPlayer(playerId)!;
+    record.state.x = table.x;
+    record.state.z = table.z + 1.5;
+    world.handleInteract(playerId, table.id);
+    return table.id;
+  }
+
+  /** The most recent table state this client was sent. */
+  function lastState(client: FakeClient): Record<string, unknown> {
+    const states = client.events('table:state') as { state: Record<string, unknown> }[];
+    return states.at(-1)!.state;
+  }
+
+  it('opens betting with no clock running', () => {
+    const client = new FakeClient();
+    world.addPlayer('p1', 'Sam', client.send, 't1');
+    seatAtBlackjack('p1');
+    tick();
+
+    const state = lastState(client);
+    expect(state.phase).toBe('betting');
+    expect(state.dealOnDemand).toBe(true);
+    expect(state.dealCalled).toBe(false);
+    expect(state.bettingMsRemaining).toBe(0);
+  });
+
+  it('accepts any integer bet from the minimum up to the whole balance', () => {
+    const client = new FakeClient();
+    world.addPlayer('p1', 'Sam', client.send, 't1');
+    seatAtBlackjack('p1');
+    tick();
+
+    const balance = world.balanceOf('p1');
+    world.handleWager('p1', 'ante', balance);
+
+    expect(world.balanceOf('p1')).toBe(0);
+    expect(client.errors()).toHaveLength(0);
+  });
+
+  it('refuses a bet one chip beyond the balance', () => {
+    const client = new FakeClient();
+    world.addPlayer('p1', 'Sam', client.send, 't1');
+    seatAtBlackjack('p1');
+    tick();
+
+    const balance = world.balanceOf('p1');
+    world.handleWager('p1', 'ante', balance + 1);
+
+    expect(world.balanceOf('p1')).toBe(balance);
+    expect(client.errors().at(-1)?.code).toBe('insufficient_chips');
+  });
+
+  it('does not deal until the deal is called', () => {
+    const client = new FakeClient();
+    world.addPlayer('p1', 'Sam', client.send, 't1');
+    seatAtBlackjack('p1');
+    tick();
+    world.handleWager('p1', 'ante', 100);
+
+    // Two minutes of ticks with no deal call.
+    for (let i = 0; i < 24; i += 1) {
+      advance(5_000);
+      tick();
+    }
+
+    expect(lastState(client).phase).toBe('betting');
+    expect(client.events('table:resolved')).toHaveLength(0);
+  });
+
+  it('starts the last call when a player calls the deal', () => {
+    const client = new FakeClient();
+    world.addPlayer('p1', 'Sam', client.send, 't1');
+    seatAtBlackjack('p1');
+    tick();
+    world.handleWager('p1', 'ante', 100);
+    world.handleCallDeal('p1');
+    tick();
+
+    const state = lastState(client);
+    expect(state.dealCalled).toBe(true);
+    expect(state.bettingMsRemaining as number).toBeGreaterThan(0);
+    expect(state.phase).toBe('betting');
+  });
+
+  it('refuses the deal call from a player who has not bet', () => {
+    const client = new FakeClient();
+    world.addPlayer('p1', 'Sam', client.send, 't1');
+    seatAtBlackjack('p1');
+    tick();
+
+    world.handleCallDeal('p1');
+
+    expect(client.errors().at(-1)?.code).toBe('invalid_action');
+    expect(lastState(client).dealCalled).toBe(false);
+  });
+
+  it('refuses the deal call from a player who is not at a table', () => {
+    const client = new FakeClient();
+    world.addPlayer('p1', 'Sam', client.send, 't1');
+
+    world.handleCallDeal('p1');
+
+    expect(client.errors().at(-1)?.code).toBe('invalid_action');
+  });
+
+  it('refuses the deal call at a table that runs on a clock', () => {
+    const client = new FakeClient();
+    world.addPlayer('p1', 'Sam', client.send, 't1');
+    const wheel = world.world.interactables.find((entry) => entry.gameId === 'wheel-of-fortune')!;
+    const record = world.getPlayer('p1')!;
+    record.state.x = wheel.x;
+    record.state.z = wheel.z + 1.5;
+    world.handleInteract('p1', wheel.id);
+    tick();
+    world.handleWager('p1', 'x2', 50);
+
+    world.handleCallDeal('p1');
+
+    expect(client.errors().at(-1)?.code).toBe('invalid_action');
+  });
+
+  it('deals about ten seconds after the call, not before', () => {
+    const client = new FakeClient();
+    world.addPlayer('p1', 'Sam', client.send, 't1');
+    seatAtBlackjack('p1');
+    tick();
+    world.handleWager('p1', 'ante', 100);
+    world.handleCallDeal('p1');
+
+    advance(9_000);
+    tick();
+    expect(lastState(client).phase).toBe('betting');
+
+    advance(1_500);
+    tick();
+    expect(lastState(client).phase).not.toBe('betting');
   });
 });

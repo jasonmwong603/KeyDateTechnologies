@@ -304,6 +304,34 @@ export class WorldInstance {
   }
 
   /**
+   * Calls the deal at a table that waits to be asked.
+   *
+   * Broadcast to the whole table rather than acknowledged to the caller: the
+   * last call is everyone's business, and the other seats need to see the clock
+   * start the moment it starts.
+   */
+  handleCallDeal(playerId: string): void {
+    const record = this.players.get(playerId);
+    if (record === undefined) return;
+
+    const tableId = record.state.seatedAt;
+    if (tableId === null) {
+      this.sendError(record, 'invalid_action', 'Sit at a table first.');
+      return;
+    }
+
+    const table = this.tables.get(tableId);
+    if (table === undefined) return;
+
+    const result = table.callDeal(playerId);
+    if (!result.ok) {
+      this.sendError(record, result.code, result.message);
+      return;
+    }
+    this.broadcastTableState(tableId, true);
+  }
+
+  /**
    * Takes a player's turn at a table with a decision phase.
    *
    * Every guard that matters lives in the runtime — whose turn it is, whether

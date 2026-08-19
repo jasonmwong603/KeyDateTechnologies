@@ -147,6 +147,9 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       return { type: 'table:wager', spotId: raw.spotId, amount };
     }
 
+    case 'table:deal':
+      return { type: 'table:deal' };
+
     case 'table:action': {
       if (typeof raw.actionId !== 'string' || raw.actionId.length > 32) return null;
       // Whether the action is legal, and whether it is even this player's turn,

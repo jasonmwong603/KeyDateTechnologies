@@ -76,6 +76,17 @@ export interface ClientPlaceWager {
 }
 
 /**
+ * Tell the dealer to deal.
+ *
+ * Only meaningful at a table that waits to be asked rather than running a
+ * clock. Carries nothing: which table, and whether this player has chips on the
+ * felt, are both things the server already knows and a client must not assert.
+ */
+export interface ClientCallDeal {
+  type: 'table:deal';
+}
+
+/**
  * Take your turn at a table that has one — hit, stand, double.
  *
  * Carries no target: the server knows whose turn it is, and a client asserting
@@ -128,6 +139,7 @@ export type ClientMessage =
   | ClientInteract
   | ClientLeaveTable
   | ClientPlaceWager
+  | ClientCallDeal
   | ClientTableAction
   | ClientBuyDrink
   | ClientClearWagers

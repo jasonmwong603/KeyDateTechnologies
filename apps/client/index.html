@@ -127,11 +127,24 @@
         <div id="table-spots"></div>
 
         <div id="stake-row">
-          <span class="label">Stake</span>
+          <label class="label" for="stake-input">Bet</label>
+          <input
+            id="stake-input"
+            type="number"
+            inputmode="numeric"
+            step="1"
+            min="10"
+            value="50"
+            aria-describedby="stake-limits"
+          />
+          <button id="stake-max" type="button" class="stake-preset">All in</button>
           <div id="stake-buttons"></div>
-          <span id="stake-value">50</span>
           <button id="clear-bets" type="button">Clear bets</button>
+          <span id="stake-limits" class="stake-limits"></span>
         </div>
+
+        <!-- Only on tables that wait to be asked rather than running a clock. -->
+        <button id="deal-button" type="button" hidden>Deal</button>
 
         <div id="table-wagers"></div>
         <div id="table-result" hidden></div>

@@ -99,6 +99,33 @@ export interface InteractiveTableGame<S = unknown> {
   settle(state: S): TableResolution;
 }
 
+/**
+ * A `maxWager` meaning "the only limit is what you have".
+ *
+ * A real pit posts a table maximum because the house is managing its own
+ * exposure to a bankroll it has to keep solvent. Nothing here has that problem
+ * — the chips are virtual and the house is not a modelled account — so a table
+ * can simply let a player push what they actually hold. The runtime already
+ * refuses a wager the ledger cannot cover, which is the real limit.
+ */
+export const NO_TABLE_LIMIT = Number.MAX_SAFE_INTEGER;
+
+/**
+ * How a table's betting window ends.
+ *
+ * `'timer'` is the fairground model: a clock runs, and when it runs out the
+ * wheel spins whether you were ready or not. Right for a game where the round
+ * happens *to* you.
+ *
+ * `'on-demand'` is how a card table actually works. Betting stays open with no
+ * clock at all, and nothing happens until a player with chips on the felt calls
+ * for the deal. That call opens a last-call window of `bettingWindowMs` — long
+ * enough for everyone else to get their bets down — and then the cards come
+ * out. It is the difference between a table that hurries you and a table you
+ * are running.
+ */
+export type BettingClose = 'timer' | 'on-demand';
+
 export interface TableGameDefinition {
   id: string;
   displayName: string;
@@ -106,9 +133,19 @@ export interface TableGameDefinition {
   minPlayers: number;
   maxPlayers: number;
   minWager: number;
+  /** Cap on one player's exposure per round, or `NO_TABLE_LIMIT` for none. */
   maxWager: number;
-  /** How long the betting window stays open, in milliseconds. */
+  /**
+   * The betting clock, in milliseconds.
+   *
+   * Under `'timer'` this is the whole window. Under `'on-demand'` there is no
+   * window until somebody calls the deal, and this is the last call that
+   * follows — one number either way, so the two modes cannot disagree about
+   * how long a countdown on screen is supposed to last.
+   */
   bettingWindowMs: number;
+  /** Defaults to `'timer'`. */
+  bettingClose?: BettingClose;
   spots: BettingSpot[];
   /**
    * Decides the round.

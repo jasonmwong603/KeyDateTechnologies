@@ -11,6 +11,12 @@ import { verifyCommitment } from '@keydate/netcode';
 
 const STAKE_STEPS = [10, 50, 250, 1000];
 
+/** Used until a table says otherwise, so the box is never unbounded. */
+const MIN_STAKE_FLOOR = 10;
+
+/** Gap between cards as they are dealt out, in milliseconds. */
+const DEAL_STAGGER_MS = 110;
+
 export class Hud {
   /** @param {import('./net.js').Connection} connection */
   constructor(connection) {
@@ -31,6 +37,10 @@ export class Hud {
       tablePhase: document.getElementById('table-phase'),
       tableTimerBar: document.getElementById('table-timer-bar'),
       tableSpots: document.getElementById('table-spots'),
+      dealButton: document.getElementById('deal-button'),
+      stakeInput: document.getElementById('stake-input'),
+      stakeMax: document.getElementById('stake-max'),
+      stakeLimits: document.getElementById('stake-limits'),
       tableHand: document.getElementById('table-hand'),
       handDealer: document.getElementById('hand-dealer'),
       handSeats: document.getElementById('hand-seats'),
@@ -39,7 +49,6 @@ export class Hud {
       tableResult: document.getElementById('table-result'),
       fairness: document.getElementById('fairness'),
       stakeButtons: document.getElementById('stake-buttons'),
-      stakeValue: document.getElementById('stake-value'),
       clearBets: document.getElementById('clear-bets'),
       leaveTable: document.getElementById('leave-table'),
       drunkRow: document.getElementById('drunk-row'),
@@ -56,19 +65,35 @@ export class Hud {
     this._lastCommitment = null;
     /** What the action buttons currently show, so they are rebuilt only on change. */
     this._actionSignature = '';
+    /** Card rows on screen, keyed by seat, so new cards can animate in. */
+    this._handRows = new Map();
+    /** The round those rows belong to; a new round clears the felt. */
+    this._handRound = null;
+    /** The last hand we were shown, kept so the cards stay up while it resolves. */
+    this._lastHandView = null;
+    /** Limits for the table currently open, refreshed from its state. */
+    this._limits = { min: MIN_STAKE_FLOOR, max: MIN_STAKE_FLOOR };
+
     this._buildStakeButtons();
     this._bindActions();
   }
 
+  /**
+   * Quick amounts, as shortcuts that fill the box rather than replace it.
+   *
+   * The box is the real control — any integer from the table minimum to
+   * whatever you are holding — but four taps covering the common bets is
+   * quicker than typing on a phone, and one of them is always affordable
+   * because they are disabled above the balance.
+   */
   _buildStakeButtons() {
     for (const amount of STAKE_STEPS) {
       const button = document.createElement('button');
       button.type = 'button';
+      button.className = 'stake-preset';
+      button.dataset.amount = String(amount);
       button.textContent = String(amount);
-      button.addEventListener('click', () => {
-        this.stake = amount;
-        this.elements.stakeValue.textContent = String(amount);
-      });
+      button.addEventListener('click', () => this._setStake(amount));
       this.elements.stakeButtons.append(button);
     }
   }
@@ -81,6 +106,84 @@ export class Hud {
       this.connection.send({ type: 'table:leave' });
     });
     this.elements.leaveBar.addEventListener('click', () => this.hideBar());
+
+    this.elements.stakeMax.addEventListener('click', () => this._setStake(this._limits.max));
+
+    this.elements.dealButton.addEventListener('click', () => {
+      this.connection.send({ type: 'table:deal' });
+    });
+
+    // Clamped on commit rather than on every keystroke: correcting "1" to "10"
+    // mid-type makes it impossible to reach 100.
+    this.elements.stakeInput.addEventListener('change', () => this._commitStake());
+    this.elements.stakeInput.addEventListener('blur', () => this._commitStake());
+    this.elements.stakeInput.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter') return;
+      event.preventDefault();
+      this._commitStake();
+      this.elements.stakeInput.blur();
+    });
+  }
+
+  /** Sets the stake and shows it, without going outside the table's limits. */
+  _setStake(amount) {
+    this.stake = this._clampStake(amount);
+    this.elements.stakeInput.value = String(this.stake);
+    this._refreshStakeLimits();
+  }
+
+  _commitStake() {
+    this._setStake(Number.parseInt(this.elements.stakeInput.value, 10));
+  }
+
+  /**
+   * Holds a typed amount inside [minimum, what you can actually cover].
+   *
+   * The server enforces both ends regardless — this only spares the player a
+   * red error for a bet that was never going to be accepted.
+   */
+  _clampStake(amount) {
+    const { min, max } = this._limits;
+    if (!Number.isFinite(amount)) return min;
+    return Math.max(min, Math.min(max, Math.floor(amount)));
+  }
+
+  /**
+   * Re-reads the limits from the open table and the current balance.
+   *
+   * The ceiling is whichever is lower: the table's own maximum, or what is in
+   * the player's stack. On blackjack there is no table maximum, so it is simply
+   * the balance — bet what you hold.
+   */
+  _refreshStakeLimits(state) {
+    if (state !== undefined) {
+      this._limits = {
+        min: state.minWager ?? MIN_STAKE_FLOOR,
+        max: state.maxWager ?? MIN_STAKE_FLOOR,
+      };
+    }
+    const chips = this.chips ?? 0;
+    const min = this._limits.min;
+    const ceiling = Math.max(min, Math.min(this._limits.max, chips));
+    this._limits = { min, max: ceiling };
+
+    this.elements.stakeInput.min = String(min);
+    this.elements.stakeInput.max = String(ceiling);
+    this.elements.stakeLimits.textContent =
+      chips < min ? `You need ${min} to bet` : `${min} – ${ceiling.toLocaleString()}`;
+    this.elements.stakeLimits.classList.toggle('bad', chips < min);
+
+    for (const button of this.elements.stakeButtons.querySelectorAll('.stake-preset')) {
+      button.disabled = Number(button.dataset.amount) > ceiling;
+    }
+
+    // A stake left over from a richer moment must not sit in the box as an
+    // amount the table will refuse.
+    const held = this._clampStake(this.stake);
+    if (held !== this.stake) {
+      this.stake = held;
+      this.elements.stakeInput.value = String(held);
+    }
   }
 
   setChips(value) {
@@ -89,6 +192,8 @@ export class Hud {
     // Affordability is re-evaluated whenever the balance moves, so a round that
     // just cleaned you out greys the menu out immediately.
     if (!this.elements.barPanel.hidden) this._refreshAffordability();
+    // The bet ceiling is the balance, so it moves every time the balance does.
+    if (!this.elements.tablePanel.hidden) this._refreshStakeLimits();
   }
 
   /**
@@ -199,14 +304,49 @@ export class Hud {
     const timer = this._timerFraction(state);
     this.elements.tableTimerBar.style.width = `${Math.max(0, Math.min(1, timer)) * 100}%`;
 
+    this._refreshStakeLimits(state);
     this._renderSpots(state);
+    this._renderDealButton(state);
     this._renderHand(state);
     this._renderWagers(state);
     this._renderResult(state);
   }
 
+  /**
+   * The button that tells the dealer to go.
+   *
+   * Only on tables that wait to be asked. It is the thing that replaced the
+   * betting clock, so it has to say plainly what it is waiting for: a bet, a
+   * press, or the last call it already started.
+   */
+  _renderDealButton(state) {
+    const button = this.elements.dealButton;
+    if (!state.dealOnDemand) {
+      button.hidden = true;
+      return;
+    }
+
+    button.hidden = state.phase !== 'betting';
+    if (button.hidden) return;
+
+    const staked = state.wagers.some((wager) => wager.playerId === this.connection.playerId);
+
+    if (state.dealCalled) {
+      button.disabled = true;
+      button.classList.add('counting');
+      button.textContent = `Dealing in ${Math.ceil(state.bettingMsRemaining / 1000)}s — last call`;
+      return;
+    }
+
+    button.classList.remove('counting');
+    button.disabled = !staked;
+    button.textContent = staked ? 'Deal' : 'Place a bet first';
+  }
+
   _timerFraction(state) {
     if (state.phase === 'betting') {
+      // An on-demand table reports 0 until the deal is called, which is exactly
+      // right: there is no clock to draw, so the bar sits empty.
       return state.bettingMsRemaining / (state.bettingWindowMs || 20000);
     }
     if (state.phase === 'decisions' && state.decision) {
@@ -222,6 +362,11 @@ export class Hud {
       case 'idle':
         return 'Waiting for players';
       case 'betting':
+        if (state.dealOnDemand) {
+          return state.dealCalled
+            ? `Last call — ${Math.ceil(state.bettingMsRemaining / 1000)}s`
+            : 'Place your bet, then deal';
+        }
         return `Place your bets — ${Math.ceil(state.bettingMsRemaining / 1000)}s`;
       case 'decisions': {
         const seconds = Math.ceil((state.decision?.msRemaining ?? 0) / 1000);
@@ -298,47 +443,252 @@ export class Hud {
    * never be stale — a Hit button left over from a hand that has already moved
    * on is worse than no button at all.
    */
+  /**
+   * The hand in progress: the dealer, every seat, and your own buttons.
+   *
+   * Kept on screen from the deal all the way through the payout, rather than
+   * only while somebody is acting. The dealer drawing to seventeen is the most
+   * interesting thing that happens in a round of blackjack, and it used to
+   * happen entirely off screen — you were shown an empty panel and then a
+   * sentence telling you what you had missed.
+   *
+   * Rows are updated in place, never rebuilt. That is what makes the deal
+   * animation possible at all: a card animates because it is a *new* element,
+   * so re-creating every card five times a second would either animate
+   * everything constantly or animate nothing.
+   */
   _renderHand(state) {
-    const decision = state.phase === 'decisions' ? state.decision : null;
-    this.elements.tableHand.hidden = decision === null;
-    if (decision === null) {
-      this.elements.handActions.replaceChildren();
-      this._actionSignature = '';
+    const rows = this._handRows;
+    const hand = this._handToShow(state);
+
+    this.elements.tableHand.hidden = hand === null;
+    if (hand === null) {
+      this._clearHand();
       return;
     }
 
-    const view = decision.view ?? {};
-    this.elements.handDealer.replaceChildren(
-      this._cardRow(
-        'Dealer',
-        view.dealerCards ?? (view.dealerUpcard ? [view.dealerUpcard, null] : []),
-        view.dealerBlackjack ? 'blackjack' : '',
-      ),
-    );
-
-    const seats = document.createDocumentFragment();
-    for (const hand of view.hands ?? []) {
-      const mine = hand.playerId === this.connection.playerId;
-      const name = mine ? 'You' : this._seatLabel(state, hand.playerId);
-      const note = hand.bust
-        ? 'bust'
-        : hand.blackjack
-          ? 'blackjack'
-          : `${hand.soft ? 'soft ' : ''}${hand.total}${hand.doubled ? ' · doubled' : ''}`;
-
-      const row = this._cardRow(`${name} · ${hand.stake}`, hand.cards, note);
-      row.classList.toggle('mine', mine);
-      row.classList.toggle('acting', hand.playerId === decision.actor);
-      seats.append(row);
+    // A new round is a new shoe and a new deal; nothing carries over.
+    if (this._handRound !== state.round) {
+      this._handRound = state.round;
+      this._clearHand();
     }
-    this.elements.handSeats.replaceChildren(seats);
+
+    const live = new Set();
+    let dealt = 0;
+
+    dealt += this._syncRow('dealer', this.elements.handDealer, {
+      label: 'Dealer',
+      cards: hand.dealer,
+      note: hand.dealerNote,
+      dealtSoFar: dealt,
+    });
+
+    for (const seat of hand.seats) {
+      const key = `seat:${seat.playerId}`;
+      live.add(key);
+      dealt += this._syncRow(key, this.elements.handSeats, {
+        label: seat.label,
+        cards: seat.cards,
+        note: seat.note,
+        mine: seat.mine,
+        acting: seat.acting,
+        outcome: seat.outcome,
+        dealtSoFar: dealt,
+      });
+    }
+
+    for (const [key, row] of rows) {
+      if (key === 'dealer' || live.has(key)) continue;
+      row.element.remove();
+      rows.delete(key);
+    }
+
+    this._renderHandActions(state);
+  }
+
+  /**
+   * Works out which hand to draw, from whichever source currently has one.
+   *
+   * Three of them, in order: the live decision view while somebody is acting,
+   * the last view we were sent while the dealer plays it out (the server sends
+   * no view during `resolving` — the result does not exist yet), and the
+   * finished hands out of the result once it does.
+   */
+  _handToShow(state) {
+    const detail = state.lastResult?.detail;
+    if ((state.phase === 'payout' || state.phase === 'resolving') && detail?.hands !== undefined) {
+      return {
+        dealer: detail.dealer ?? [],
+        dealerNote: detail.dealerBust
+          ? `bust ${detail.dealerTotal}`
+          : detail.dealerBlackjack
+            ? 'blackjack'
+            : String(detail.dealerTotal ?? ''),
+        seats: (detail.hands ?? []).map((entry) => ({
+          playerId: entry.playerId,
+          label: this._handLabel(state, entry.playerId, entry.stake),
+          cards: entry.cards,
+          note: `${entry.total}${entry.doubled ? ' · doubled' : ''}`,
+          outcome: entry.outcome,
+          mine: entry.playerId === this.connection.playerId,
+          acting: false,
+        })),
+      };
+    }
+
+    // Before the cards are out there is nothing to show, and last round's hand
+    // must not linger on a felt that has been cleared for a new one.
+    if (state.phase === 'idle' || state.phase === 'betting') return null;
+
+    if (state.phase === 'decisions' && state.decision?.view?.hands !== undefined) {
+      // Remembered so the cards stay up through `resolving`, during which the
+      // server sends no view at all — the result does not exist yet.
+      this._lastHandView = state.decision.view;
+    }
+
+    const view = this._lastHandView;
+    if (view === null || view === undefined || view.hands === undefined) return null;
+
+    const actor = state.decision?.actor ?? null;
+    return {
+      // A null in the card list renders face down — which is exactly what the
+      // dealer's hole card is until the hand is over.
+      dealer: view.dealerCards ?? (view.dealerUpcard ? [view.dealerUpcard, null] : []),
+      dealerNote: view.dealerBlackjack ? 'blackjack' : '',
+      seats: (view.hands ?? []).map((entry) => ({
+        playerId: entry.playerId,
+        label: this._handLabel(state, entry.playerId, entry.stake),
+        cards: entry.cards,
+        note: entry.bust
+          ? 'bust'
+          : entry.blackjack
+            ? 'blackjack'
+            : `${entry.soft ? 'soft ' : ''}${entry.total}${entry.doubled ? ' · doubled' : ''}`,
+        outcome: '',
+        mine: entry.playerId === this.connection.playerId,
+        acting: entry.playerId === actor,
+      })),
+    };
+  }
+
+  _handLabel(state, playerId, stake) {
+    const who = playerId === this.connection.playerId ? 'You' : this._seatLabel(state, playerId);
+    return stake === undefined ? who : `${who} · ${Number(stake).toLocaleString()}`;
+  }
+
+  _clearHand() {
+    for (const row of this._handRows.values()) {
+      if (row.element.id !== 'hand-dealer') row.element.remove();
+    }
+    this._handRows.clear();
+    this.elements.handDealer.replaceChildren();
+    this.elements.handSeats.replaceChildren();
+    this.elements.handActions.replaceChildren();
+    this._actionSignature = '';
+  }
+
+  /**
+   * Brings one row up to date, animating only what is genuinely new.
+   *
+   * Returns how many cards it animated, so the caller can keep staggering them
+   * across rows — the deal should look like one continuous motion round the
+   * table, not like every seat being dealt simultaneously.
+   */
+  _syncRow(key, parent, spec) {
+    let row = this._handRows.get(key);
+    if (row === undefined) {
+      const element = parent.id === 'hand-dealer' ? parent : document.createElement('div');
+      element.className = 'hand-row';
+
+      const who = document.createElement('span');
+      who.className = 'hand-who';
+      const cards = document.createElement('span');
+      cards.className = 'hand-cards';
+      const note = document.createElement('span');
+      note.className = 'hand-note';
+
+      element.replaceChildren(who, cards, note);
+      if (element !== parent) parent.append(element);
+
+      row = { element, who, cards, note, shown: [] };
+      this._handRows.set(key, row);
+    }
+
+    row.who.textContent = spec.label;
+    row.note.textContent = spec.note ?? '';
+    row.element.classList.toggle('mine', spec.mine === true);
+    row.element.classList.toggle('acting', spec.acting === true);
+    row.element.dataset.outcome = spec.outcome ?? '';
+
+    return this._syncCards(row, spec.cards ?? [], spec.dealtSoFar ?? 0);
+  }
+
+  /** Diffs one row's cards, appending new ones and flipping revealed ones. */
+  _syncCards(row, cards, dealtSoFar) {
+    const codes = cards.map((card) => this._cardKey(card));
+    let animated = 0;
+
+    // The common case by far: the hand grew. Everything already on the felt
+    // stays exactly where it is, and only the new cards are dealt in.
+    const grew =
+      codes.length >= row.shown.length && row.shown.every((code, index) => code === codes[index]);
+
+    if (!grew) {
+      // Something other than a draw changed — the dealer's hole card turning
+      // face up is the one that matters. Replace in place, flipping whatever
+      // was hidden and is now known.
+      row.cards.replaceChildren();
+      cards.forEach((card, index) => {
+        const flipped = row.shown[index] === 'facedown' && codes[index] !== 'facedown';
+        row.cards.append(this._cardElement(card, flipped ? 'flip' : null, 0));
+      });
+      row.shown = codes;
+      return 0;
+    }
+
+    for (let index = row.shown.length; index < cards.length; index += 1) {
+      row.cards.append(
+        this._cardElement(cards[index], 'deal', (dealtSoFar + animated) * DEAL_STAGGER_MS),
+      );
+      animated += 1;
+    }
+    row.shown = codes;
+    return animated;
+  }
+
+  _cardKey(card) {
+    return card === null || card === undefined ? 'facedown' : `${card.rank}${card.suit}`;
+  }
+
+  /** One card. `motion` is 'deal' for a card coming off the shoe, 'flip' for a reveal. */
+  _cardElement(card, motion, delayMs) {
+    const element = document.createElement('span');
+    if (card === null || card === undefined) {
+      // The back is drawn in CSS rather than set as text. U+1F0A0 (🂠) is the
+      // obvious choice and renders as a missing-glyph box on every machine that
+      // does not ship a playing-card font, which is most of them.
+      element.className = 'card facedown';
+      element.setAttribute('aria-label', 'face down');
+    } else {
+      element.className = card.suit === '\u2665' || card.suit === '\u2666' ? 'card red' : 'card';
+      element.textContent = `${card.rank}${card.suit}`;
+    }
+    if (motion !== null) {
+      element.classList.add(motion === 'deal' ? 'dealing' : 'flipping');
+      if (delayMs > 0) element.style.animationDelay = `${delayMs}ms`;
+    }
+    return element;
+  }
+
+  _renderHandActions(state) {
+    const decision = state.phase === 'decisions' ? state.decision : null;
 
     // Table state arrives about five times a second. Rebuilding the buttons on
     // every one of those tears the button out from under the player's finger
     // between mousedown and mouseup, and the click never lands — so they are
     // rebuilt only when what is on offer actually changes.
-    const offered = this._isMyTurn(state) ? (decision.actions ?? []) : [];
-    const signature = `${decision.actor}:${offered.map((action) => action.id).join(',')}`;
+    const offered = decision !== null && this._isMyTurn(state) ? (decision.actions ?? []) : [];
+    const signature = `${decision?.actor ?? ''}:${offered.map((action) => action.id).join(',')}`;
     if (signature === this._actionSignature) return;
     this._actionSignature = signature;
 
@@ -365,40 +715,6 @@ export class Hud {
       });
       this.elements.handActions.append(button);
     }
-  }
-
-  /** One labelled row of cards. A null card renders face down. */
-  _cardRow(label, cards, note) {
-    const row = document.createElement('div');
-    row.className = 'hand-row';
-
-    const who = document.createElement('span');
-    who.className = 'hand-who';
-    who.textContent = label;
-    row.append(who);
-
-    const held = document.createElement('span');
-    held.className = 'hand-cards';
-    for (const card of cards ?? []) {
-      const chip = document.createElement('span');
-      if (card === null || card === undefined) {
-        chip.className = 'card facedown';
-        chip.textContent = '🂠';
-      } else {
-        chip.className = card.suit === '♥' || card.suit === '♦' ? 'card red' : 'card';
-        chip.textContent = `${card.rank}${card.suit}`;
-      }
-      held.append(chip);
-    }
-    row.append(held);
-
-    if (note) {
-      const tail = document.createElement('span');
-      tail.className = 'hand-note';
-      tail.textContent = note;
-      row.append(tail);
-    }
-    return row;
   }
 
   /**
@@ -486,9 +802,14 @@ export class Hud {
   hideTable() {
     this.elements.tablePanel.hidden = true;
     this.elements.tableHand.hidden = true;
-    this.elements.handActions.replaceChildren();
+    this.elements.dealButton.hidden = true;
     this.elements.tableSpots.dataset.gameId = '';
     this.currentTableId = null;
+    // Standing up ends your involvement in that hand. Nothing about it should
+    // still be on screen if you sit down somewhere else.
+    this._lastHandView = null;
+    this._handRound = null;
+    this._clearHand();
   }
 
   addChatLine(from, text, channel) {

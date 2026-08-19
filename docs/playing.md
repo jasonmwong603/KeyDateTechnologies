@@ -137,9 +137,12 @@ chips that pay for the next round.
 1. **Walk to a table.** Six tables sit around the central plinth. A prompt appears when
    you are close enough.
 2. **Sit down** with `E` (or **Use**).
-3. **Pick a stake** — 10, 50, 250 or 1000 — then tap a betting spot.
-4. **Watch the timer.** Betting closes when it runs out, or as soon as everyone at the
-   table is ready.
+3. **Set your bet.** Type any amount from the table minimum up to your whole stack, or
+   tap one of the quick amounts, or **All in**. Then tap a betting spot to put it down.
+4. **Start the round.** On the wheel, roulette and baccarat a timer is already running and
+   the round goes when it runs out. **Blackjack has no timer** — nothing happens until
+   somebody presses **Deal**, which gives everyone ten seconds of last call to get their
+   bets down before the cards come out. Anyone with chips on the felt can press it.
 5. **Play your hand**, if the game has one. Blackjack deals and then waits on you; the
    panel shows the cards and your buttons, and you get 15 seconds. Run out of time and
    the table plays a sensible hand for you rather than standing on 12.
@@ -149,13 +152,13 @@ chips that pay for the next round.
 
 ### The games
 
-| Game                 | Where                                 | What it is                                                                                                                                                             |
-| -------------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Blackjack**        | Two tables, north-west and south-east | Six decks, dealer stands on all 17, blackjack pays 3 to 2. Hit, stand, or double on your first two cards. No splitting.                                                |
-| **Roulette**         | North-east                            | European single zero — one green pocket, not two. Red/black, odd/even, halves, dozens, and the zero straight up at 35 to 1.                                            |
-| **Baccarat**         | South-west                            | Punto banco. Back the player, the banker, or a tie; the drawing rules do the rest. Banker pays 0.95 to 1 after commission, a tie pays 9 to 1 and pushes the other two. |
-| **Wheel of Fortune** | West wall                             | The house game. The `9x` spot is priced at exactly true odds — the one bet on the floor with no house edge at all.                                                     |
-| **High Card Duel**   | East wall                             | No house cut whatsoever. Everyone antes, highest card takes the pot. Needs two players.                                                                                |
+| Game                 | Where                                 | What it is                                                                                                                                                                                                                                  |
+| -------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Blackjack**        | Two tables, north-west and south-east | Six decks, dealer stands on all 17, blackjack pays 3 to 2. Hit, stand, or double on your first two cards. No splitting. Bet anything from 10 up to your whole stack — no table maximum — and the round starts when somebody calls the deal. |
+| **Roulette**         | North-east                            | European single zero — one green pocket, not two. Red/black, odd/even, halves, dozens, and the zero straight up at 35 to 1.                                                                                                                 |
+| **Baccarat**         | South-west                            | Punto banco. Back the player, the banker, or a tie; the drawing rules do the rest. Banker pays 0.95 to 1 after commission, a tie pays 9 to 1 and pushes the other two.                                                                      |
+| **Wheel of Fortune** | West wall                             | The house game. The `9x` spot is priced at exactly true odds — the one bet on the floor with no house edge at all.                                                                                                                          |
+| **High Card Duel**   | East wall                             | No house cut whatsoever. Everyone antes, highest card takes the pot. Needs two players.                                                                                                                                                     |
 
 Every spot on every felt returns between 93% and 100% of what is staked on it, and there
 is a test that fails if one ever climbs above 100% or drops below 93%. Roulette is
@@ -206,6 +209,8 @@ Fast, self-contained things to try first:
 | The floor layout, table positions       | `packages/sim/src/world.ts`                            |
 | Paytables and odds                      | one file per game in `packages/games/table-games/src/` |
 | Blackjack house rules                   | `blackjack.ts` — deck count, S17, the 3:2 payout       |
+| The ten-second last call                | `bettingWindowMs` in `blackjack.ts`                    |
+| How the cards animate in                | `deal-in` in `apps/client/src/style.css`               |
 | Which game sits where on the floor      | `tablePositions` in `packages/sim/src/world.ts`        |
 | Drink prices, strength, sobering rate   | `apps/server/src/bar.ts`                               |
 | How strong the blur gets                | `setDrunkenness` in `apps/client/src/hud.js`           |

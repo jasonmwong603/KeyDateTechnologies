@@ -379,6 +379,9 @@ kbd {
   border: 1px solid var(--edge);
   border-radius: var(--radius);
   background: rgba(9, 14, 30, 0.55);
+  /* Cards flip about their own vertical axis as they land, which needs a
+     perspective on the container or the rotation reads as a flat squash. */
+  perspective: 900px;
 }
 
 #hand-seats {
@@ -438,9 +441,95 @@ kbd {
   color: #b3202f;
 }
 
+/*
+ * The back of a card, drawn rather than typed.
+ *
+ * Two crossed hatches over a dark ground give a card back that reads at a
+ * glance and costs nothing. It carries no text at all: the obvious character
+ * for this, U+1F0A0, needs a playing-card font almost nobody has installed and
+ * otherwise renders as a missing-glyph box.
+ */
 .card.facedown {
-  background: linear-gradient(135deg, #2b3557, #1a2039);
-  color: rgba(232, 241, 255, 0.55);
+  background-color: #232c4a;
+  background-image:
+    repeating-linear-gradient(45deg, rgba(255, 209, 102, 0.22) 0 2px, transparent 2px 5px),
+    repeating-linear-gradient(-45deg, rgba(255, 209, 102, 0.22) 0 2px, transparent 2px 5px);
+  border: 1px solid rgba(255, 209, 102, 0.3);
+  color: transparent;
+}
+
+.card.facedown::after {
+  /* Holds the line height so a face-down card is exactly the size of a face-up
+     one — a row that changes height when the hole card turns over is a jolt. */
+  content: '\00a0';
+}
+
+/*
+ * Dealing.
+ *
+ * The card comes off the shoe — up and to the right of the panel — face down,
+ * travels to its place, and only then turns over. Holding `rotateY(90deg)` for
+ * the whole flight is what sells it: edge-on, the card is genuinely invisible,
+ * so you see a card arrive and then reveal itself rather than a face sliding
+ * across the screen.
+ *
+ * `backwards` fill matters as much as the keyframes. Cards are staggered with
+ * `animation-delay`, and without it every card in the deal would be painted at
+ * its final position for a few frames before jumping back to the shoe to start.
+ */
+@keyframes deal-in {
+  0% {
+    opacity: 0;
+    transform: translate3d(210px, -74px, 0) rotate(16deg) scale(0.86) rotateY(90deg);
+  }
+  35% {
+    opacity: 1;
+  }
+  62% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(1) rotateY(90deg);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* The hole card turning over at the end of the hand. No travel — it is already
+   on the felt; it just stops being a secret. */
+@keyframes card-flip {
+  0% {
+    transform: rotateY(90deg);
+  }
+  100% {
+    transform: none;
+  }
+}
+
+.card.dealing {
+  animation: deal-in 520ms cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
+}
+
+.card.flipping {
+  animation: card-flip 260ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card.dealing,
+  .card.flipping {
+    animation: none;
+  }
+}
+
+/* Won, lost or pushed, once the hand is over. */
+.hand-row[data-outcome='win'],
+.hand-row[data-outcome='blackjack'] {
+  border-color: rgba(74, 222, 128, 0.5);
+}
+
+.hand-row[data-outcome='lose'],
+.hand-row[data-outcome='bust'] {
+  border-color: rgba(248, 113, 113, 0.4);
 }
 
 .hand-note {
@@ -505,6 +594,74 @@ kbd {
   align-items: center;
   gap: 0.5rem;
   flex-wrap: wrap;
+}
+
+/*
+ * The bet box.
+ *
+ * Any integer from the table minimum to whatever the player is holding, which
+ * is why it is a field and not a row of fixed chips. Wide enough for a
+ * seven-figure stack without reflowing the row when somebody has a good night.
+ */
+#stake-input {
+  width: 7.5rem;
+  padding: 0.4rem 0.55rem;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--gold);
+  background: rgba(9, 14, 30, 0.75);
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+}
+
+#stake-input:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 1px;
+}
+
+.stake-limits {
+  font-size: 0.68rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.stake-limits.bad {
+  color: var(--bad);
+}
+
+.stake-preset {
+  padding: 0.35rem 0.6rem;
+}
+
+/*
+ * The deal call.
+ *
+ * Full width and unmissable, because on this table nothing at all happens
+ * until it is pressed — there is no clock quietly running out behind it.
+ */
+#deal-button {
+  width: 100%;
+  padding: 0.6rem;
+  font-weight: 700;
+  color: #10131f;
+  background: var(--gold);
+  border: 1px solid var(--gold);
+  border-radius: var(--radius);
+}
+
+#deal-button:disabled {
+  color: var(--muted);
+  background: transparent;
+  border-color: var(--edge);
+}
+
+/* Counting down the last call: same button, no longer an invitation. */
+#deal-button.counting {
+  color: var(--gold);
+  background: rgba(255, 209, 102, 0.12);
+  border-color: var(--gold);
+  font-variant-numeric: tabular-nums;
 }
 
 #stake-buttons {

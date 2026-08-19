@@ -97,8 +97,18 @@ export interface TablePublicState {
   maxWager: number;
   /** The full betting window, so a countdown bar knows what it is a fraction of. */
   bettingWindowMs: number;
-  /** Milliseconds left in the betting window; 0 outside it. */
+  /**
+   * Milliseconds left on the betting clock; 0 when no clock is running.
+   *
+   * On an on-demand table this stays 0 until somebody calls the deal — there is
+   * genuinely no countdown before that, and showing a frozen bar would imply
+   * one.
+   */
   bettingMsRemaining: number;
+  /** True when this table waits for a player to call the deal. */
+  dealOnDemand: boolean;
+  /** True once the deal has been called and the last call is running. */
+  dealCalled: boolean;
   /** The hand in progress, or null outside the decision phase. */
   decision: TableDecisionState | null;
   /** Published before bets open so the outcome can be verified afterwards. */
@@ -138,6 +148,8 @@ export class TableRuntime {
   private decisionState: unknown = null;
   /** Every action applied this round, in order. Published with the result. */
   private actionLog: string[] = [];
+  /** On an on-demand table, whether a player has called for the deal. */
+  private dealCalled = false;
 
   constructor(
     readonly tableId: number,
@@ -162,6 +174,11 @@ export class TableRuntime {
   /** The interactive rules, already narrowed, or null for a one-shot game. */
   private get interactive(): InteractiveTableGame<unknown> | null {
     return (this.definition.interactive as InteractiveTableGame<unknown> | undefined) ?? null;
+  }
+
+  /** True when this table waits for a player to call the deal instead of a clock. */
+  get dealsOnDemand(): boolean {
+    return this.definition.bettingClose === 'on-demand';
   }
 
   /** Whose turn it is, or null when the table is not waiting on anybody. */
@@ -289,6 +306,44 @@ export class TableRuntime {
     return { ok: true, wager };
   }
 
+  /**
+   * Tells the dealer to deal.
+   *
+   * Only a player with chips actually on the felt may call it. That is the
+   * whole guard: without it, somebody with nothing at stake could stand at a
+   * table of six and cut everyone else's betting short for free, over and over.
+   * Having to put money down first makes rushing the table cost the person
+   * doing the rushing exactly as much as it costs everybody else.
+   *
+   * Idempotent. A second call while the last call is already running is a
+   * no-op rather than an error — a dropped acknowledgement should not turn a
+   * double-tap into a red message, and it must never extend the window.
+   */
+  callDeal(playerId: string): ActionResult {
+    if (!this.dealsOnDemand) {
+      return {
+        ok: false,
+        code: 'invalid_action',
+        message: 'This table deals on its own clock.',
+      };
+    }
+    if (this.phase !== 'betting') {
+      return { ok: false, code: 'table_locked', message: 'The cards are already out.' };
+    }
+    if (!this.isSeated(playerId)) {
+      return { ok: false, code: 'invalid_action', message: 'You are not seated at this table.' };
+    }
+    if (this.dealCalled) return { ok: true };
+
+    if (!this.wagers.some((wager) => wager.playerId === playerId)) {
+      return { ok: false, code: 'invalid_action', message: 'Place a bet before calling the deal.' };
+    }
+
+    this.dealCalled = true;
+    this.phaseEndsAt = this.host.now() + this.definition.bettingWindowMs;
+    return { ok: true };
+  }
+
   /** Pulls a player's chips back off the felt while betting is still open. */
   clearWagers(playerId: string): boolean {
     if (this.phase !== 'betting') return false;
@@ -390,6 +445,21 @@ export class TableRuntime {
           this.commitment = null;
           return null;
         }
+        if (this.dealsOnDemand) {
+          // No clock until a player asks for one. A card table waits.
+          if (!this.dealCalled || now < this.phaseEndsAt) return null;
+          if (this.wagers.length === 0) {
+            // Everyone who had called the deal pulled their chips back off the
+            // felt during the last call. Dealing into an empty table would burn
+            // a round and a commitment for nothing, so the call is simply
+            // withdrawn and betting stays open.
+            this.dealCalled = false;
+            return null;
+          }
+          this.closeBetting();
+          return null;
+        }
+
         const everyoneReady = this.wagers.length > 0 && this.seats.every((seat) => seat.ready);
         if (now >= this.phaseEndsAt || everyoneReady) this.closeBetting();
         return null;
@@ -420,7 +490,13 @@ export class TableRuntime {
     this.round += 1;
     this.wagers = [];
     this.phase = 'betting';
-    this.phaseEndsAt = this.host.now() + this.definition.bettingWindowMs;
+    // An on-demand table has no deadline until somebody sets one by calling the
+    // deal. `Infinity` rather than a very large number so nothing can quietly
+    // wrap around it after a long-running session.
+    this.phaseEndsAt = this.dealsOnDemand
+      ? Number.POSITIVE_INFINITY
+      : this.host.now() + this.definition.bettingWindowMs;
+    this.dealCalled = false;
     this.decisionState = null;
     this.actionLog = [];
 
@@ -536,14 +612,28 @@ export class TableRuntime {
       minWager: this.definition.minWager,
       maxWager: this.definition.maxWager,
       bettingWindowMs: this.definition.bettingWindowMs,
-      bettingMsRemaining:
-        this.phase === 'betting' ? Math.max(0, this.phaseEndsAt - this.host.now()) : 0,
+      bettingMsRemaining: this.bettingMsRemaining(),
+      dealOnDemand: this.dealsOnDemand,
+      dealCalled: this.dealCalled,
       decision: this.publicDecision(),
       // Only the digest goes out while the round is live. The seed stays server
       // side until `lastResult` carries it.
       commitment: this.commitment === null ? null : publicPart(this.commitment),
       lastResult: this.lastResult,
     };
+  }
+
+  /**
+   * How long the betting clock has left, or 0 when no clock is running.
+   *
+   * An on-demand table sits on an infinite deadline until the deal is called,
+   * and `Infinity` must never reach a client: it does not survive JSON, and a
+   * countdown bar cannot be a fraction of it.
+   */
+  private bettingMsRemaining(): number {
+    if (this.phase !== 'betting') return 0;
+    if (this.dealsOnDemand && !this.dealCalled) return 0;
+    return Math.max(0, this.phaseEndsAt - this.host.now());
   }
 
   /**

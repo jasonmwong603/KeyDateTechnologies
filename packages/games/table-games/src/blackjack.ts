@@ -2,6 +2,7 @@ import type { Rng } from '@keydate/netcode';
 import { buildShoe, cardCode, deal, publicCard, type Card } from './cards.js';
 import {
   autoPlay,
+  NO_TABLE_LIMIT,
   type InteractiveTableGame,
   type TableAction,
   type TableGameDefinition,
@@ -353,12 +354,16 @@ export const blackjack: TableGameDefinition = {
   minPlayers: 1,
   maxPlayers: 6,
   minWager: 10,
-  maxWager: 2_500,
-  bettingWindowMs: 18_000,
+  // Bet what you hold. The ledger is the only ceiling — see NO_TABLE_LIMIT.
+  maxWager: NO_TABLE_LIMIT,
+  // Nothing happens until somebody calls the deal; this is the last call that
+  // follows, so a table of six all get their bets down before the cards come out.
+  bettingClose: 'on-demand',
+  bettingWindowMs: 10_000,
   spots: [
     {
       id: 'ante',
-      label: 'Deal me in',
+      label: 'Bet',
       payout: 1,
       description: 'Even money. Blackjack pays 3 to 2. Dealer stands on all 17.',
     },

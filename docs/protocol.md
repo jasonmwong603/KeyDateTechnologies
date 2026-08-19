@@ -23,6 +23,7 @@ look like a netcode bug.
 | `table:wager`  | Stake chips on a betting spot                                                                 |
 | `table:clear`  | Pull your chips back while betting is open                                                    |
 | `table:ready`  | Declare readiness so the table can resolve early                                              |
+| `table:deal`   | Tell the dealer to deal, at a table that waits to be asked                                    |
 | `table:action` | Take your turn at a table that has one — `hit`, `stand`, `double`                             |
 | `chat`         | `local` (whole floor) or `table` (your table only)                                            |
 | `view-mode`    | Cosmetic; which camera you are using                                                          |
@@ -92,6 +93,16 @@ not miss.
 game it is: `displayName`, the full `spots` list, `minWager`, `maxWager`,
 `bettingWindowMs`, the seats, the wagers, the commitment, and the last result. Adding a
 game does not mean editing the client.
+
+`dealOnDemand` says which kind of betting window this table runs. A `'timer'` table counts
+down `bettingWindowMs` and then deals whether you were ready or not. An on-demand table —
+blackjack — has no clock at all until a player with chips on the felt sends `table:deal`;
+`dealCalled` then goes true and `bettingMsRemaining` counts out the last call, during which
+betting stays **open** so the rest of the table can get their bets down.
+
+`bettingMsRemaining` is 0 whenever no clock is running, including the whole of an
+on-demand table's open betting. It is never `Infinity` — that does not survive JSON, and a
+countdown bar cannot be a fraction of it.
 
 The `phase` runs `idle → betting → [decisions] → resolving → payout`. `decisions` is
 entered only by games that have a per-player turn — blackjack, so far — and when it is

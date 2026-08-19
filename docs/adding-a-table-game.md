@@ -119,6 +119,23 @@ including pot sizes that do not divide evenly.
 `roulette.test.ts` shows a paytable proven arithmetically rather than sampled, which is
 better whenever the outcome space is small enough to enumerate.
 
+## Betting windows, and table limits
+
+Two fields on the definition decide how a round starts, and both default to the fairground
+behaviour that suits a wheel.
+
+`bettingClose` is `'timer'` unless you say otherwise: a clock runs for `bettingWindowMs`
+and the wheel spins when it runs out. Set it to `'on-demand'` and the table instead waits
+— no clock at all — until a player with chips on the felt calls the deal, at which point
+`bettingWindowMs` becomes the _last call_ before the cards come out. Blackjack uses it.
+The difference is whether the round happens _to_ the players or is run _by_ them, and card
+games are the second kind.
+
+`maxWager` caps one player's total exposure per round. Set it to `NO_TABLE_LIMIT` and the
+only ceiling is what the player is actually holding — the runtime refuses anything the
+ledger cannot cover regardless, and a real pit only posts a maximum because it is managing
+a bankroll that has to stay solvent, which nothing here is.
+
 ## Games where the player actually plays
 
 Everything above assumes the round is decided the moment bets close. Blackjack is not
