@@ -177,7 +177,11 @@ Six-deck shoe reshuffled each round, dealer stands on all 17, blackjack pays 3 t
 double down on any first two cards. Bet any whole number from 10 up to your entire stack;
 there is no table maximum, because the house here is not a bankroll anybody has to keep
 solvent. And there is no betting clock — the table waits until a player with chips down
-calls the deal, then gives everyone ten seconds of last call. No splitting, no insurance, no surrender: a split
+calls the deal, then gives everyone ten seconds of last call.
+
+Cards are dealt onto the felt itself, not just into the HUD: they come out of the shoe
+one at a time, turn face up as they cross the table, and settle in front of whoever they
+belong to. The dealer's hole card stays face down, on the table, until the hand ends. No splitting, no insurance, no surrender: a split
 turns one seat into several simultaneous hands, which the turn order and the wire state
 are not built for, and half-implementing it is worse than leaving it out.
 

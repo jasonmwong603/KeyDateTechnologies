@@ -193,15 +193,24 @@ export class TableRuntime {
   // -------------------------------------------------------------------------
 
   /** Seats a player, returning the seat index, or null when the table is full. */
-  sit(playerId: string): number | null {
+  sit(playerId: string, preferred?: number): number | null {
     if (this.seats.some((seat) => seat.playerId === playerId)) {
       return this.seats.find((seat) => seat.playerId === playerId)?.seatIndex ?? null;
     }
     if (this.seats.length >= this.definition.maxPlayers) return null;
 
     const taken = new Set(this.seats.map((seat) => seat.seatIndex));
+
+    // The caller may ask for a particular seat — the server passes the one
+    // nearest where the player is standing, so walking up to a table puts you
+    // in the chair you walked up to rather than dragging you round to seat
+    // zero. It is only a preference: if it is taken, the next free one wins.
     let seatIndex = 0;
-    while (taken.has(seatIndex)) seatIndex += 1;
+    if (preferred !== undefined && Number.isInteger(preferred) && !taken.has(preferred)) {
+      seatIndex = Math.max(0, Math.min(this.definition.maxPlayers - 1, preferred));
+    } else {
+      while (taken.has(seatIndex)) seatIndex += 1;
+    }
 
     this.seats.push({ playerId, seatIndex, ready: false });
     return seatIndex;

@@ -220,8 +220,16 @@ function applyLocalCorrection(entity, ackedInput) {
 // Table and chat events
 // ---------------------------------------------------------------------------
 
-connection.on('event:table:state', (event) => hud.renderTable(event.state));
-connection.on('event:table:left', () => hud.hideTable());
+connection.on('event:table:state', (event) => {
+  hud.renderTable(event.state);
+  // The panel and the felt are drawn from one resolved hand, so they cannot
+  // disagree about what was dealt.
+  renderer.setTableHand(event.state, hud.currentHand);
+});
+connection.on('event:table:left', () => {
+  hud.hideTable();
+  renderer.clearTableHand();
+});
 connection.on('event:table:resolved', (event) => {
   if (event.result?.summary) hud.addChatLine(null, event.result.summary, 'system');
 });
@@ -400,6 +408,11 @@ window.__keydate = {
     return { id: bar.id, distance: Math.hypot(bar.x - localState.x, bar.z - localState.z) };
   },
   seatedAt: () => localState.seatedAt,
+  /** Cards physically on the felt, and whether any are still in flight. */
+  feltCards: () => ({
+    count: renderer.cardTable.cardCount,
+    dealing: renderer.cardTable.dealing,
+  }),
   /**
    * Points the camera at the nearest table and reports how far away it is.
    *

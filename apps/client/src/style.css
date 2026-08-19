@@ -256,12 +256,20 @@ kbd {
 
 /* --- Table panel --------------------------------------------------------- */
 
+/*
+ * Anchored to the right, not the middle.
+ *
+ * The felt is dead centre and slightly below the horizon when you are standing
+ * at a table looking at it — which is exactly where a centred panel sits. The
+ * cards are now dealt onto that felt, so the panel has to get out of the way of
+ * the thing it is describing. On a narrow screen it goes full width at the
+ * bottom, where there is no competing view anyway.
+ */
 #table-panel {
   position: absolute;
-  left: 50%;
+  right: max(1rem, env(safe-area-inset-right));
   bottom: max(1rem, env(safe-area-inset-bottom));
-  transform: translateX(-50%);
-  width: min(560px, calc(100vw - 2rem));
+  width: min(430px, calc(100vw - 2rem));
   background: var(--panel);
   border: 1px solid var(--edge);
   border-radius: 14px;
@@ -269,6 +277,13 @@ kbd {
   display: flex;
   flex-direction: column;
   gap: 0.7rem;
+}
+
+@media (max-width: 700px) {
+  #table-panel {
+    left: max(1rem, env(safe-area-inset-left));
+    width: auto;
+  }
 }
 
 #table-panel header {
@@ -628,10 +643,6 @@ kbd {
 
 .stake-limits.bad {
   color: var(--bad);
-}
-
-.stake-preset {
-  padding: 0.35rem 0.6rem;
 }
 
 /*

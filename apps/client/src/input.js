@@ -161,7 +161,17 @@ export class InputController {
 
     let buttons = 0;
     if (this._keys.has('Space')) buttons |= INPUT_BUTTON_JUMP;
-    if (this._keys.has('ShiftLeft') || this._keys.has('ShiftRight')) buttons |= INPUT_BUTTON_SPRINT;
+    // Shift or Ctrl, either side. Which one a player reaches for is muscle
+    // memory from whatever else they play, so both are accepted rather than
+    // asking anybody to relearn it.
+    if (
+      this._keys.has('ShiftLeft') ||
+      this._keys.has('ShiftRight') ||
+      this._keys.has('ControlLeft') ||
+      this._keys.has('ControlRight')
+    ) {
+      buttons |= INPUT_BUTTON_SPRINT;
+    }
     if (this.interactPressed) buttons |= INPUT_BUTTON_INTERACT;
     this.buttons = buttons;
 

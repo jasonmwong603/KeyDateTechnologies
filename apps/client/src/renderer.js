@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { CardTable } from './cards3d.js';
 import { PLAYER_EYE_HEIGHT, PLAYER_HEIGHT, PLAYER_RADIUS } from '@keydate/sim';
 import { createCarpet, createCofferedStone, createSculptedStone, tiledFor } from './textures.js';
 
@@ -69,6 +70,10 @@ export class WorldRenderer {
     this._occluders = [];
     /** What the world build actually produced. Asserted by the client smoke test. */
     this.stats = { walls: 0, columns: 0, tables: 0, bar: 0 };
+    /** Cards on the felt of whichever table the player is sitting at. */
+    this.cardTable = new CardTable(this.scene, this.renderer.capabilities.getMaxAnisotropy());
+    /** Table interactables by id, so a table state can be placed in the world. */
+    this._interactables = new Map();
     /** 0..1, set from replicated state. Drives the camera sway only. */
     this.drunkenness = 0;
 
@@ -446,6 +451,7 @@ export class WorldRenderer {
   }
 
   _buildTable(interactable) {
+    this._interactables.set(interactable.id, interactable);
     const group = new THREE.Group();
     group.position.set(interactable.x, 0, interactable.z);
     const style = this._tableStyle(interactable.gameId);
@@ -531,22 +537,30 @@ export class WorldRenderer {
     }
 
     if (kind === 'shoe') {
-      const shoe = new THREE.Mesh(
-        new THREE.BoxGeometry(0.42, 0.22, 0.3),
-        new THREE.MeshStandardMaterial({ color: 0x241a12, roughness: 0.55 }),
-      );
-      shoe.position.set(0, 1.16, -0.55);
-      shoe.rotation.y = 0.25;
-      shoe.castShadow = true;
-      group.add(shoe);
+      // A dealing shoe: a wedge of dark timber with a brass lip, angled so the
+      // open mouth faces the table. Cards are animated as coming out of here,
+      // so it has to look like the place they come from.
+      const timber = new THREE.MeshStandardMaterial({ color: 0x2a1b12, roughness: 0.5 });
+      const body = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.2, 0.44), timber);
+      body.position.set(0, 1.15, -0.62);
+      body.castShadow = true;
+      group.add(body);
 
-      const deck = new THREE.Mesh(
-        new THREE.BoxGeometry(0.26, 0.09, 0.2),
-        new THREE.MeshStandardMaterial({ color: 0xf4f1e8, roughness: 0.7 }),
+      const ramp = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.16, 0.22), timber);
+      ramp.position.set(0, 1.11, -0.36);
+      ramp.rotation.x = -0.32;
+      ramp.castShadow = true;
+      group.add(ramp);
+
+      const lip = new THREE.Mesh(
+        new THREE.BoxGeometry(0.36, 0.02, 0.05),
+        new THREE.MeshStandardMaterial({ color: 0xc9a227, roughness: 0.35, metalness: 0.8 }),
       );
-      deck.position.set(0.42, 1.09, -0.42);
-      deck.rotation.y = -0.4;
-      group.add(deck);
+      lip.position.set(0, 1.08, -0.27);
+      group.add(lip);
+
+      // No stack of spare cards beside it: real cards land on this felt now,
+      // and a white block next to them just reads as a card that failed to draw.
     }
   }
 
@@ -731,7 +745,28 @@ export class WorldRenderer {
     this.camera.updateProjectionMatrix();
   }
 
+  /**
+   * Puts the hand being played onto the table's felt.
+   *
+   * Driven by the same table state the HUD panel reads — there is no separate
+   * deal message, because the cards are already in it.
+   */
+  setTableHand(state, hand) {
+    if (state === null || state === undefined) {
+      this.cardTable.clear();
+      return;
+    }
+    this.cardTable.sync(state, hand, this._interactables.get(state.tableId));
+  }
+
+  clearTableHand() {
+    this.cardTable.clear();
+  }
+
   render() {
+    // Cards are animated here rather than on table updates: those arrive about
+    // five times a second, and a card in flight has to move every frame.
+    this.cardTable.update();
     this.renderer.render(this.scene, this.camera);
   }
 }

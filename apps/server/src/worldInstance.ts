@@ -70,6 +70,20 @@ interface PlayerRecord extends PlayerConnection {
 /** Entity ids are partitioned so a client can tell players from props on sight. */
 const PLAYER_ENTITY_ID_BASE = 1000;
 
+/** Index of the seat closest to a position, or undefined if the table has none. */
+function nearestSeat(interactable: { seats: { x: number; z: number }[] }, x: number, z: number) {
+  let best: number | undefined;
+  let bestDistance = Infinity;
+  interactable.seats.forEach((seat, index) => {
+    const distance = distanceXZ(x, z, seat.x, seat.z);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = index;
+    }
+  });
+  return best;
+}
+
 /** Table state is pushed to seated players at this many ticks apart (~5Hz). */
 const TABLE_STATE_INTERVAL_TICKS = 6;
 
@@ -262,7 +276,13 @@ export class WorldInstance {
     if (record.state.seatedAt === interactable.id) return;
     if (record.state.seatedAt !== null) this.standUp(record);
 
-    const seatIndex = table.sit(playerId);
+    // Sit in the chair you actually walked up to. Allocating seat zero and
+    // teleporting the player round the table is disorienting in a first-person
+    // view — you press E and the room swings.
+    const seatIndex = table.sit(
+      playerId,
+      nearestSeat(interactable, record.state.x, record.state.z),
+    );
     if (seatIndex === null) {
       this.sendError(record, 'invalid_action', 'That table is full.');
       return;
@@ -270,7 +290,11 @@ export class WorldInstance {
 
     const seat = interactable.seats[seatIndex % interactable.seats.length];
     if (seat !== undefined) {
-      record.state = { ...record.state, x: seat.x, y: seat.y, z: seat.z, yaw: seat.yaw };
+      // Position moves to the chair; facing does not. The player chose which
+      // way to look on the way in, and snapping the camera to the seat's
+      // inward angle throws away that choice — and, in first person, spins the
+      // whole room under them for no reason they asked for.
+      record.state = { ...record.state, x: seat.x, y: seat.y, z: seat.z };
     }
     record.state.seatedAt = interactable.id;
     this.enqueueEvent(record, { kind: 'table:seated', tableId: interactable.id, seat: seatIndex });

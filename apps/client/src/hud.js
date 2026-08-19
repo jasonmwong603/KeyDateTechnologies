@@ -9,8 +9,6 @@ import { verifyCommitment } from '@keydate/netcode';
  * own clicks.
  */
 
-const STAKE_STEPS = [10, 50, 250, 1000];
-
 /** Used until a table says otherwise, so the box is never unbounded. */
 const MIN_STAKE_FLOOR = 10;
 
@@ -39,7 +37,6 @@ export class Hud {
       tableSpots: document.getElementById('table-spots'),
       dealButton: document.getElementById('deal-button'),
       stakeInput: document.getElementById('stake-input'),
-      stakeMax: document.getElementById('stake-max'),
       stakeLimits: document.getElementById('stake-limits'),
       tableHand: document.getElementById('table-hand'),
       handDealer: document.getElementById('hand-dealer'),
@@ -48,7 +45,6 @@ export class Hud {
       tableWagers: document.getElementById('table-wagers'),
       tableResult: document.getElementById('table-result'),
       fairness: document.getElementById('fairness'),
-      stakeButtons: document.getElementById('stake-buttons'),
       clearBets: document.getElementById('clear-bets'),
       leaveTable: document.getElementById('leave-table'),
       drunkRow: document.getElementById('drunk-row'),
@@ -74,28 +70,7 @@ export class Hud {
     /** Limits for the table currently open, refreshed from its state. */
     this._limits = { min: MIN_STAKE_FLOOR, max: MIN_STAKE_FLOOR };
 
-    this._buildStakeButtons();
     this._bindActions();
-  }
-
-  /**
-   * Quick amounts, as shortcuts that fill the box rather than replace it.
-   *
-   * The box is the real control — any integer from the table minimum to
-   * whatever you are holding — but four taps covering the common bets is
-   * quicker than typing on a phone, and one of them is always affordable
-   * because they are disabled above the balance.
-   */
-  _buildStakeButtons() {
-    for (const amount of STAKE_STEPS) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'stake-preset';
-      button.dataset.amount = String(amount);
-      button.textContent = String(amount);
-      button.addEventListener('click', () => this._setStake(amount));
-      this.elements.stakeButtons.append(button);
-    }
   }
 
   _bindActions() {
@@ -106,8 +81,6 @@ export class Hud {
       this.connection.send({ type: 'table:leave' });
     });
     this.elements.leaveBar.addEventListener('click', () => this.hideBar());
-
-    this.elements.stakeMax.addEventListener('click', () => this._setStake(this._limits.max));
 
     this.elements.dealButton.addEventListener('click', () => {
       this.connection.send({ type: 'table:deal' });
@@ -172,10 +145,6 @@ export class Hud {
     this.elements.stakeLimits.textContent =
       chips < min ? `You need ${min} to bet` : `${min} – ${ceiling.toLocaleString()}`;
     this.elements.stakeLimits.classList.toggle('bad', chips < min);
-
-    for (const button of this.elements.stakeButtons.querySelectorAll('.stake-preset')) {
-      button.disabled = Number(button.dataset.amount) > ceiling;
-    }
 
     // A stake left over from a richer moment must not sit in the box as an
     // amount the table will refuse.
@@ -460,6 +429,11 @@ export class Hud {
   _renderHand(state) {
     const rows = this._handRows;
     const hand = this._handToShow(state);
+    // Published so the renderer can put the same cards on the felt. Resolving
+    // *which* hand to show is fiddly — live view, remembered view, or finished
+    // result — and doing it twice is how the panel and the table would come to
+    // disagree about what was dealt.
+    this.currentHand = hand;
 
     this.elements.tableHand.hidden = hand === null;
     if (hand === null) {
@@ -805,6 +779,7 @@ export class Hud {
     this.elements.dealButton.hidden = true;
     this.elements.tableSpots.dataset.gameId = '';
     this.currentTableId = null;
+    this.currentHand = null;
     // Standing up ends your involvement in that hand. Nothing about it should
     // still be on screen if you sit down somewhere else.
     this._lastHandView = null;

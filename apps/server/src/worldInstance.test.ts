@@ -388,6 +388,69 @@ describe('WorldInstance tables', () => {
     expect(resolved.length).toBeGreaterThan(0);
   });
 
+  it('leaves a player facing the way they walked in', () => {
+    const client = new FakeClient();
+    world.addPlayer('p1', 'Sam', client.send, 't1');
+    const table = world.world.interactables.find((entry) => entry.gameId === 'blackjack')!;
+    const record = world.getPlayer('p1')!;
+
+    // Walk up from the south, looking north at the table.
+    record.state.x = table.x;
+    record.state.z = table.z + 1.6;
+    record.state.yaw = -Math.PI / 2;
+
+    world.handleInteract('p1', table.id);
+
+    // Sitting must not spin the room. In first person, snapping to the seat's
+    // own inward angle throws away the direction the player chose on the way in.
+    expect(record.state.yaw).toBe(-Math.PI / 2);
+    expect(record.state.seatedAt).toBe(table.id);
+  });
+
+  it('seats a player in the chair nearest to where they were standing', () => {
+    const client = new FakeClient();
+    world.addPlayer('p1', 'Sam', client.send, 't1');
+    const table = world.world.interactables.find((entry) => entry.gameId === 'blackjack')!;
+    const record = world.getPlayer('p1')!;
+
+    // Stand next to the fourth seat specifically, not the first.
+    const wanted = 3;
+    const seat = table.seats[wanted]!;
+    record.state.x = seat.x;
+    record.state.z = seat.z;
+
+    world.handleInteract('p1', table.id);
+    tick();
+
+    const seated = (client.events('table:seated') as { seat: number }[]).at(-1)!;
+    expect(seated.seat).toBe(wanted);
+    // And they end up in that chair rather than being dragged round the table.
+    expect(record.state.x).toBeCloseTo(seat.x, 5);
+    expect(record.state.z).toBeCloseTo(seat.z, 5);
+  });
+
+  it('falls back to a free chair when the nearest one is taken', () => {
+    const table = world.world.interactables.find((entry) => entry.gameId === 'blackjack')!;
+    const seat = table.seats[2]!;
+
+    for (const playerId of ['p1', 'p2']) {
+      world.addPlayer(playerId, playerId, new FakeClient().send, `t-${playerId}`);
+      const record = world.getPlayer(playerId)!;
+      record.state.x = seat.x;
+      record.state.z = seat.z;
+      world.handleInteract(playerId, table.id);
+    }
+
+    // Both wanted the same chair; they must not end up sharing it.
+    expect(world.getPlayer('p1')!.state.seatedAt).toBe(table.id);
+    expect(world.getPlayer('p2')!.state.seatedAt).toBe(table.id);
+    const positions = ['p1', 'p2'].map((id) => {
+      const record = world.getPlayer(id)!;
+      return `${record.state.x.toFixed(3)},${record.state.z.toFixed(3)}`;
+    });
+    expect(new Set(positions).size).toBe(2);
+  });
+
   it('routes a table action to the table and refuses one from the floor', () => {
     const client = new FakeClient();
     world.addPlayer('p1', 'Sam', client.send, 't1');

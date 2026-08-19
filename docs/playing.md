@@ -91,9 +91,9 @@ world together.
 | Move                             | `W` `A` `S` `D`                                                                |
 | Hit / stand / double             | Click the buttons in the table panel                                           |
 | Look                             | Move the mouse (click the game once to capture the pointer; `Esc` releases it) |
-| Sprint                           | `Shift`                                                                        |
+| Sprint                           | `Shift` or `Ctrl`                                                              |
 | Jump                             | `Space`                                                                        |
-| Sit at a table, order at the bar | `E`                                                                            |
+| Sit at a table, order at the bar | `E` — you keep facing the way you walked in                                    |
 | Chat                             | `Enter`, type, `Enter` again                                                   |
 | Switch camera                    | **Third person** button, top right                                             |
 
@@ -137,16 +137,19 @@ chips that pay for the next round.
 1. **Walk to a table.** Six tables sit around the central plinth. A prompt appears when
    you are close enough.
 2. **Sit down** with `E` (or **Use**).
-3. **Set your bet.** Type any amount from the table minimum up to your whole stack, or
-   tap one of the quick amounts, or **All in**. Then tap a betting spot to put it down.
+3. **Set your bet.** Type any whole number from the table minimum up to your whole stack
+   into the bet box, then tap a betting spot to put it down.
 4. **Start the round.** On the wheel, roulette and baccarat a timer is already running and
    the round goes when it runs out. **Blackjack has no timer** — nothing happens until
    somebody presses **Deal**, which gives everyone ten seconds of last call to get their
    bets down before the cards come out. Anyone with chips on the felt can press it.
-5. **Play your hand**, if the game has one. Blackjack deals and then waits on you; the
+5. **Watch the deal.** Cards come out of the shoe one at a time, turn over as they cross
+   the felt, and land in front of whoever they belong to. The dealer's hole card stays
+   face down until the hand is over.
+6. **Play your hand**, if the game has one. Blackjack deals and then waits on you; the
    panel shows the cards and your buttons, and you get 15 seconds. Run out of time and
    the table plays a sensible hand for you rather than standing on 12.
-6. **Check the fairness line** under the table panel. Before betting opens the server
+7. **Check the fairness line** under the table panel. Before betting opens the server
    publishes a commitment; after the round it reveals the seed, and your browser
    verifies the two match. A mismatch shows in red.
 
@@ -210,7 +213,8 @@ Fast, self-contained things to try first:
 | Paytables and odds                      | one file per game in `packages/games/table-games/src/` |
 | Blackjack house rules                   | `blackjack.ts` — deck count, S17, the 3:2 payout       |
 | The ten-second last call                | `bettingWindowMs` in `blackjack.ts`                    |
-| How the cards animate in                | `deal-in` in `apps/client/src/style.css`               |
+| How the cards fly out of the shoe       | `apps/client/src/cards3d.js`                           |
+| How the cards animate in the panel      | `deal-in` in `apps/client/src/style.css`               |
 | Which game sits where on the floor      | `tablePositions` in `packages/sim/src/world.ts`        |
 | Drink prices, strength, sobering rate   | `apps/server/src/bar.ts`                               |
 | How strong the blur gets                | `setDrunkenness` in `apps/client/src/hud.js`           |

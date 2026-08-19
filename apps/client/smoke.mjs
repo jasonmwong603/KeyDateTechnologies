@@ -246,6 +246,34 @@ async function run() {
     await sleep(600);
     const cameraMode = await pc.evaluate(() => window.__keydate?.viewMode());
     check('camera toggles to third person', cameraMode === 'third-person', `mode=${cameraMode}`);
+
+    // Ctrl sprints as well as Shift. Compared against a plain walk over the same
+    // number of frames, so it measures the actual button rather than the key.
+    await pc.evaluate(() => window.__keydate?.aimAtNearestTable('wheel-of-fortune'));
+    const walkFrom = await pc.evaluate(() => window.__keydate.position());
+    await pc.keyboard.down('KeyW');
+    await sleep(700);
+    await pc.keyboard.up('KeyW');
+    await sleep(150);
+    const walkTo = await pc.evaluate(() => window.__keydate.position());
+    const walked = Math.hypot(walkTo.x - walkFrom.x, walkTo.z - walkFrom.z);
+
+    await pc.evaluate(() => window.__keydate?.aimAtNearestTable('high-card-duel'));
+    const sprintFrom = await pc.evaluate(() => window.__keydate.position());
+    await pc.keyboard.down('ControlLeft');
+    await pc.keyboard.down('KeyW');
+    await sleep(700);
+    await pc.keyboard.up('KeyW');
+    await pc.keyboard.up('ControlLeft');
+    await sleep(150);
+    const sprintTo = await pc.evaluate(() => window.__keydate.position());
+    const sprinted = Math.hypot(sprintTo.x - sprintFrom.x, sprintTo.z - sprintFrom.z);
+
+    check(
+      'Ctrl sprints, like Shift',
+      sprinted > walked * 1.2,
+      `walk ${walked.toFixed(2)}m vs sprint ${sprinted.toFixed(2)}m`,
+    );
     await pc.screenshot({ path: path.join(SHOT_DIR, 'desktop-third-person.png') });
 
     // ------------------------------------------------------------ mobile
@@ -354,10 +382,20 @@ async function run() {
     const prompt = await pc.isVisible('#interact-prompt');
     check('interact prompt appears near a table', prompt);
 
+    const yawBeforeSitting = await pc.evaluate(() => window.__keydate.yaw());
     await pc.keyboard.press('KeyE');
     await sleep(1500);
     const tableOpen = await pc.isVisible('#table-panel');
     check('sitting opens the table panel', tableOpen);
+
+    // Sitting must not spin the room. The seat you get put in is the one you
+    // walked up to, and you keep looking the way you were looking.
+    const yawAfterSitting = await pc.evaluate(() => window.__keydate.yaw());
+    check(
+      'sitting keeps the direction you walked in facing',
+      Math.abs(yawAfterSitting - yawBeforeSitting) < 0.01,
+      `${yawBeforeSitting.toFixed(3)} -> ${yawAfterSitting.toFixed(3)}`,
+    );
 
     const fairness = await pc.textContent('#fairness');
     check(
@@ -485,8 +523,8 @@ async function run() {
     );
 
     let dealt = false;
-    for (let attempt = 0; attempt < 40; attempt += 1) {
-      await sleep(500);
+    for (let attempt = 0; attempt < 140; attempt += 1) {
+      await sleep(150);
       if (await pc.isVisible('#table-hand')) {
         dealt = true;
         break;
@@ -494,17 +532,42 @@ async function run() {
     }
     check('the hand is dealt once the last call runs out', dealt);
 
-    /** Waits for a dealt hand to either hand us a turn or resolve on its own. */
+    // Sampled first and fast, because a deal is over in under a second and
+    // everything else in this section takes longer than that to check.
+    const felt = await pc.evaluate(() => window.__keydate?.feltCards());
+    let sawFlight = felt?.dealing === true;
+    for (let attempt = 0; attempt < 14 && !sawFlight; attempt += 1) {
+      await sleep(60);
+      sawFlight = (await pc.evaluate(() => window.__keydate?.feltCards().dealing)) === true;
+    }
+
+    /**
+     * Waits for a dealt hand to either hand us a turn or resolve on its own.
+     *
+     * Reads the whole hand in the same evaluate that spots the turn. Checking
+     * "is it my turn" and then reading the cards as two separate round trips
+     * lets the fifteen-second decision clock expire in between, and the second
+     * read comes back empty.
+     */
     async function awaitTurnOrResult() {
       for (let attempt = 0; attempt < 60; attempt += 1) {
-        const actions = await pc.evaluate(
-          () => document.querySelectorAll('#hand-actions button').length,
-        );
-        if (actions > 0) return 'turn';
-        if (await pc.isVisible('#table-result')) return 'resolved';
-        await sleep(400);
+        const seen = await pc.evaluate(() => {
+          const actions = [...document.querySelectorAll('#hand-actions .hand-action')].map(
+            (button) => button.dataset.actionId,
+          );
+          if (actions.length === 0) return null;
+          return {
+            actions,
+            dealerCards: document.querySelectorAll('#hand-dealer .card').length,
+            facedown: document.querySelectorAll('#hand-dealer .card.facedown').length,
+            mine: document.querySelectorAll('#hand-seats .hand-row.mine .card').length,
+          };
+        });
+        if (seen !== null) return { kind: 'turn', live: seen };
+        if (await pc.isVisible('#table-result')) return { kind: 'resolved' };
+        await sleep(300);
       }
-      return 'stuck';
+      return { kind: 'stuck' };
     }
 
     /** Bets and calls the deal once the table is taking bets again. */
@@ -566,6 +629,27 @@ async function run() {
     );
     check('dealt cards are not rebuilt on every table update', cardStable, `card=${cardIdentity}`);
 
+    // The cards on the actual table, not the panel. This is the check that would
+    // have caught the first version of this feature, where the panel animated
+    // beautifully and the felt in the world stayed bare.
+    const settledFelt = await (async () => {
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        const now = await pc.evaluate(() => window.__keydate?.feltCards());
+        if (now?.dealing === false) return now;
+        await sleep(150);
+      }
+      return null;
+    })();
+    check(
+      'cards are dealt onto the table in the world',
+      (settledFelt?.count ?? 0) >= 4,
+      `${settledFelt?.count} card meshes on the felt`,
+    );
+    // If the deal were instant this would never be true, and if the meshes were
+    // rebuilt on every table update it would never stop being true.
+    check('the cards fly across the table rather than appearing', sawFlight);
+    check('every card finishes its flight and settles', settledFelt !== null);
+
     await pc.screenshot({ path: path.join(SHOT_DIR, 'desktop-blackjack.png') });
 
     // About one hand in ten is a natural — the player's or the dealer's — and a
@@ -574,26 +658,18 @@ async function run() {
     // rather than asserting that a decision phase always happens.
     let outcome = await awaitTurnOrResult();
     let hands = 1;
-    while (outcome === 'resolved' && hands < 5) {
+    while (outcome.kind === 'resolved' && hands < 5) {
       hands += 1;
       if (!(await betAndDeal(50))) break;
       outcome = await awaitTurnOrResult();
     }
     check(
       'a hand needing a decision is reached',
-      outcome === 'turn',
-      `${hands} hand(s), ended ${outcome}`,
+      outcome.kind === 'turn',
+      `${hands} hand(s), ended ${outcome.kind}`,
     );
 
-    // The state of a live hand, captured while it is still live.
-    const live = await pc.evaluate(() => ({
-      dealerCards: document.querySelectorAll('#hand-dealer .card').length,
-      facedown: document.querySelectorAll('#hand-dealer .card.facedown').length,
-      mine: document.querySelectorAll('#hand-seats .hand-row.mine .card').length,
-      actions: [...document.querySelectorAll('#hand-actions .hand-action')].map(
-        (button) => button.dataset.actionId,
-      ),
-    }));
+    const live = outcome.live ?? { dealerCards: 0, facedown: 0, mine: 0, actions: [] };
     check('the dealer shows two cards', live.dealerCards === 2, `cards=${live.dealerCards}`);
     check('one dealer card is face down', live.facedown === 1, `facedown=${live.facedown}`);
     check('the player is dealt at least two cards', live.mine >= 2, `cards=${live.mine}`);
@@ -708,6 +784,16 @@ async function run() {
     // local origin with no server behind it, and reaches the world server only
     // because an endpoint was baked in at bundle time.
     console.log('\nPackaged client (served from a different origin)');
+
+    // Both live pages are done being played by now, and this container renders
+    // WebGL in software. A third page competing with two running render loops —
+    // one of them applying a full-screen blur every frame, because that player
+    // is drunk — takes longer to build its world than the join is willing to
+    // wait, and the packaged check fails for a reason that has nothing to do
+    // with packaging. Their error logs are already captured and are asserted
+    // below, so closing them here costs the run nothing.
+    await desktop.close();
+    await phoneContext.close();
     // Bundle fresh, pointed at this test's server, so the check proves the real
     // wiring rather than whatever endpoint a previous manual bundle used.
     const bundleDir = path.join(SHOT_DIR, 'bundle');
