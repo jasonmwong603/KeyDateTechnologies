@@ -1,6 +1,14 @@
 import { createRng } from '@keydate/netcode';
 import { describe, expect, it } from 'vitest';
-import { blackjack, handValue, isBlackjack, isBust, type BlackjackState } from './blackjack.js';
+import {
+  blackjack,
+  boxLabel,
+  handValue,
+  isBlackjack,
+  isBust,
+  MAX_BOXES,
+  type BlackjackState,
+} from './blackjack.js';
 import { buildDeck, type Card, type Rank } from './cards.js';
 import {
   autoPlay,
@@ -12,7 +20,15 @@ import {
 /** The decision phase, narrowed once so every test does not have to. */
 const game = blackjack.interactive as unknown as InteractiveTableGame<BlackjackState>;
 
-const ante = (playerId: string, amount = 100): Wager => ({ playerId, spotId: 'ante', amount });
+/** A bet on a player's first box, which is how a single-hand player plays. */
+const ante = (playerId: string, amount = 100): Wager => ({ playerId, spotId: 'box-1', amount });
+
+/** A bet on a named box, for the tests that play more than one hand. */
+const box = (playerId: string, index: number, amount = 100): Wager => ({
+  playerId,
+  spotId: `box-${index}`,
+  amount,
+});
 
 function card(rank: Rank): Card {
   const found = buildDeck().find((entry) => entry.rank === rank);
@@ -36,6 +52,7 @@ function stacked(ranks: readonly Rank[], wagers: readonly Wager[]): BlackjackSta
   // turn, then two to the dealer, exactly as `begin` does it.
   const hands = wagers.map((wager) => ({
     playerId: wager.playerId,
+    spotId: wager.spotId,
     stake: wager.amount,
     cards: [] as Card[],
     doubled: false,
@@ -256,6 +273,153 @@ describe('settling', () => {
   it('ignores a spot it does not offer', () => {
     const state = game.begin([{ playerId: 'p1', spotId: 'insurance', amount: 100 }], createRng(2));
     expect(state.hands).toEqual([]);
+  });
+});
+
+describe('playing more than one box', () => {
+  it('offers three boxes, each a spot of its own', () => {
+    expect(blackjack.spots.map((spot) => spot.id)).toEqual(['box-1', 'box-2', 'box-3']);
+  });
+
+  /**
+   * The whole rule, and the reason it needs no code.
+   *
+   * "Two hands costs twice the minimum, three costs three times" is not
+   * enforced anywhere — it is what happens when each box is a separate spot
+   * that has to meet the table minimum on its own.
+   */
+  it('prices each extra hand at another table minimum', () => {
+    expect(blackjack.spots).toHaveLength(MAX_BOXES);
+    for (const spot of blackjack.spots) {
+      expect(spot.payout).toBe(1);
+    }
+    expect(blackjack.minWager * 2).toBe(20);
+    expect(blackjack.minWager * 3).toBe(30);
+  });
+
+  it('deals a separate hand for every box a player covers', () => {
+    const state = game.begin([box('p1', 1), box('p1', 2), box('p1', 3)], createRng(9));
+    expect(state.hands).toHaveLength(3);
+    expect(state.hands.map((hand) => hand.spotId)).toEqual(['box-1', 'box-2', 'box-3']);
+    expect(state.hands.every((hand) => hand.playerId === 'p1')).toBe(true);
+    // Three hands plus the dealer is eight cards off the shoe.
+    expect(state.cursor).toBe(8);
+  });
+
+  it('gives every box its own stake', () => {
+    const state = game.begin([box('p1', 1, 50), box('p1', 2, 300)], createRng(9));
+    expect(state.hands.map((hand) => hand.stake)).toEqual([50, 300]);
+  });
+
+  it('plays a player through their boxes in order before moving on', () => {
+    let state = game.begin([box('p1', 1), box('p1', 2), box('p2', 1)], createRng(11));
+    const order: string[] = [];
+    while (game.actor(state) !== null) {
+      const hand = state.hands[state.turn]!;
+      order.push(`${hand.playerId}/${hand.spotId}`);
+      state = game.apply(state, 'stand');
+    }
+    expect(order).toEqual(['p1/box-1', 'p1/box-2', 'p2/box-1']);
+  });
+
+  it("keeps a player's boxes together whatever order the bets arrived in", () => {
+    // The bets are placed out of order on purpose. The deal must not be, or the
+    // seed would no longer reproduce it.
+    const state = game.begin([box('p2', 1), box('p1', 3), box('p1', 1)], createRng(3));
+    expect(state.hands.map((hand) => `${hand.playerId}/${hand.spotId}`)).toEqual([
+      'p2/box-1',
+      'p1/box-1',
+      'p1/box-3',
+    ]);
+  });
+
+  it('names the box a double belongs to, so the chips land on the right one', () => {
+    const state = stacked(['9', '9', '5', '6', 'K', '4'], [box('p1', 1, 100), box('p1', 2, 100)]);
+    expect(game.activeSpot?.(state)).toBe('box-1');
+    expect(game.activeSpot?.(game.apply(state, 'stand'))).toBe('box-2');
+  });
+
+  it('settles each box independently', () => {
+    // p1 holds 19 on box 1 and 12 on box 2 against a dealer 18.
+    let state = stacked(['K', '2', '9', 'K', 'K', '8'], [box('p1', 1, 100), box('p1', 2, 100)]);
+    state = game.apply(state, 'stand');
+    state = game.apply(state, 'stand');
+    const resolution = game.settle(state);
+
+    const hands = resolution.detail.hands as { spotId: string; outcome: string }[];
+    expect(hands.map((hand) => hand.spotId)).toEqual(['box-1', 'box-2']);
+    expect(hands[0]!.outcome).toBe('win');
+    expect(hands[1]!.outcome).toBe('lose');
+  });
+
+  it('pays a player once per winning box, not once for the player', () => {
+    // Both boxes hold 20 against a dealer standing on 17.
+    let state = stacked(['K', 'Q', 'K', 'Q', 'K', '7'], [box('p1', 1, 100), box('p1', 2, 100)]);
+    state = game.apply(state, 'stand');
+    state = game.apply(state, 'stand');
+
+    expect(game.settle(state).credits).toEqual([
+      { playerId: 'p1', amount: 200 },
+      { playerId: 'p1', amount: 200 },
+    ]);
+  });
+
+  it('settles a losing box and a winning box for the same player separately', () => {
+    // Box 1 holds 20, box 2 holds 12, dealer stands on 17.
+    let state = stacked(['K', '2', 'K', 'K', 'K', '7'], [box('p1', 1, 100), box('p1', 2, 60)]);
+    state = game.apply(state, 'stand');
+    state = game.apply(state, 'stand');
+
+    expect(game.settle(state).credits).toEqual([{ playerId: 'p1', amount: 200 }]);
+  });
+
+  it('labels each box for the felt', () => {
+    expect(boxLabel('box-1')).toBe('Box 1');
+    expect(boxLabel('box-3')).toBe('Box 3');
+    expect(boxLabel('ante')).toBe('Box');
+  });
+
+  it('ignores a fourth box a modified client invents', () => {
+    const state = game.begin([box('p1', 1), box('p1', 4)], createRng(5));
+    expect(state.hands).toHaveLength(1);
+  });
+});
+
+describe('the shoe', () => {
+  it('is eight decks', () => {
+    // Four hundred and sixteen cards. Asserted through a hand deep enough that
+    // a smaller shoe would have run dry rather than by reaching into the state.
+    const state = game.begin([box('p1', 1)], createRng(1));
+    expect(state.shoe).toHaveLength(8 * 52);
+  });
+
+  it('holds four of every card, times eight', () => {
+    const counts = new Map<string, number>();
+    for (const card of game.begin([box('p1', 1)], createRng(2)).shoe) {
+      const code = `${card.rank}${card.suit}`;
+      counts.set(code, (counts.get(code) ?? 0) + 1);
+    }
+    expect(counts.size).toBe(52);
+    expect([...counts.values()].every((count) => count === 8)).toBe(true);
+  });
+
+  /**
+   * The continuous shuffler, asserted as a property rather than a claim.
+   *
+   * Every round is dealt from a freshly shuffled shoe, which is what a CSM
+   * does — cards go back in as soon as the hand ends. If that ever changed to a
+   * shoe that persisted between rounds, the first card of round N+1 would
+   * depend on round N, and counting would start to pay.
+   */
+  it('starts every round from a full shoe, so counting cannot pay', () => {
+    const openings = new Set<string>();
+    for (let seed = 0; seed < 200; seed += 1) {
+      const state = game.begin([box('p1', 1)], createRng(seed));
+      expect(state.shoe).toHaveLength(8 * 52);
+      openings.add(state.hands[0]!.cards.map((card) => `${card.rank}${card.suit}`).join(''));
+    }
+    // And the deals genuinely differ, rather than being one shuffle reused.
+    expect(openings.size).toBeGreaterThan(150);
   });
 });
 

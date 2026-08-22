@@ -86,6 +86,15 @@ export interface InteractiveTableGame<S = unknown> {
    * player cannot cover it — the rules module never touches a balance.
    */
   stakeDelta(state: S, actionId: string): number;
+  /**
+   * Which betting spot the current hand is playing, when a player can hold
+   * more than one at a time.
+   *
+   * The runtime adds a `stakeDelta` to the wager on this spot. Without it, a
+   * player holding three boxes who doubles the second would have the chips
+   * quietly added to the first. Omit it on games where a player has one hand.
+   */
+  activeSpot?(state: S): string | null;
   /** Applies a legal action. Pure in (state, actionId). */
   apply(state: S, actionId: string): S;
   /**

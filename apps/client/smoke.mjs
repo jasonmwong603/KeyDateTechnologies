@@ -64,6 +64,50 @@ function check(label, condition, detail = '') {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/**
+ * Walks the player toward something, steering around whatever is in the way.
+ *
+ * `aim` points the camera at the target and returns its distance. Holding W at
+ * a fixed heading is not enough now that the floor has furniture on it: walk
+ * head-on into a stool and collision refuses the move outright, with no
+ * sideways component to slide on, so a naive loop presses W forever against a
+ * chair. A person would step around it, so this does too.
+ */
+async function walkTowards(page, aim, stopWithin, attempts = 90) {
+  let distance = Infinity;
+  let stalledFor = 0;
+  let sidestep = 'KeyD';
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const target = await page.evaluate(aim);
+    if (target === null || target === undefined) break;
+    if (target.distance < stopWithin) return target.distance;
+
+    // No progress since last time means something solid is in front.
+    stalledFor = target.distance < distance - 0.05 ? 0 : stalledFor + 1;
+    distance = Math.min(distance, target.distance);
+
+    if (stalledFor >= 2) {
+      await page.keyboard.down(sidestep);
+      await page.keyboard.down('KeyW');
+      await sleep(320);
+      await page.keyboard.up('KeyW');
+      await page.keyboard.up(sidestep);
+      // Alternate, so a stool wedged between two others cannot trap the loop
+      // by always being stepped around the same way.
+      sidestep = sidestep === 'KeyD' ? 'KeyA' : 'KeyD';
+      stalledFor = 0;
+    } else {
+      await page.keyboard.down('KeyW');
+      await sleep(250);
+      await page.keyboard.up('KeyW');
+    }
+    await sleep(60);
+  }
+  const final = await page.evaluate(aim);
+  return final?.distance ?? distance;
+}
+
 async function startServer() {
   const server = spawn(process.execPath, [path.join(repoRoot, 'apps/server/dist/index.js')], {
     env: { ...process.env, PORT: String(PORT), GAME_SLUG: SLUG },
@@ -198,6 +242,9 @@ async function run() {
     check('columns built', stats?.columns === 16, `columns=${stats?.columns}`);
     check('bar built', stats?.bar > 0, `bar pieces=${stats?.bar}`);
     check('tables built', stats?.tables === 6, `tables=${stats?.tables}`);
+    // Six stools at each of six tables. Seats used to be a disc painted on the
+    // floor; they are furniture you cannot walk through now.
+    check('seats built', stats?.seats === 36, `seats=${stats?.seats}`);
 
     const before = await readPosition(pc);
     await pc.keyboard.down('KeyW');
@@ -355,28 +402,28 @@ async function run() {
     const seenEachOther = await pc.evaluate(() => window.__keydate?.remoteCount() ?? 0);
     check('desktop client sees the phone player', seenEachOther >= 1, `remotes=${seenEachOther}`);
 
+    // The avatar is a figure, not a bollard: a body, a head and four limbs.
+    const avatarParts = await pc.evaluate(() => window.__keydate?.avatarParts());
+    check(
+      'avatars have a head and limbs, not just a capsule',
+      avatarParts >= 8,
+      `${avatarParts} parts`,
+    );
+
     // ------------------------------------------------------------ tables
     console.log('\nTables');
     // Walk to the table with real input rather than teleporting: the server is
     // authoritative and would reject a teleport, and walking exercises the
     // whole prediction path on the way.
-    let distance = Infinity;
-    for (let attempt = 0; attempt < 40; attempt += 1) {
-      // Specifically the wheel: it runs with a single player, so betting opens
-      // and a commitment is published. High Card Duel needs two and would sit
-      // idle, which looks like a broken table rather than a waiting one.
-      const target = await pc.evaluate(() =>
-        window.__keydate?.aimAtNearestTable('wheel-of-fortune'),
-      );
-      if (target === null) break;
-      distance = target.distance;
-      if (distance < 2.0) break;
-      await pc.keyboard.down('KeyW');
-      await sleep(250);
-      await pc.keyboard.up('KeyW');
-      await sleep(60);
-    }
-    check('player can walk to a table', distance < 2.0, `distance ${distance.toFixed(2)}m`);
+    // Specifically the wheel: it runs with a single player, so betting opens
+    // and a commitment is published. High Card Duel needs two and would sit
+    // idle, which looks like a broken table rather than a waiting one.
+    const distance = await walkTowards(
+      pc,
+      () => window.__keydate?.aimAtNearestTable('wheel-of-fortune'),
+      2.6,
+    );
+    check('player can walk to a table', distance < 2.6, `distance ${distance.toFixed(2)}m`);
 
     await sleep(400);
     const prompt = await pc.isVisible('#interact-prompt');
@@ -425,20 +472,14 @@ async function run() {
     await pc.click('#leave-table');
     await sleep(400);
 
-    let bjDistance = Infinity;
-    for (let attempt = 0; attempt < 80; attempt += 1) {
-      const target = await pc.evaluate(() => window.__keydate?.aimAtNearestTable('blackjack'));
-      if (target === null) break;
-      bjDistance = target.distance;
-      if (bjDistance < 2.0) break;
-      await pc.keyboard.down('KeyW');
-      await sleep(250);
-      await pc.keyboard.up('KeyW');
-      await sleep(60);
-    }
+    const bjDistance = await walkTowards(
+      pc,
+      () => window.__keydate?.aimAtNearestTable('blackjack'),
+      2.6,
+    );
     check(
       'player can walk to a blackjack table',
-      bjDistance < 2.0,
+      bjDistance < 2.6,
       `distance ${bjDistance.toFixed(2)}m`,
     );
 
@@ -453,7 +494,7 @@ async function run() {
       `title=${bjTitle}`,
     );
 
-    const anteVisible = await pc.isVisible('.spot[data-spot-id="ante"]');
+    const anteVisible = await pc.isVisible('.spot[data-spot-id="box-1"]');
     check('blackjack offers its bet spot', anteVisible);
 
     // The bet box: any integer from the table minimum to the whole stack.
@@ -488,13 +529,80 @@ async function run() {
     await pc.press('#stake-input', 'Enter');
     await sleep(200);
 
+    // The chip ladder itself, exercised over every amount a player could bet
+    // rather than only the one this run happens to use.
+    const ladder = await pc.evaluate(async () => {
+      const { chipBreakdown, DENOMINATIONS } = await import('./js/chips3d.js');
+      let exact = true;
+      let mostChips = 0;
+      for (let amount = 1; amount <= 3000; amount += 1) {
+        const chips = chipBreakdown(amount);
+        const total = chips.reduce((sum, chip) => sum + chip.value, 0);
+        if (total !== amount) exact = false;
+        mostChips = Math.max(mostChips, chips.length);
+      }
+      return {
+        exact,
+        mostChips,
+        colours: DENOMINATIONS.map((d) => `${d.value}:${d.name}`).join(','),
+        sample: chipBreakdown(1630)
+          .map((d) => d.name)
+          .join('+'),
+      };
+    });
+    check('every bet breaks into chips that add up exactly', ladder.exact);
+    check(
+      'the chip colours are the standard ones',
+      ladder.colours === '1000:gold,500:purple,100:black,25:green,5:red,1:white',
+      ladder.colours,
+    );
+    check(
+      'a large bet is a handful of chips, not a tower',
+      ladder.mostChips <= 20,
+      `worst case ${ladder.mostChips} chips`,
+    );
+    check(
+      'chips are picked largest first',
+      ladder.sample === 'gold+500' || ladder.sample.startsWith('gold'),
+      `1630 = ${ladder.sample}`,
+    );
+
+    // Three boxes on the felt, so a player can take more than one hand.
+    const boxSpots = await pc.evaluate(() =>
+      [...document.querySelectorAll('#table-spots .spot')].map((spot) => spot.dataset.spotId),
+    );
+    check(
+      'blackjack offers three boxes',
+      boxSpots.join(',') === 'box-1,box-2,box-3',
+      `spots=${boxSpots.join(',')}`,
+    );
+
     const bjChipsBefore = await pc.textContent('#chips-value');
-    await pc.click('.spot[data-spot-id="ante"]');
+    await pc.click('.spot[data-spot-id="box-1"]');
     await sleep(700);
     const bjChipsAfter = await pc.textContent('#chips-value');
     const staked =
       Number(bjChipsBefore.replace(/[^0-9]/g, '')) - Number(bjChipsAfter.replace(/[^0-9]/g, ''));
     check('a typed bet is staked exactly as typed', staked === 137, `staked=${staked}`);
+
+    // Chips on the felt: 137 is one black, one green, two red and two white.
+    const feltChips = await pc.evaluate(() => window.__keydate?.feltChips());
+    check('the bet is shown as chips on the felt', feltChips === 6, `chips=${feltChips}`);
+
+    // A second box, which costs a second bet of its own.
+    await pc.fill('#stake-input', '25');
+    await pc.press('#stake-input', 'Enter');
+    await pc.click('.spot[data-spot-id="box-2"]');
+    await sleep(700);
+    const twoBoxStaked =
+      Number(bjChipsBefore.replace(/[^0-9]/g, '')) -
+      Number((await pc.textContent('#chips-value')).replace(/[^0-9]/g, ''));
+    check('a second box costs a second bet', twoBoxStaked === 162, `staked=${twoBoxStaked}`);
+    check(
+      'the second bet gets its own chips',
+      (await pc.evaluate(() => window.__keydate?.feltChips())) === 7,
+      `chips=${await pc.evaluate(() => window.__keydate?.feltChips())}`,
+    );
 
     // Ten seconds is a long time to leave a table idle if the deal never comes,
     // so prove it does not come on its own before pressing the button.
@@ -518,7 +626,7 @@ async function run() {
     check(
       'betting stays open during the last call',
       await pc.evaluate(
-        () => document.querySelector('.spot[data-spot-id="ante"]').disabled === false,
+        () => document.querySelector('.spot[data-spot-id="box-1"]').disabled === false,
       ),
     );
 
@@ -561,6 +669,7 @@ async function run() {
             dealerCards: document.querySelectorAll('#hand-dealer .card').length,
             facedown: document.querySelectorAll('#hand-dealer .card.facedown').length,
             mine: document.querySelectorAll('#hand-seats .hand-row.mine .card').length,
+            myHands: document.querySelectorAll('#hand-seats .hand-row.mine').length,
           };
         });
         if (seen !== null) return { kind: 'turn', live: seen };
@@ -574,14 +683,15 @@ async function run() {
     async function betAndDeal(amount) {
       for (let attempt = 0; attempt < 60; attempt += 1) {
         const open = await pc.evaluate(
-          () => document.querySelector('.spot[data-spot-id="ante"]')?.disabled === false,
+          () => document.querySelector('.spot[data-spot-id="box-1"]')?.disabled === false,
         );
         if (open) break;
         await sleep(500);
       }
       await pc.fill('#stake-input', String(amount));
       await pc.press('#stake-input', 'Enter');
-      await pc.click('.spot[data-spot-id="ante"]');
+      await pc.click('.spot[data-spot-id="box-1"]');
+      await pc.click('.spot[data-spot-id="box-2"]');
       await sleep(400);
       await pc.click('#deal-button');
       for (let attempt = 0; attempt < 40; attempt += 1) {
@@ -671,6 +781,11 @@ async function run() {
 
     const live = outcome.live ?? { dealerCards: 0, facedown: 0, mine: 0, actions: [] };
     check('the dealer shows two cards', live.dealerCards === 2, `cards=${live.dealerCards}`);
+    check(
+      'both boxes are dealt their own hand',
+      live.myHands === 2,
+      `${live.myHands} hands for one player`,
+    );
     check('one dealer card is face down', live.facedown === 1, `facedown=${live.facedown}`);
     check('the player is dealt at least two cards', live.mine >= 2, `cards=${live.mine}`);
     check(
@@ -681,16 +796,20 @@ async function run() {
 
     // Standing has to actually end the turn — a button that sends a message the
     // server rejects looks identical from the outside until you check this.
-    await pc.click('.hand-action[data-action-id="stand"]');
+    // With two boxes in play it takes two: the turn passes to the next box
+    // rather than to the dealer.
     let handOver = false;
-    for (let attempt = 0; attempt < 40; attempt += 1) {
-      await sleep(400);
-      if (await pc.evaluate(() => document.querySelectorAll('#hand-actions button').length === 0)) {
-        handOver = true;
-        break;
+    for (let attempt = 0; attempt < 40 && !handOver; attempt += 1) {
+      const standing = await pc.$('.hand-action[data-action-id="stand"]');
+      if (standing !== null) {
+        await standing.click().catch(() => {});
       }
+      await sleep(400);
+      handOver = await pc.evaluate(
+        () => document.querySelectorAll('#hand-actions button').length === 0,
+      );
     }
-    check('standing ends the turn', handOver);
+    check('standing works through every box in play', handOver);
 
     // The dealer's hole card is the one thing kept back all hand. It has to be
     // turned over where the player can see it, not folded into a summary line.
@@ -735,17 +854,7 @@ async function run() {
     await pc.click('#leave-table');
     await sleep(400);
 
-    let barDistance = Infinity;
-    for (let attempt = 0; attempt < 60; attempt += 1) {
-      const target = await pc.evaluate(() => window.__keydate?.aimAtBar());
-      if (target === null) break;
-      barDistance = target.distance;
-      if (barDistance < 2.0) break;
-      await pc.keyboard.down('KeyW');
-      await sleep(250);
-      await pc.keyboard.up('KeyW');
-      await sleep(50);
-    }
+    const barDistance = await walkTowards(pc, () => window.__keydate?.aimAtBar(), 2.0);
     check('player can walk to the bar', barDistance < 2.0, `distance ${barDistance.toFixed(2)}m`);
 
     await pc.keyboard.press('KeyE');

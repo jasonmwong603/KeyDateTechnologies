@@ -413,6 +413,13 @@ window.__keydate = {
     count: renderer.cardTable.cardCount,
     dealing: renderer.cardTable.dealing,
   }),
+  /** Chip meshes on the felt. */
+  feltChips: () => renderer.chipStacks.chipCount,
+  /** How many pieces one avatar is built from — body, head, neck, limbs. */
+  avatarParts: () => {
+    const avatar = renderer.localAvatar;
+    return avatar === null ? 0 : (avatar.userData.figure?.length ?? 0);
+  },
   /**
    * Points the camera at the nearest table and reports how far away it is.
    *

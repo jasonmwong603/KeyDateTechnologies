@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { CardTable } from './cards3d.js';
+import { ChipStacks } from './chips3d.js';
 import { PLAYER_EYE_HEIGHT, PLAYER_HEIGHT, PLAYER_RADIUS } from '@keydate/sim';
 import { createCarpet, createCofferedStone, createSculptedStone, tiledFor } from './textures.js';
 
@@ -69,9 +70,11 @@ export class WorldRenderer {
      */
     this._occluders = [];
     /** What the world build actually produced. Asserted by the client smoke test. */
-    this.stats = { walls: 0, columns: 0, tables: 0, bar: 0 };
+    this.stats = { walls: 0, columns: 0, tables: 0, bar: 0, seats: 0 };
     /** Cards on the felt of whichever table the player is sitting at. */
     this.cardTable = new CardTable(this.scene, this.renderer.capabilities.getMaxAnisotropy());
+    /** Chip stacks for every bet on that table. */
+    this.chipStacks = new ChipStacks(this.scene);
     /** Table interactables by id, so a table state can be placed in the world. */
     this._interactables = new Map();
     /** 0..1, set from replicated state. Drives the camera sway only. */
@@ -188,6 +191,11 @@ export class WorldRenderer {
       if (box.kind === 'column') {
         this._buildColumn(box);
         this.stats.columns += 1;
+        continue;
+      }
+      if (box.kind === 'seat') {
+        this._buildStool(box);
+        this.stats.seats += 1;
         continue;
       }
       if (box.kind === 'bar') {
@@ -336,6 +344,62 @@ export class WorldRenderer {
    * facets catch the light as fluting for a fraction of the cost of a real
    * normal map, which this client has no pipeline to author.
    */
+  /**
+   * A stool at a table seat.
+   *
+   * Solid, and part of the authoritative world rather than decoration — the
+   * seats used to be a translucent disc painted on the floor, which told you
+   * where to stand but not that a chair was there. Backless and low, so six of
+   * them ringing a table never hide the felt from anybody sitting at it.
+   */
+  _buildStool(box) {
+    const cx = (box.minX + box.maxX) / 2;
+    const cz = (box.minZ + box.maxZ) / 2;
+    const top = box.maxY;
+    const radius = Math.min(box.maxX - box.minX, box.maxZ - box.minZ) / 2;
+
+    const group = new THREE.Group();
+    group.position.set(cx, 0, cz);
+
+    // Padded leather seat, in the same crimson as the carpet so the furniture
+    // reads as belonging to the room.
+    const cushion = new THREE.Mesh(
+      new THREE.CylinderGeometry(radius, radius * 0.94, 0.13, 20),
+      new THREE.MeshStandardMaterial({ color: 0x6d1420, roughness: 0.75 }),
+    );
+    cushion.position.y = top - 0.065;
+    cushion.castShadow = true;
+    cushion.receiveShadow = true;
+    group.add(cushion);
+
+    const trim = new THREE.Mesh(
+      new THREE.TorusGeometry(radius * 0.99, 0.022, 6, 20),
+      new THREE.MeshStandardMaterial({ color: 0xc9a227, roughness: 0.35, metalness: 0.8 }),
+    );
+    trim.rotation.x = Math.PI / 2;
+    trim.position.y = top - 0.13;
+    group.add(trim);
+
+    const post = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.07, 0.07, top - 0.16, 10),
+      new THREE.MeshStandardMaterial({ color: 0x2b1c14, roughness: 0.5, metalness: 0.25 }),
+    );
+    post.position.y = (top - 0.16) / 2;
+    post.castShadow = true;
+    group.add(post);
+
+    const foot = new THREE.Mesh(
+      new THREE.CylinderGeometry(radius * 0.8, radius * 0.86, 0.05, 16),
+      new THREE.MeshStandardMaterial({ color: 0x2b1c14, roughness: 0.45, metalness: 0.35 }),
+    );
+    foot.position.y = 0.025;
+    foot.receiveShadow = true;
+    group.add(foot);
+
+    this.scene.add(group);
+    this._occluders.push(cushion);
+  }
+
   _buildColumn(box) {
     const cx = (box.minX + box.maxX) / 2;
     const cz = (box.minZ + box.maxZ) / 2;
@@ -482,15 +546,27 @@ export class WorldRenderer {
     sign.scale.set(3, 0.75, 1);
     group.add(sign);
 
-    // Seat markers, so it is obvious where you can sit before you walk over.
+    // The seats themselves are stools, built from their own colliders in
+    // `_buildStool`. What is left here is a betting circle painted on the felt
+    // in front of each one, so it is obvious where a bet goes before you place
+    // one — and where it went afterwards.
     for (const seat of interactable.seats) {
-      const marker = new THREE.Mesh(
-        new THREE.CircleGeometry(0.35, 16),
-        new THREE.MeshBasicMaterial({ color: 0xff5f8a, transparent: true, opacity: 0.28 }),
+      const length = Math.hypot(seat.x - interactable.x, seat.z - interactable.z) || 1;
+      const ux = (seat.x - interactable.x) / length;
+      const uz = (seat.z - interactable.z) / length;
+
+      const circle = new THREE.Mesh(
+        new THREE.RingGeometry(0.19, 0.215, 24),
+        new THREE.MeshBasicMaterial({
+          color: 0xe2c36a,
+          transparent: true,
+          opacity: 0.4,
+          side: THREE.DoubleSide,
+        }),
       );
-      marker.rotation.x = -Math.PI / 2;
-      marker.position.set(seat.x - interactable.x, 0.02, seat.z - interactable.z);
-      group.add(marker);
+      circle.rotation.x = -Math.PI / 2;
+      circle.position.set(ux * 0.6, 1.055, uz * 0.6);
+      group.add(circle);
     }
 
     group.userData.interactableId = interactable.id;
@@ -597,26 +673,99 @@ export class WorldRenderer {
     return sprite;
   }
 
-  /** Creates the avatar for a player entity. */
+  /**
+   * Creates the avatar for a player entity.
+   *
+   * A black pill with limbs, deliberately: a capsule alone reads as a bollard,
+   * and until there are real rigged models the cheapest thing that reads as a
+   * *person* is a silhouette with a head and four limbs on it. The head is a
+   * sphere sunk into the top of the capsule rather than a ball sitting above
+   * it, so the two share a profile instead of looking like a snowman.
+   *
+   * Limbs hug the body — arms flush against the torso, legs together — so the
+   * whole thing keeps the capsule's outline from a distance and only resolves
+   * into a figure close up. That also keeps it inside `PLAYER_RADIUS`, which
+   * matters: the collision shape is the capsule, and a limb poking outside it
+   * would visibly pass through walls.
+   */
   addAvatar(entityId, name, isLocal) {
     const group = new THREE.Group();
 
-    const bodyColor = isLocal ? 0xffd166 : 0x4cc9f0;
+    // Near-black, with a hint of colour so the local player can still be told
+    // from everyone else without breaking the silhouette.
+    const skin = new THREE.MeshStandardMaterial({
+      color: isLocal ? 0x24201a : 0x14161d,
+      roughness: 0.72,
+      metalness: 0.06,
+    });
+    // Limbs a shade lighter than the body. Cut from the same black they would
+    // vanish into it under this lighting, and a figure whose arms and legs
+    // cannot be made out is just a pill again.
+    const limbSkin = new THREE.MeshStandardMaterial({
+      color: isLocal ? 0x3a342a : 0x262b36,
+      roughness: 0.66,
+      metalness: 0.08,
+    });
+
+    const torsoHeight = PLAYER_HEIGHT - PLAYER_RADIUS * 2;
     const body = new THREE.Mesh(
-      new THREE.CapsuleGeometry(PLAYER_RADIUS, PLAYER_HEIGHT - PLAYER_RADIUS * 2, 6, 12),
-      new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.6 }),
+      new THREE.CapsuleGeometry(PLAYER_RADIUS * 0.92, torsoHeight * 0.62, 6, 14),
+      skin,
     );
-    body.position.y = PLAYER_HEIGHT / 2;
+    body.position.y = PLAYER_HEIGHT * 0.58;
     body.castShadow = true;
     group.add(body);
 
-    // A nose-like wedge, so which way someone is facing is readable at distance.
+    // The head, carved out of the top of the pill: a sphere set low enough that
+    // it merges into the shoulders rather than perching on them.
+    const head = new THREE.Mesh(new THREE.SphereGeometry(PLAYER_RADIUS * 0.62, 14, 12), skin);
+    head.position.y = PLAYER_HEIGHT - PLAYER_RADIUS * 0.55;
+    head.castShadow = true;
+    group.add(head);
+
+    // A short neck, so the join reads as one body rather than two shapes.
+    const neck = new THREE.Mesh(
+      new THREE.CylinderGeometry(PLAYER_RADIUS * 0.3, PLAYER_RADIUS * 0.44, 0.16, 10),
+      skin,
+    );
+    neck.position.y = PLAYER_HEIGHT - PLAYER_RADIUS * 1.05;
+    group.add(neck);
+
+    const limbs = [];
+    const armGeometry = new THREE.CapsuleGeometry(PLAYER_RADIUS * 0.2, torsoHeight * 0.5, 4, 8);
+    const legGeometry = new THREE.CapsuleGeometry(PLAYER_RADIUS * 0.24, torsoHeight * 0.62, 4, 8);
+
+    for (const side of [-1, 1]) {
+      const arm = new THREE.Mesh(armGeometry, limbSkin);
+      // Flush against the torso: far enough out to catch a highlight and read
+      // as a separate limb, near enough to stay inside the collision capsule.
+      // An arm poking past PLAYER_RADIUS would visibly pass through walls.
+      arm.position.set(0, PLAYER_HEIGHT * 0.6, side * PLAYER_RADIUS * 0.79);
+      arm.rotation.x = side * 0.05;
+      arm.castShadow = true;
+      group.add(arm);
+      limbs.push(arm);
+
+      // Set so the feet land on the floor rather than sinking through it, and
+      // high enough to overlap the torso — legs hanging below a gap read as a
+      // body floating over two sticks.
+      const leg = new THREE.Mesh(legGeometry, limbSkin);
+      // Far enough apart to read as two legs. Any closer and they merge into
+      // one dark mass under the torso and the figure loses its stance.
+      leg.position.set(0, torsoHeight * 0.4, side * PLAYER_RADIUS * 0.46);
+      leg.castShadow = true;
+      group.add(leg);
+      limbs.push(leg);
+    }
+
+    // A pale wedge on the face, so which way someone is facing is readable at
+    // distance against a body that is otherwise all one dark tone.
     const facing = new THREE.Mesh(
-      new THREE.ConeGeometry(0.12, 0.3, 8),
-      new THREE.MeshStandardMaterial({ color: 0xffffff }),
+      new THREE.ConeGeometry(0.075, 0.2, 8),
+      new THREE.MeshStandardMaterial({ color: 0xe8e2d2, roughness: 0.6 }),
     );
     facing.rotation.z = -Math.PI / 2;
-    facing.position.set(PLAYER_RADIUS + 0.1, PLAYER_EYE_HEIGHT, 0);
+    facing.position.set(PLAYER_RADIUS * 0.58, PLAYER_EYE_HEIGHT, 0);
     group.add(facing);
 
     const nameplate = this._makeLabelSprite(name, isLocal ? '#ffd166' : '#e8f1ff');
@@ -624,7 +773,12 @@ export class WorldRenderer {
     nameplate.scale.set(2, 0.5, 1);
     group.add(nameplate);
 
+    // Everything that has to drop when the player sits down. The nameplate and
+    // the facing wedge stay where they are — a label that sinks into the table
+    // helps nobody.
     group.userData.body = body;
+    group.userData.figure = [body, head, neck, facing, ...limbs];
+    group.userData.restY = group.userData.figure.map((part) => part.position.y);
     this.scene.add(group);
     this.avatars.set(entityId, group);
     if (isLocal) this.localAvatar = group;
@@ -644,8 +798,16 @@ export class WorldRenderer {
     if (group === undefined) return;
     group.position.set(x, y, z);
     group.rotation.y = -yaw;
-    // Sinking the capsule reads as sitting without needing a rigged model.
-    group.userData.body.position.y = seated ? PLAYER_HEIGHT / 2 - 0.45 : PLAYER_HEIGHT / 2;
+
+    // Sinking the whole figure reads as sitting without needing a rigged model.
+    // Every part drops by the same amount, so the limbs stay attached — moving
+    // the torso alone used to leave the head and arms hanging in the air.
+    const drop = seated ? 0.45 : 0;
+    const figure = group.userData.figure ?? [group.userData.body];
+    const rest = group.userData.restY ?? [];
+    figure.forEach((part, index) => {
+      part.position.y = (rest[index] ?? part.position.y) - drop;
+    });
   }
 
   setViewMode(mode) {
@@ -753,14 +915,19 @@ export class WorldRenderer {
    */
   setTableHand(state, hand) {
     if (state === null || state === undefined) {
-      this.cardTable.clear();
+      this.clearTableHand();
       return;
     }
-    this.cardTable.sync(state, hand, this._interactables.get(state.tableId));
+    const interactable = this._interactables.get(state.tableId);
+    this.cardTable.sync(state, hand, interactable);
+    // Chips come off the same state as the cards, so a bet and the hand it
+    // bought can never be shown against different boxes.
+    this.chipStacks.sync(state, interactable);
   }
 
   clearTableHand() {
     this.cardTable.clear();
+    this.chipStacks.clear();
   }
 
   render() {

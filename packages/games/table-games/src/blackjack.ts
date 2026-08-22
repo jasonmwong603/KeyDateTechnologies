@@ -19,25 +19,53 @@ import {
  *
  * House rules, all chosen on the generous side of the usual spread:
  *
- *   - Six-deck shoe, reshuffled every round.
+ *   - Eight-deck shoe on a continuous shuffler.
+ *   - Up to three boxes per player.
  *   - Dealer stands on all 17, soft included.
  *   - Blackjack pays 3 to 2.
  *   - Double down on any first two cards.
  *   - No splitting, no insurance, no surrender.
  *
- * Splits are the notable omission. They are not hard to compute, but they turn
- * one seat into several simultaneous hands, and every layer above this — the
- * turn order, the action panel, the wire state — is built around one hand per
- * player. Adding them is a real change, not a switch, so they are left out
- * rather than half-done. See `docs/roadmap.md`.
+ * **The shoe is a continuous shuffling machine.** Every round is dealt from a
+ * freshly shuffled eight-deck shoe, which is exactly what a CSM does: cards go
+ * back into the machine as soon as the hand is over, so the composition of the
+ * shoe never drifts away from a fresh one. That kills card counting outright,
+ * which matters here rather more than in a real pit — the seed for each round
+ * is published afterwards, so a counter would not even have to count.
+ *
+ * Splits are the notable omission. Playing several *boxes* is supported, and
+ * looks similar, but it is not the same thing: boxes are chosen and paid for
+ * before any card is seen, whereas a split doubles a stake in reaction to a
+ * pair that has already been dealt. See `docs/roadmap.md`.
  */
 
-const SHOE_DECKS = 6;
+/** Eight decks, reshuffled every round — see the note on the CSM above. */
+const SHOE_DECKS = 8;
+
+/**
+ * How many hands one player may play at once.
+ *
+ * Each box is a separate betting spot with its own stake, so the price of
+ * playing more of them is simply that each one has to meet the table minimum:
+ * two boxes cost at least twice the minimum, three at least three times. That
+ * rule needs no special-casing anywhere — it falls out of the spots.
+ */
+export const MAX_BOXES = 3;
+
+/** The betting spots, in the order they are dealt across the felt. */
+export const BOX_SPOTS = ['box-1', 'box-2', 'box-3'] as const;
 const DEALER_STANDS_ON = 17;
 export const BLACKJACK_PAYOUT = 1.5;
 
 export interface BlackjackHand {
   playerId: string;
+  /**
+   * Which box this hand is playing, e.g. `box-2`.
+   *
+   * Carried on the hand because a player can hold several at once, and a
+   * double has to add its chips to the right one.
+   */
+  spotId: string;
   /** Chips at risk. Doubles when the player doubles down. */
   stake: number;
   cards: Card[];
@@ -103,6 +131,17 @@ function currentHand(state: BlackjackState): BlackjackHand | undefined {
   return state.hands[state.turn];
 }
 
+/** Position of a box spot, or -1 for anything that is not one. */
+function boxIndex(spotId: string): number {
+  return (BOX_SPOTS as readonly string[]).indexOf(spotId);
+}
+
+/** "Box 2", for a hand's own label on the felt and in the panel. */
+export function boxLabel(spotId: string): string {
+  const index = boxIndex(spotId);
+  return index < 0 ? 'Box' : `Box ${index + 1}`;
+}
+
 /** Moves the turn on to the next seat that still has a choice to make. */
 function advance(state: BlackjackState): BlackjackState {
   let turn = state.turn;
@@ -119,14 +158,29 @@ const interactive: InteractiveTableGame<BlackjackState> = {
 
   begin(wagers: readonly Wager[], rng: Rng): BlackjackState {
     const shoe = buildShoe(SHOE_DECKS, rng);
-    const antes = wagers.filter((wager) => wager.spotId === 'ante');
+    const boxes = wagers.filter((wager) => boxIndex(wager.spotId) >= 0);
+
+    // Order is part of what the seed reproduces, so it has to be a function of
+    // the wagers rather than of whatever order they happened to arrive in.
+    // Players keep the order they first bet in, and a player's own boxes run
+    // left to right — which is how they are laid out on the felt.
+    const seatOrder = new Map<string, number>();
+    for (const wager of boxes) {
+      if (!seatOrder.has(wager.playerId)) seatOrder.set(wager.playerId, seatOrder.size);
+    }
+    const ordered = [...boxes].sort(
+      (a, b) =>
+        (seatOrder.get(a.playerId) ?? 0) - (seatOrder.get(b.playerId) ?? 0) ||
+        boxIndex(a.spotId) - boxIndex(b.spotId),
+    );
 
     // Dealt round the table then to the dealer, twice, as at a real table. The
     // order matters: it is fixed by the shoe, and the shoe is fixed by the
     // committed seed, so this is part of what the fairness proof covers.
     let cursor = 0;
-    const hands: BlackjackHand[] = antes.map((wager) => ({
+    const hands: BlackjackHand[] = ordered.map((wager) => ({
       playerId: wager.playerId,
+      spotId: wager.spotId,
       stake: wager.amount,
       cards: [],
       doubled: false,
@@ -177,6 +231,16 @@ const interactive: InteractiveTableGame<BlackjackState> = {
     const hand = currentHand(state);
     if (hand === undefined || hand.cards.length !== 2) return 0;
     return hand.stake;
+  },
+
+  /**
+   * Which box the extra chips belong to.
+   *
+   * A player holding three boxes has three wagers on the felt. Doubling the
+   * middle one must not quietly add the chips to the first.
+   */
+  activeSpot(state: BlackjackState): string | null {
+    return currentHand(state)?.spotId ?? null;
   },
 
   apply(state: BlackjackState, actionId: string): BlackjackState {
@@ -255,6 +319,8 @@ const interactive: InteractiveTableGame<BlackjackState> = {
       turnPlayerId: currentHand(state)?.playerId ?? null,
       hands: state.hands.map((hand) => ({
         playerId: hand.playerId,
+        spotId: hand.spotId,
+        box: boxLabel(hand.spotId),
         stake: hand.stake,
         cards: hand.cards.map(publicCard),
         total: handValue(hand.cards).total,
@@ -316,6 +382,8 @@ const interactive: InteractiveTableGame<BlackjackState> = {
       if (payout > 0) credits.push({ playerId: hand.playerId, amount: payout });
       outcomes.push({
         playerId: hand.playerId,
+        spotId: hand.spotId,
+        box: boxLabel(hand.spotId),
         cards: hand.cards.map(publicCard),
         total,
         stake: hand.stake,
@@ -360,12 +428,29 @@ export const blackjack: TableGameDefinition = {
   // follows, so a table of six all get their bets down before the cards come out.
   bettingClose: 'on-demand',
   bettingWindowMs: 10_000,
+  /**
+   * One spot per box. Playing more hands means covering more spots, and each
+   * has to meet the table minimum on its own — so two hands cost at least twice
+   * the minimum and three at least three times, with no rule to enforce it.
+   */
   spots: [
     {
-      id: 'ante',
-      label: 'Bet',
+      id: 'box-1',
+      label: 'Box 1',
       payout: 1,
       description: 'Even money. Blackjack pays 3 to 2. Dealer stands on all 17.',
+    },
+    {
+      id: 'box-2',
+      label: 'Box 2',
+      payout: 1,
+      description: 'A second hand. Costs its own bet, and plays after the first.',
+    },
+    {
+      id: 'box-3',
+      label: 'Box 3',
+      payout: 1,
+      description: 'A third hand. Same again — three boxes, three bets.',
     },
   ],
 

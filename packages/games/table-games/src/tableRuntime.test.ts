@@ -289,9 +289,9 @@ describe('TableRuntime round lifecycle', () => {
     for (let i = 0; i < 600 && rounds < 20; i += 1) {
       duel.update();
       if (duel.currentPhase === 'betting') {
-        duel.placeWager('a', 'ante', 33);
-        duel.placeWager('b', 'ante', 33);
-        duel.placeWager('c', 'ante', 34);
+        duel.placeWager('a', 'box-1', 33);
+        duel.placeWager('b', 'box-1', 33);
+        duel.placeWager('c', 'box-1', 34);
       }
       if (duel.currentPhase === 'payout') rounds += 1;
       duelHost.advance(1_000);
@@ -365,7 +365,7 @@ describe('a table with a decision phase', () => {
   function dealIn(players: string[] = ['a'], stake = 100): void {
     for (const player of players) bjTable.sit(player);
     bjTable.update();
-    for (const player of players) bjTable.placeWager(player, 'ante', stake);
+    for (const player of players) bjTable.placeWager(player, 'box-1', stake);
     bjTable.callDeal(players[0] as string);
     bjHost.advance(blackjack.bettingWindowMs + 1);
     bjTable.update();
@@ -447,7 +447,7 @@ describe('a table with a decision phase', () => {
     bjTable.sit('a');
     bjTable.update();
     // Stake everything, so there is nothing left to double with.
-    bjTable.placeWager('a', 'ante', 1_000);
+    bjTable.placeWager('a', 'box-1', 1_000);
     bjTable.callDeal('a');
     bjHost.advance(blackjack.bettingWindowMs + 1);
     bjTable.update();
@@ -623,7 +623,7 @@ describe('a table that waits to be asked', () => {
   });
 
   it('runs no betting clock at all until the deal is called', () => {
-    bjTable.placeWager('a', 'ante', 100);
+    bjTable.placeWager('a', 'box-1', 100);
     // Ten minutes. A timer table would have dealt, resolved and paid out twenty
     // times over; this one is still waiting, which is the entire point.
     for (let i = 0; i < 60; i += 1) {
@@ -635,7 +635,7 @@ describe('a table that waits to be asked', () => {
   });
 
   it('reports no countdown before the deal is called, and one after', () => {
-    bjTable.placeWager('a', 'ante', 100);
+    bjTable.placeWager('a', 'box-1', 100);
     expect(bjTable.toPublicState().bettingMsRemaining).toBe(0);
 
     bjTable.callDeal('a');
@@ -651,7 +651,7 @@ describe('a table that waits to be asked', () => {
   });
 
   it('deals once the last call runs out', () => {
-    bjTable.placeWager('a', 'ante', 100);
+    bjTable.placeWager('a', 'box-1', 100);
     bjTable.callDeal('a');
     expect(bjTable.currentPhase).toBe('betting');
     expect(bjTable.toPublicState().dealCalled).toBe(true);
@@ -669,12 +669,12 @@ describe('a table that waits to be asked', () => {
   it('keeps taking bets during the last call', () => {
     // That is what the ten seconds are for: everyone else gets their chips down.
     bjTable.sit('b');
-    bjTable.placeWager('a', 'ante', 100);
+    bjTable.placeWager('a', 'box-1', 100);
     bjTable.callDeal('a');
 
     bjHost.advance(5_000);
     bjTable.update();
-    expect(bjTable.placeWager('b', 'ante', 50).ok).toBe(true);
+    expect(bjTable.placeWager('b', 'box-1', 50).ok).toBe(true);
   });
 
   it('refuses the call from a player with nothing on the felt', () => {
@@ -689,12 +689,12 @@ describe('a table that waits to be asked', () => {
   });
 
   it('refuses the call from somebody who is not seated', () => {
-    bjTable.placeWager('a', 'ante', 100);
+    bjTable.placeWager('a', 'box-1', 100);
     expect(bjTable.callDeal('stranger')).toMatchObject({ ok: false, code: 'invalid_action' });
   });
 
   it('refuses the call once the cards are already out', () => {
-    bjTable.placeWager('a', 'ante', 100);
+    bjTable.placeWager('a', 'box-1', 100);
     bjTable.callDeal('a');
     bjHost.advance(blackjack.bettingWindowMs + 1);
     bjTable.update();
@@ -703,7 +703,7 @@ describe('a table that waits to be asked', () => {
   });
 
   it('is idempotent, and a second call cannot extend the window', () => {
-    bjTable.placeWager('a', 'ante', 100);
+    bjTable.placeWager('a', 'box-1', 100);
     bjTable.callDeal('a');
 
     bjHost.advance(9_000);
@@ -718,12 +718,12 @@ describe('a table that waits to be asked', () => {
 
   it('lets a second player call the deal on behalf of the table', () => {
     bjTable.sit('b');
-    bjTable.placeWager('b', 'ante', 100);
+    bjTable.placeWager('b', 'box-1', 100);
     expect(bjTable.callDeal('b')).toEqual({ ok: true });
   });
 
   it('withdraws the call rather than dealing into an empty felt', () => {
-    bjTable.placeWager('a', 'ante', 100);
+    bjTable.placeWager('a', 'box-1', 100);
     bjTable.callDeal('a');
     // Changed their mind during the last call and pulled the only chips back.
     bjTable.clearWagers('a');
@@ -738,13 +738,13 @@ describe('a table that waits to be asked', () => {
   });
 
   it('can be called again after a withdrawn deal', () => {
-    bjTable.placeWager('a', 'ante', 100);
+    bjTable.placeWager('a', 'box-1', 100);
     bjTable.callDeal('a');
     bjTable.clearWagers('a');
     bjHost.advance(blackjack.bettingWindowMs + 1);
     bjTable.update();
 
-    bjTable.placeWager('a', 'ante', 100);
+    bjTable.placeWager('a', 'box-1', 100);
     expect(bjTable.callDeal('a')).toEqual({ ok: true });
     bjHost.advance(blackjack.bettingWindowMs + 1);
     bjTable.update();
@@ -752,7 +752,7 @@ describe('a table that waits to be asked', () => {
   });
 
   it('clears the call when the next round opens', () => {
-    bjTable.placeWager('a', 'ante', 100);
+    bjTable.placeWager('a', 'box-1', 100);
     bjTable.callDeal('a');
     bjHost.advance(blackjack.bettingWindowMs + 1);
     bjTable.update();
@@ -771,23 +771,70 @@ describe('a table that waits to be asked', () => {
 
   it('takes a bet of the whole balance, because there is no table limit', () => {
     // "Ten to whatever you hold" is the rule, so the ledger is the only ceiling.
-    expect(bjTable.placeWager('a', 'ante', 1_000).ok).toBe(true);
+    expect(bjTable.placeWager('a', 'box-1', 1_000).ok).toBe(true);
     expect(bjHost.balances.get('a')).toBe(0);
   });
 
   it('still refuses a bet one chip beyond the balance', () => {
-    expect(bjTable.placeWager('a', 'ante', 1_001)).toMatchObject({
+    expect(bjTable.placeWager('a', 'box-1', 1_001)).toMatchObject({
       ok: false,
       code: 'insufficient_chips',
     });
   });
 
   it('still enforces the table minimum', () => {
-    expect(bjTable.placeWager('a', 'ante', 9)).toMatchObject({
+    expect(bjTable.placeWager('a', 'box-1', 9)).toMatchObject({
       ok: false,
       code: 'invalid_action',
       message: 'Minimum wager is 10.',
     });
+  });
+
+  it('adds a double to the box it belongs to, not to the first one', () => {
+    // The bug this guards is silent: the chips come out of the balance either
+    // way, and the felt just quietly shows them against the wrong hand.
+    bjTable.placeWager('a', 'box-1', 100);
+    bjTable.placeWager('a', 'box-2', 100);
+    bjTable.callDeal('a');
+    bjHost.advance(blackjack.bettingWindowMs + 1);
+    bjTable.update();
+
+    // Walk to whichever box can double, then double it.
+    let doubled: string | null = null;
+    while (bjTable.currentActor === 'a' && doubled === null) {
+      const decision = bjTable.toPublicState().decision!;
+      const hands = decision.view.hands as { spotId: string; finished: boolean }[];
+      const active = hands.find((hand) => !hand.finished);
+      if (decision.actions.some((action) => action.id === 'double')) {
+        bjTable.takeAction('a', 'double');
+        doubled = active?.spotId ?? null;
+      } else {
+        bjTable.takeAction('a', 'stand');
+      }
+    }
+
+    if (doubled !== null) {
+      const wagers = bjTable.toPublicState().wagers;
+      expect(wagers.find((wager) => wager.spotId === doubled)?.amount).toBe(200);
+      for (const wager of wagers) {
+        if (wager.spotId !== doubled) expect(wager.amount).toBe(100);
+      }
+    }
+  });
+
+  it('takes one deal call to cover every box a player is holding', () => {
+    bjTable.placeWager('a', 'box-1', 50);
+    bjTable.placeWager('a', 'box-2', 50);
+    bjTable.placeWager('a', 'box-3', 50);
+    expect(bjTable.callDeal('a')).toEqual({ ok: true });
+
+    bjHost.advance(blackjack.bettingWindowMs + 1);
+    bjTable.update();
+
+    const hands = bjTable.toPublicState().decision?.view.hands as unknown[] | undefined;
+    // Either three hands to play, or the round was settled outright by a
+    // natural — never one hand for three bets.
+    expect(hands === undefined || hands.length === 3).toBe(true);
   });
 
   it('refuses the deal call at a table that runs on a clock', () => {

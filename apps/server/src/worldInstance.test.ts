@@ -1,5 +1,5 @@
 import { ENTITY_FLAG_SEATED, type ServerMessage } from '@keydate/protocol';
-import { TICK_RATE } from '@keydate/sim';
+import { INTERACT_RANGE, INTERACT_RANGE_SERVER_TOLERANCE, TICK_RATE } from '@keydate/sim';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { WorldInstance } from './worldInstance.js';
 
@@ -281,8 +281,10 @@ describe('WorldInstance tables', () => {
     const table = world.world.interactables[0]!;
     const record = world.getPlayer('p1')!;
 
-    // Just outside INTERACT_RANGE + tolerance (2.4 + 0.75).
-    record.state.x = table.x + 3.4;
+    // Just outside INTERACT_RANGE + the server's tolerance. Derived rather
+    // than written out, so tuning the range cannot leave this test asserting
+    // that a reachable distance is unreachable.
+    record.state.x = table.x + INTERACT_RANGE + INTERACT_RANGE_SERVER_TOLERANCE + 0.25;
     record.state.z = table.z;
     world.handleInteract('p1', table.id);
 
@@ -451,6 +453,49 @@ describe('WorldInstance tables', () => {
     expect(new Set(positions).size).toBe(2);
   });
 
+  it('steps a player clear of the stool when they stand up', () => {
+    // The seat anchor is the middle of a solid stool. A player left standing on
+    // it is inside geometry, and collision only permits a move to a clear
+    // destination — so every direction is refused and they are stuck there for
+    // good. It looks exactly like the game freezing.
+    const client = new FakeClient();
+    world.addPlayer('p1', 'Sam', client.send, 't1');
+    const table = world.world.interactables.find((entry) => entry.gameId === 'blackjack')!;
+    const record = world.getPlayer('p1')!;
+    record.state.x = table.seats[0]!.x;
+    record.state.z = table.seats[0]!.z;
+    world.handleInteract('p1', table.id);
+    expect(record.state.seatedAt).toBe(table.id);
+
+    world.handleLeaveTable('p1');
+
+    // Standing up must leave them able to walk, and still able to sit again.
+    const before = { x: record.state.x, z: record.state.z };
+    world.queueInput(
+      'p1',
+      Array.from({ length: 20 }, (_, i) => frame(i + 1, { moveZ: 1, yaw: 0 })),
+    );
+    tick(20);
+
+    const moved = Math.hypot(record.state.x - before.x, record.state.z - before.z);
+    expect(moved).toBeGreaterThan(0.5);
+  });
+
+  it('leaves a table within reach after standing up from it', () => {
+    const client = new FakeClient();
+    world.addPlayer('p1', 'Sam', client.send, 't1');
+    const table = world.world.interactables.find((entry) => entry.gameId === 'blackjack')!;
+    const record = world.getPlayer('p1')!;
+    record.state.x = table.seats[2]!.x;
+    record.state.z = table.seats[2]!.z;
+    world.handleInteract('p1', table.id);
+    world.handleLeaveTable('p1');
+
+    // Getting up and sitting straight back down has to work.
+    world.handleInteract('p1', table.id);
+    expect(record.state.seatedAt).toBe(table.id);
+  });
+
   it('routes a table action to the table and refuses one from the floor', () => {
     const client = new FakeClient();
     world.addPlayer('p1', 'Sam', client.send, 't1');
@@ -467,7 +512,7 @@ describe('WorldInstance tables', () => {
     world.handleInteract('p1', blackjackTable());
     tick();
 
-    world.handleWager('p1', 'ante', 100);
+    world.handleWager('p1', 'box-1', 100);
 
     // Blackjack waits to be asked. Call the deal, then run out the last call.
     world.handleCallDeal('p1');
@@ -510,7 +555,7 @@ describe('WorldInstance tables', () => {
     tick();
 
     const before = world.balanceOf('p1');
-    world.handleWager('p1', 'ante', 200);
+    world.handleWager('p1', 'box-1', 200);
     world.handleCallDeal('p1');
     advance(30_000);
     tick();
@@ -806,7 +851,7 @@ describe('WorldInstance blackjack betting', () => {
     tick();
 
     const balance = world.balanceOf('p1');
-    world.handleWager('p1', 'ante', balance);
+    world.handleWager('p1', 'box-1', balance);
 
     expect(world.balanceOf('p1')).toBe(0);
     expect(client.errors()).toHaveLength(0);
@@ -819,7 +864,7 @@ describe('WorldInstance blackjack betting', () => {
     tick();
 
     const balance = world.balanceOf('p1');
-    world.handleWager('p1', 'ante', balance + 1);
+    world.handleWager('p1', 'box-1', balance + 1);
 
     expect(world.balanceOf('p1')).toBe(balance);
     expect(client.errors().at(-1)?.code).toBe('insufficient_chips');
@@ -830,7 +875,7 @@ describe('WorldInstance blackjack betting', () => {
     world.addPlayer('p1', 'Sam', client.send, 't1');
     seatAtBlackjack('p1');
     tick();
-    world.handleWager('p1', 'ante', 100);
+    world.handleWager('p1', 'box-1', 100);
 
     // Two minutes of ticks with no deal call.
     for (let i = 0; i < 24; i += 1) {
@@ -847,7 +892,7 @@ describe('WorldInstance blackjack betting', () => {
     world.addPlayer('p1', 'Sam', client.send, 't1');
     seatAtBlackjack('p1');
     tick();
-    world.handleWager('p1', 'ante', 100);
+    world.handleWager('p1', 'box-1', 100);
     world.handleCallDeal('p1');
     tick();
 
@@ -899,7 +944,7 @@ describe('WorldInstance blackjack betting', () => {
     world.addPlayer('p1', 'Sam', client.send, 't1');
     seatAtBlackjack('p1');
     tick();
-    world.handleWager('p1', 'ante', 100);
+    world.handleWager('p1', 'box-1', 100);
     world.handleCallDeal('p1');
 
     advance(9_000);

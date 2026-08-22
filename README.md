@@ -173,15 +173,30 @@ what is staked on it, and a test fails if one ever climbs above 100% or drops be
 a spot with a positive expected return is a money printer and will be found.
 
 **Blackjack** — two tables, and the only game where you actually play rather than bet.
-Six-deck shoe reshuffled each round, dealer stands on all 17, blackjack pays 3 to 2,
-double down on any first two cards. Bet any whole number from 10 up to your entire stack;
+Eight-deck shoe on a continuous shuffler, dealer stands on all 17, blackjack pays 3 to 2,
+double down on any first two cards, and up to three boxes each.
+Bet any whole number from 10 up to your entire stack;
 there is no table maximum, because the house here is not a bankroll anybody has to keep
 solvent. And there is no betting clock — the table waits until a player with chips down
 calls the deal, then gives everyone ten seconds of last call.
 
+Playing more than one hand needs no rule of its own. Each box is a separate betting spot
+that has to meet the table minimum on its own, so two hands cost at least twice the
+minimum and three at least three times — the rule falls out of the spots rather than
+being enforced on top of them. It is not splitting: a split reacts to a pair already
+dealt, where boxes are chosen and paid for before a card comes out.
+
+The shoe is a **continuous shuffling machine**. Every round is dealt from a freshly
+shuffled eight-deck shoe, exactly as a CSM behaves — cards go back in the moment the hand
+is over. That kills card counting outright, which matters more here than in a real pit,
+since the seed for every round is published afterwards anyway.
+
 Cards are dealt onto the felt itself, not just into the HUD: they come out of the shoe
 one at a time, turn face up as they cross the table, and settle in front of whoever they
-belong to. The dealer's hole card stays face down, on the table, until the hand ends. No splitting, no insurance, no surrender: a split
+belong to. The dealer's hole card stays face down, on the table, until the hand ends.
+Bets sit beside them as chip stacks — red 5, green 25, black 100, purple 500, gold 1000,
+and a white 1 for the change, because a bet is any whole number and a stack that does not
+add up to it would be worse than no stack. No splitting, no insurance, no surrender: a split
 turns one seat into several simultaneous hands, which the turn order and the wire state
 are not built for, and half-implementing it is worse than leaving it out.
 

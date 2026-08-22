@@ -78,8 +78,11 @@ function ringSeats(
   return seats;
 }
 
+/** How far a table's seats sit from its centre. The felt ends at 1.3m. */
+const SEAT_RADIUS = 2.1;
+
 /**
- * The first playable space: a single casino floor with four wagering tables.
+ * The first playable space: a single casino floor with six wagering tables.
  *
  * Deliberately one room. Interest management and zone handoff are only worth
  * building once there is a second room to hand off to.
@@ -133,6 +136,19 @@ export function buildCasinoFloor(): World {
     // The table body is solid; players walk up to it rather than through it.
     // Tagged so the client draws its own table mesh here instead of a grey box.
     colliders.push({ ...aabb(table.x, 0, table.z, 2.6, 1.0, 2.6), kind: 'table' as const });
+
+    // A stool at every seat, solid like everything else you can see. Seats used
+    // to be a translucent disc painted on the floor, which told you where to
+    // stand but not that anyone was sitting there.
+    //
+    // They are deliberately narrow. Six of them ring a table 2.2m apart, so a
+    // 0.62m stool still leaves a metre and a half of gap between neighbours —
+    // wide enough to walk between from any direction rather than having to find
+    // the one approach that works.
+    for (const seat of ringSeats(table.x, table.z, SEAT_RADIUS, 6)) {
+      colliders.push({ ...aabb(seat.x, 0, seat.z, 0.62, 0.72, 0.62), kind: 'seat' as const });
+    }
+
     return {
       id: index + 1,
       kind: 'table' as const,
@@ -141,7 +157,7 @@ export function buildCasinoFloor(): World {
       x: table.x,
       y: 0,
       z: table.z,
-      seats: ringSeats(table.x, table.z, 2.1, 6),
+      seats: ringSeats(table.x, table.z, SEAT_RADIUS, 6),
     };
   });
 

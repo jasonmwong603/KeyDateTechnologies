@@ -37,8 +37,16 @@ const STAGGER_MS = 130;
 /** How high a card arcs on its way across the table. */
 const ARC_HEIGHT = 0.3;
 
-/** How far in from a seat the cards land. Seats ring at 2.1m, felt ends at 1.3m. */
-const SEAT_INSET = 1.05;
+/**
+ * How far from the table centre a seat's cards land.
+ *
+ * Seats ring at 2.1m and the felt ends at 1.3m, so this is as close to the
+ * player as a card can sit without hanging off the edge.
+ */
+export const SEAT_INSET = 1.02;
+
+/** Sideways gap between the boxes of a player holding more than one. */
+const BOX_SPACING = 0.5;
 /** Sideways spacing between the cards of one hand. Wider than a card, so they
  *  sit side by side rather than stacked — a hole card half-buried under the
  *  upcard is the one card you most need to be able to point at. */
@@ -143,6 +151,29 @@ function drawBack() {
   return canvas;
 }
 
+/**
+ * Where a seat's things sit on the felt, `inset` metres from the table centre.
+ *
+ * Shared with the chip stacks so cards and chips agree about which direction a
+ * player is sitting in — they are laid out along the same radius, and the two
+ * drifting apart would put somebody's bet in front of another seat's cards.
+ */
+export function seatAnchor(seat, inset) {
+  const length = Math.hypot(seat.x, seat.z) || 1;
+  const ux = seat.x / length;
+  const uz = seat.z / length;
+  return {
+    x: ux * inset,
+    z: uz * inset,
+    // The tangent is the radial vector turned a quarter turn: the direction to
+    // fan things out along without moving them nearer or further from the seat.
+    tangentX: uz,
+    tangentZ: -ux,
+    // Long axis radial, so a card points at whoever it belongs to.
+    yaw: Math.atan2(ux, uz),
+  };
+}
+
 /** The key a card slot is tracked by, so a hand can be diffed between updates. */
 function cardCode(card) {
   return card === null || card === undefined ? 'facedown' : `${card.rank}${card.suit}`;
@@ -214,27 +245,30 @@ export class CardTable {
    * player, fanned sideways — because that is how they read from the one place
    * anybody is looking at them from.
    */
-  _restingPlace(seat, indexInHand, handSize) {
+  _restingPlace(seat, indexInHand, handSize, box = { index: 0, count: 1 }) {
     if (seat === null) {
-      // The dealer's hand. No seat, so it lies square to the table, just off
-      // centre toward the shoe.
-      // Well clear of the shoe: sat any closer, the shoe occludes the hole card
-      // from every seat on the far side of the table.
+      // The dealer's hand. No seat, so it lies square to the table, well clear
+      // of the shoe: sat any closer, the shoe occludes the hole card from every
+      // seat on the far side of the table.
       const spread = (indexInHand - (handSize - 1) / 2) * FAN_SPACING;
       return { x: spread, z: 0.24, yaw: 0 };
     }
 
-    const length = Math.hypot(seat.x, seat.z) || 1;
-    const ux = seat.x / length;
-    const uz = seat.z / length;
-    // Long axis radial, so the card points at whoever it belongs to.
-    const yaw = Math.atan2(ux, uz);
+    const anchor = seatAnchor(seat, SEAT_INSET);
 
-    const anchorX = ux * SEAT_INSET;
-    const anchorZ = uz * SEAT_INSET;
-    // Fan along the tangent, which is the radial vector turned a quarter turn.
-    const spread = (indexInHand - (handSize - 1) / 2) * FAN_SPACING;
-    return { x: anchorX + uz * spread, z: anchorZ - ux * spread, yaw };
+    // A player holding three boxes gets three hands laid out side by side in
+    // front of their seat, and the cards within each fan tighter so all three
+    // fit inside one seat's share of the felt.
+    const tight = box.count > 1;
+    const boxOffset = (box.index - (box.count - 1) / 2) * BOX_SPACING;
+    const spacing = tight ? FAN_SPACING * 0.55 : FAN_SPACING;
+    const spread = boxOffset + (indexInHand - (handSize - 1) / 2) * spacing;
+
+    return {
+      x: anchor.x + anchor.tangentX * spread,
+      z: anchor.z + anchor.tangentZ * spread,
+      yaw: anchor.yaw,
+    };
   }
 
   _createCard(card, place, faceDown, delayMs) {
@@ -311,20 +345,36 @@ export class CardTable {
     // motion round the table rather than as everything landing at once.
     if (performance.now() - this._batchAt > STAGGER_MS * 3) this._dealtThisBatch = 0;
 
+    // How many boxes each player is holding, so their hands can be laid out
+    // side by side rather than on top of each other.
+    const boxCount = new Map();
+    for (const entry of hand.seats ?? []) {
+      boxCount.set(entry.playerId, (boxCount.get(entry.playerId) ?? 0) + 1);
+    }
+    const boxSeen = new Map();
+
     const live = new Set();
     this._syncHand('dealer', hand.dealer ?? [], null, live);
     for (const entry of hand.seats ?? []) {
-      this._syncHand(entry.playerId, entry.cards ?? [], seatFor.get(entry.playerId) ?? null, live);
+      const index = boxSeen.get(entry.playerId) ?? 0;
+      boxSeen.set(entry.playerId, index + 1);
+      this._syncHand(
+        entry.key ?? entry.playerId,
+        entry.cards ?? [],
+        seatFor.get(entry.playerId) ?? null,
+        live,
+        { index, count: boxCount.get(entry.playerId) ?? 1 },
+      );
     }
     this._removeAllBut(live);
   }
 
-  _syncHand(ownerKey, cards, seat, live) {
+  _syncHand(ownerKey, cards, seat, live, box = { index: 0, count: 1 }) {
     cards.forEach((card, index) => {
       const key = `${ownerKey}:${index}`;
       live.add(key);
 
-      const place = this._restingPlace(seat, index, cards.length);
+      const place = this._restingPlace(seat, index, cards.length, box);
       const code = cardCode(card);
       const existing = this._cards.get(key);
 

@@ -46,11 +46,12 @@ aim-dependent. It becomes necessary the moment any interaction is timing-critica
 built; blackjack brought the `decisions` phase with it, so a game needing per-player
 sequential choices no longer needs a new phase machine, only an `InteractiveTableGame`.
 
-**Splitting in blackjack.** Left out deliberately. A split turns one seat into several
-simultaneous hands, and the turn order, the action panel and the wire state are all built
-around one hand per player — so it is a real change rather than a switch. Insurance and
-surrender are the same shape of decision and are absent for the same reason. Doubling
-down is in, because it fits one hand per seat.
+**Splitting in blackjack.** Still left out, though the ground under it has shifted:
+playing several _boxes_ is supported now, so the turn order, the action panel and the wire
+state all handle one player holding three hands at once. What splitting still needs is the
+part boxes do not have — reacting to a pair _after_ it is dealt, which means creating a
+hand mid-round and taking chips for it at that moment. Insurance and surrender are the
+same shape of decision and are absent for the same reason.
 
 **Sequential betting.** Poker, and anything else where a bet depends on what the person
 before you bet, still does not fit: the betting window is one shared window, not a
@@ -73,6 +74,7 @@ Only usable from a Capacitor or Electron build, since browsers cannot do UDP. Se
 | No persistence                      | Chips reset when a world empties                   | `apps/server/src/ledger.ts`          |
 | Everyone replicates everyone        | Bandwidth is O(n²) in players                      | `WorldInstance.replicate`            |
 | No splitting in blackjack           | The one basic-strategy move a player cannot make   | `packages/games/.../blackjack.ts`    |
+| Avatars are placeholder figures     | A black pill with limbs, not a character           | `WorldRenderer.addAvatar`            |
 | Single-process                      | No horizontal scaling; a restart drops every world | `apps/server/src/index.ts`           |
 | Client covered by smoke test only   | Broad checks, not fine-grained assertions          | `apps/client/smoke.mjs`              |
 

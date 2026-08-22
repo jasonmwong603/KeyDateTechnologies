@@ -394,10 +394,15 @@ export class TableRuntime {
     // that was never debited.
     const extra = game.stakeDelta(this.decisionState, actionId);
     if (extra > 0) {
+      // Read before applying: once the action lands, the turn has moved on and
+      // the spot it belonged to is no longer the current one.
+      const spot = game.activeSpot?.(this.decisionState) ?? null;
       if (!this.host.debit(playerId, extra, 'wager')) {
         return { ok: false, code: 'insufficient_chips', message: 'Not enough chips to double.' };
       }
-      const wager = this.wagers.find((entry) => entry.playerId === playerId);
+      const wager = this.wagers.find(
+        (entry) => entry.playerId === playerId && (spot === null || entry.spotId === spot),
+      );
       // Keeps the felt honest: the wager list is what the table shows as staked,
       // and it must match what the hand is actually playing for.
       if (wager !== undefined) wager.amount += extra;

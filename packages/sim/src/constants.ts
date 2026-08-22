@@ -32,11 +32,17 @@ export const JUMP_VELOCITY = 7.2;
 /**
  * How close a player must stand to an interactable to trigger it, in metres.
  *
- * Table bodies are 2.6m across, so a player walking straight at one comes to
- * rest about 1.69m from its centre — comfortably inside this range from every
- * approach angle.
+ * Sized by the worst approach, which is straight at a stool. Six of them ring
+ * every table at 2.1m, and a player walking head-on into one comes to rest
+ * about 2.76m from the table's centre — their own half-width plus the stool's,
+ * with no room to slide either way. Anything under that and a table would be
+ * reachable only from the angles that happen to line up with a gap between
+ * stools, which is a maddening thing to debug and a worse thing to play.
+ *
+ * Walking in between two stools still gets you to about 1.69m, stopped by the
+ * table body itself.
  */
-export const INTERACT_RANGE = 2.4;
+export const INTERACT_RANGE = 3.1;
 
 /**
  * Extra range the server allows on top of `INTERACT_RANGE`.

@@ -84,6 +84,15 @@ function nearestSeat(interactable: { seats: { x: number; z: number }[] }, x: num
   return best;
 }
 
+/**
+ * Where a player ends up when they stand up, measured from the table centre.
+ *
+ * Far enough out to clear the stool they were on — its half-width plus their
+ * own, plus a little — and well inside `INTERACT_RANGE`, so standing up never
+ * puts the table out of reach.
+ */
+const STAND_BACK_RADIUS = 2.85;
+
 /** Table state is pushed to seated players at this many ticks apart (~5Hz). */
 const TABLE_STATE_INTERVAL_TICKS = 6;
 
@@ -689,8 +698,39 @@ export class WorldInstance {
 
     this.tables.get(tableId)?.stand(record.playerId);
     record.state.seatedAt = null;
+    this.stepBackFromSeat(record, tableId);
     this.enqueueEvent(record, { kind: 'table:left', tableId });
     this.broadcastTableState(tableId, true);
+  }
+
+  /**
+   * Steps a player back off the stool they were sitting on.
+   *
+   * A seated player is parked on the seat anchor, which is the middle of a
+   * solid stool — fine while seated, because the simulation does not move them
+   * at all. The moment they stand up it is not fine: they are inside geometry,
+   * and collision only permits a move to a clear destination, so every
+   * direction is refused and they are stuck on the spot forever.
+   *
+   * Stepping out radially puts them where somebody who had just got up would
+   * actually be standing, and inside interact range so they can sit straight
+   * back down.
+   */
+  private stepBackFromSeat(record: PlayerRecord, tableId: number): void {
+    const table = this.world.interactables.find((entry) => entry.id === tableId);
+    if (table === undefined) return;
+
+    const dx = record.state.x - table.x;
+    const dz = record.state.z - table.z;
+    const length = Math.hypot(dx, dz);
+    // Dead centre of the table is not a direction; any ray out will do.
+    const ux = length < 0.001 ? 1 : dx / length;
+    const uz = length < 0.001 ? 0 : dz / length;
+
+    record.state.x = table.x + ux * STAND_BACK_RADIUS;
+    record.state.z = table.z + uz * STAND_BACK_RADIUS;
+    record.state.vx = 0;
+    record.state.vz = 0;
   }
 
   private broadcastTableState(tableId: number, force: boolean): void {

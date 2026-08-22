@@ -458,7 +458,7 @@ export class Hud {
     });
 
     for (const seat of hand.seats) {
-      const key = `seat:${seat.playerId}`;
+      const key = `seat:${seat.key ?? seat.playerId}`;
       live.add(key);
       dealt += this._syncRow(key, this.elements.handSeats, {
         label: seat.label,
@@ -499,8 +499,10 @@ export class Hud {
             ? 'blackjack'
             : String(detail.dealerTotal ?? ''),
         seats: (detail.hands ?? []).map((entry) => ({
+          key: `${entry.playerId}:${entry.spotId ?? 'box-1'}`,
           playerId: entry.playerId,
-          label: this._handLabel(state, entry.playerId, entry.stake),
+          spotId: entry.spotId ?? 'box-1',
+          label: this._handLabel(state, entry, detail.hands ?? []),
           cards: entry.cards,
           note: `${entry.total}${entry.doubled ? ' · doubled' : ''}`,
           outcome: entry.outcome,
@@ -524,14 +526,22 @@ export class Hud {
     if (view === null || view === undefined || view.hands === undefined) return null;
 
     const actor = state.decision?.actor ?? null;
+    const hands = view.hands ?? [];
+    // Only one hand is live at a time, and with three boxes to one player the
+    // actor's id no longer identifies it. The first unfinished hand belonging to
+    // the actor is the one on the clock.
+    const activeKey = hands.find((entry) => entry.playerId === actor && !entry.finished);
+
     return {
       // A null in the card list renders face down — which is exactly what the
       // dealer's hole card is until the hand is over.
       dealer: view.dealerCards ?? (view.dealerUpcard ? [view.dealerUpcard, null] : []),
       dealerNote: view.dealerBlackjack ? 'blackjack' : '',
-      seats: (view.hands ?? []).map((entry) => ({
+      seats: hands.map((entry) => ({
+        key: `${entry.playerId}:${entry.spotId ?? 'box-1'}`,
         playerId: entry.playerId,
-        label: this._handLabel(state, entry.playerId, entry.stake),
+        spotId: entry.spotId ?? 'box-1',
+        label: this._handLabel(state, entry, hands),
         cards: entry.cards,
         note: entry.bust
           ? 'bust'
@@ -540,14 +550,25 @@ export class Hud {
             : `${entry.soft ? 'soft ' : ''}${entry.total}${entry.doubled ? ' · doubled' : ''}`,
         outcome: '',
         mine: entry.playerId === this.connection.playerId,
-        acting: entry.playerId === actor,
+        acting: entry === activeKey,
       })),
     };
   }
 
-  _handLabel(state, playerId, stake) {
-    const who = playerId === this.connection.playerId ? 'You' : this._seatLabel(state, playerId);
-    return stake === undefined ? who : `${who} · ${Number(stake).toLocaleString()}`;
+  /**
+   * Names one hand.
+   *
+   * The box number only appears when the player is actually holding more than
+   * one — "You · Box 1 · 100" on a single hand is noise, and the box numbers
+   * are what tell three hands apart when there are three.
+   */
+  _handLabel(state, entry, allHands) {
+    const who =
+      entry.playerId === this.connection.playerId ? 'You' : this._seatLabel(state, entry.playerId);
+    const boxes = allHands.filter((hand) => hand.playerId === entry.playerId).length;
+    const box = boxes > 1 && entry.box ? ` · ${entry.box}` : '';
+    const stake = entry.stake === undefined ? '' : ` · ${Number(entry.stake).toLocaleString()}`;
+    return `${who}${box}${stake}`;
   }
 
   _clearHand() {
