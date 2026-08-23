@@ -43,6 +43,7 @@ export class Hud {
       handSeats: document.getElementById('hand-seats'),
       handActions: document.getElementById('hand-actions'),
       tableWagers: document.getElementById('table-wagers'),
+      tableNotice: document.getElementById('table-notice'),
       tableResult: document.getElementById('table-result'),
       fairness: document.getElementById('fairness'),
       clearBets: document.getElementById('clear-bets'),
@@ -69,6 +70,8 @@ export class Hud {
     this._lastHandView = null;
     /** Limits for the table currently open, refreshed from its state. */
     this._limits = { min: MIN_STAKE_FLOOR, max: MIN_STAKE_FLOOR };
+    /** Clears the refusal notice after a few seconds. */
+    this._noticeTimer = 0;
 
     this._bindActions();
   }
@@ -378,6 +381,9 @@ export class Hud {
         const hint = document.createElement('span');
         hint.className = 'spot-hint';
         hint.textContent = spot.description ?? '';
+        // The full rule is hidden on a small screen to keep the panel out of
+        // the way of the table, so it lives on the button itself as well.
+        button.title = `${spot.label} — ${spot.description ?? ''}`;
 
         const stake = document.createElement('span');
         stake.className = 'spot-stake';
@@ -794,6 +800,24 @@ export class Hud {
     }
   }
 
+  /**
+   * Says why the table refused something, in the panel rather than in chat.
+   *
+   * Refusals used to go to the chat log, which sits under the table panel and
+   * out of the corner of the eye — a poor place for "that bet was not accepted,
+   * and here is the number you need instead".
+   */
+  showNotice(text) {
+    const notice = this.elements.tableNotice;
+    notice.textContent = text;
+    notice.hidden = false;
+
+    window.clearTimeout(this._noticeTimer);
+    this._noticeTimer = window.setTimeout(() => {
+      notice.hidden = true;
+    }, 5_000);
+  }
+
   hideTable() {
     this.elements.tablePanel.hidden = true;
     this.elements.tableHand.hidden = true;
@@ -801,6 +825,7 @@ export class Hud {
     this.elements.tableSpots.dataset.gameId = '';
     this.currentTableId = null;
     this.currentHand = null;
+    this.elements.tableNotice.hidden = true;
     // Standing up ends your involvement in that hand. Nothing about it should
     // still be on screen if you sit down somewhere else.
     this._lastHandView = null;

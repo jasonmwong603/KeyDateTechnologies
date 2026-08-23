@@ -157,6 +157,23 @@ export interface TableGameDefinition {
   bettingClose?: BettingClose;
   spots: BettingSpot[];
   /**
+   * A game's own rule about what a wager costs, given what the player already
+   * has on the felt.
+   *
+   * The runtime enforces the flat `minWager` and the `maxWager` cap on its own.
+   * This is for the rules that depend on the rest of a player's bets — a table
+   * where playing more hands raises the minimum on all of them, which is not
+   * something the runtime could work out.
+   *
+   * Returns a message explaining the refusal, or null to accept.
+   */
+  checkWager?(context: {
+    /** The player's existing wagers on this table, before this one. */
+    existing: readonly Wager[];
+    spotId: string;
+    amount: number;
+  }): string | null;
+  /**
    * Decides the round.
    *
    * MUST be deterministic in (wagers, rng) alone — no ambient randomness, no

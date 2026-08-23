@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { CardTable } from './cards3d.js';
+import { BET_INSET, CardTable, SHOE_LOCAL } from './cards3d.js';
 import { ChipStacks } from './chips3d.js';
 import { PLAYER_EYE_HEIGHT, PLAYER_HEIGHT, PLAYER_RADIUS } from '@keydate/sim';
 import { createCarpet, createCofferedStone, createSculptedStone, tiledFor } from './textures.js';
@@ -516,12 +516,21 @@ export class WorldRenderer {
 
   _buildTable(interactable) {
     this._interactables.set(interactable.id, interactable);
-    const group = new THREE.Group();
-    group.position.set(interactable.x, 0, interactable.z);
+
+    const radius = interactable.radius ?? 1.9;
+    const facing = interactable.facing ?? { x: 1, z: 0 };
     const style = this._tableStyle(interactable.gameId);
 
+    const group = new THREE.Group();
+    group.position.set(interactable.x, 0, interactable.z);
+    // Local +X points at the players. A rotation about Y by φ sends (1,0,0) to
+    // (cos φ, 0, -sin φ), so this is the φ that lines the two up.
+    group.rotation.y = Math.atan2(-facing.z, facing.x);
+
+    // The felt: a half-cylinder covering local +X. Three.js sweeps theta from
+    // +Z toward +X, so [0, π] is exactly the half the players sit around.
     const felt = new THREE.Mesh(
-      new THREE.CylinderGeometry(1.3, 1.3, 0.1, 32),
+      new THREE.CylinderGeometry(radius, radius, 0.1, 40, 1, false, 0, Math.PI),
       new THREE.MeshStandardMaterial({ color: style.felt, roughness: 0.9 }),
     );
     felt.position.y = 1.0;
@@ -530,21 +539,48 @@ export class WorldRenderer {
     group.add(felt);
     this._occluders.push(felt);
 
-    this._buildTableCentre(group, style.centre);
+    // A padded rail round the curve, and a straight one along the chord where
+    // the dealer stands — the two edges a player actually leans on.
+    const railMaterial = new THREE.MeshStandardMaterial({ color: 0x2b1c14, roughness: 0.55 });
+    const curvedRail = new THREE.Mesh(
+      new THREE.TorusGeometry(radius, 0.075, 8, 40, Math.PI),
+      railMaterial,
+    );
+    // The torus is built in the XY plane sweeping from +X; laying it flat and
+    // turning it a quarter turn puts its opening along the chord.
+    curvedRail.rotation.x = Math.PI / 2;
+    curvedRail.rotation.z = -Math.PI / 2;
+    curvedRail.position.y = 1.05;
+    group.add(curvedRail);
 
+    const chordRail = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.15, radius * 2), railMaterial);
+    chordRail.position.set(-0.02, 1.02, 0);
+    chordRail.castShadow = true;
+    group.add(chordRail);
+
+    // The pedestal, under the middle of the curve rather than the chord, so the
+    // table does not look like it is about to tip toward the dealer.
     const base = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.4, 0.6, 1.0, 16),
+      new THREE.CylinderGeometry(0.42, 0.66, 1.0, 16),
       new THREE.MeshStandardMaterial({ color: 0x3d2b1f, roughness: 0.8 }),
     );
-    base.position.y = 0.5;
+    base.position.set(radius * 0.4, 0.5, 0);
     base.castShadow = true;
     group.add(base);
 
+    this._buildTableCentre(group, style.centre, radius);
+
     // A sign above the table, always readable because it faces the camera.
     const sign = this._makeLabelSprite(interactable.label);
-    sign.position.y = 2.6;
+    sign.position.set(radius * 0.35, 2.7, 0);
     sign.scale.set(3, 0.75, 1);
     group.add(sign);
+
+    // Decoration positioned from world-space seat offsets goes in here, which
+    // undoes the table's own rotation so the offsets can be used directly.
+    const flat = new THREE.Group();
+    flat.rotation.y = -group.rotation.y;
+    group.add(flat);
 
     // The seats themselves are stools, built from their own colliders in
     // `_buildStool`. What is left here is a betting circle painted on the felt
@@ -556,7 +592,7 @@ export class WorldRenderer {
       const uz = (seat.z - interactable.z) / length;
 
       const circle = new THREE.Mesh(
-        new THREE.RingGeometry(0.19, 0.215, 24),
+        new THREE.RingGeometry(0.2, 0.225, 24),
         new THREE.MeshBasicMaterial({
           color: 0xe2c36a,
           transparent: true,
@@ -565,8 +601,8 @@ export class WorldRenderer {
         }),
       );
       circle.rotation.x = -Math.PI / 2;
-      circle.position.set(ux * 0.6, 1.055, uz * 0.6);
-      group.add(circle);
+      circle.position.set(ux * BET_INSET, 1.055, uz * BET_INSET);
+      flat.add(circle);
     }
 
     group.userData.interactableId = interactable.id;
@@ -584,13 +620,16 @@ export class WorldRenderer {
    * per table on a phone GPU that already has a room to compile, and a detailed
    * roulette wheel would buy nothing at the distance you actually see it from.
    */
-  _buildTableCentre(group, kind) {
+  _buildTableCentre(group, kind, radius = 1.9) {
     if (kind === 'wheel') {
+      // Out on the felt where everyone can see it, not tucked under the
+      // dealer's hands.
+      const at = radius * 0.55;
       const wheel = new THREE.Mesh(
         new THREE.CylinderGeometry(0.62, 0.62, 0.1, 24),
         new THREE.MeshStandardMaterial({ color: 0x14100e, roughness: 0.35, metalness: 0.5 }),
       );
-      wheel.position.y = 1.1;
+      wheel.position.set(at, 1.1, 0);
       wheel.castShadow = true;
       group.add(wheel);
 
@@ -599,7 +638,7 @@ export class WorldRenderer {
         new THREE.MeshStandardMaterial({ color: 0xc9a227, roughness: 0.3, metalness: 0.85 }),
       );
       rim.rotation.x = Math.PI / 2;
-      rim.position.y = 1.15;
+      rim.position.set(at, 1.15, 0);
       group.add(rim);
 
       // A single spoke, so the wheel reads as a wheel rather than as a coaster.
@@ -607,32 +646,35 @@ export class WorldRenderer {
         new THREE.BoxGeometry(1.16, 0.03, 0.06),
         new THREE.MeshStandardMaterial({ color: 0xc9a227, roughness: 0.3, metalness: 0.85 }),
       );
-      spoke.position.y = 1.17;
+      spoke.position.set(at, 1.17, 0);
       group.add(spoke);
       return;
     }
 
     if (kind === 'shoe') {
-      // A dealing shoe: a wedge of dark timber with a brass lip, angled so the
-      // open mouth faces the table. Cards are animated as coming out of here,
-      // so it has to look like the place they come from.
+      // A dealing shoe: a wedge of dark timber with a brass lip, sitting at the
+      // dealer's right hand on the flat side. Cards are animated as coming out
+      // of here, so it has to be where they come from — `cards3d.js` derives
+      // the same spot from the table's facing.
       const timber = new THREE.MeshStandardMaterial({ color: 0x2a1b12, roughness: 0.5 });
-      const body = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.2, 0.44), timber);
-      body.position.set(0, 1.15, -0.62);
+      const at = { x: SHOE_LOCAL.x, z: SHOE_LOCAL.z };
+
+      const body = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.2, 0.34), timber);
+      body.position.set(at.x - 0.1, 1.15, at.z);
       body.castShadow = true;
       group.add(body);
 
-      const ramp = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.16, 0.22), timber);
-      ramp.position.set(0, 1.11, -0.36);
-      ramp.rotation.x = -0.32;
+      const ramp = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.16, 0.34), timber);
+      ramp.position.set(at.x + 0.16, 1.11, at.z);
+      ramp.rotation.z = 0.32;
       ramp.castShadow = true;
       group.add(ramp);
 
       const lip = new THREE.Mesh(
-        new THREE.BoxGeometry(0.36, 0.02, 0.05),
+        new THREE.BoxGeometry(0.05, 0.02, 0.36),
         new THREE.MeshStandardMaterial({ color: 0xc9a227, roughness: 0.35, metalness: 0.8 }),
       );
-      lip.position.set(0, 1.08, -0.27);
+      lip.position.set(at.x + 0.27, 1.08, at.z);
       group.add(lip);
 
       // No stack of spare cards beside it: real cards land on this felt now,

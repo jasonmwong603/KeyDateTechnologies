@@ -4,7 +4,7 @@ import {
   PredictionBuffer,
   needsCorrection,
 } from '@keydate/netcode';
-import { ENTITY_FLAG_SEATED, INPUT_BUTTON_INTERACT } from '@keydate/protocol';
+import { ENTITY_FLAG_SEATED, INPUT_BUTTON_INTERACT, wrapAngle } from '@keydate/protocol';
 import {
   INTERACT_RANGE,
   TICK_DT,
@@ -79,7 +79,22 @@ joinForm.addEventListener('submit', (event) => {
 
   connection.connect(name, code);
   document.getElementById('join-button').disabled = true;
+
+  // Best effort, and only ever from inside this gesture: every browser refuses
+  // an orientation lock outside a user action, and most refuse it outside
+  // fullscreen too. The manifest asks for landscape on an installed app and a
+  // media query covers the rest, so this failing costs nothing.
+  lockLandscape();
 });
+
+/** Asks the device to stay in landscape. Silently does nothing where it cannot. */
+function lockLandscape() {
+  try {
+    screen.orientation?.lock?.('landscape').catch(() => {});
+  } catch {
+    // Firefox throws synchronously rather than rejecting. Same outcome.
+  }
+}
 
 // A packaged build with no server address baked in can never connect. Say so
 // on the join screen rather than spinning forever on a reconnect timer.
@@ -91,7 +106,10 @@ connection.on('config-error', (error) => {
 
 connection.on('server-error', (message) => {
   if (joinScreen.hidden) {
-    hud.addChatLine(null, message.message, 'system');
+    // A refusal from the table belongs in the table panel, where the player is
+    // already looking, not in the chat log underneath it.
+    if (hud.currentTableId !== null) hud.showNotice(message.message);
+    else hud.addChatLine(null, message.message, 'system');
     return;
   }
   joinError.hidden = false;
@@ -207,6 +225,24 @@ function applyLocalCorrection(entity, ackedInput) {
   // Seating is a server decision that prediction cannot anticipate, so it is
   // always taken verbatim rather than being treated as drift.
   const seatChanged = corrected.seatedAt !== localState.seatedAt;
+
+  // Sitting down slides the player sideways onto a stool, so the camera has to
+  // turn with them or the felt drifts out of shot.
+  //
+  // What is kept is the angle *relative to the table*: walk up looking straight
+  // at the felt and you are still looking straight at it from the seat; walk up
+  // glancing off to one side and the glance comes with you. The server works
+  // the same heading out for itself, but it cannot hand it over — yaw travels
+  // client to server on every input frame, so anything the server wrote would
+  // be overwritten a tick later by the heading the camera still held.
+  if (seatChanged && corrected.seatedAt !== null) {
+    const table = world.interactables.find((entry) => entry.id === corrected.seatedAt);
+    if (table !== undefined) {
+      const approach = Math.atan2(table.z - localState.z, table.x - localState.x);
+      const fromSeat = Math.atan2(table.z - corrected.z, table.x - corrected.x);
+      input.yaw = wrapAngle(fromSeat + wrapAngle(input.yaw - approach));
+    }
+  }
 
   if (seatChanged || needsCorrection(localState, corrected)) {
     localState = corrected;
@@ -408,6 +444,8 @@ window.__keydate = {
     return { id: bar.id, distance: Math.hypot(bar.x - localState.x, bar.z - localState.z) };
   },
   seatedAt: () => localState.seatedAt,
+  /** The table the player is sitting at, or null. Test hook. */
+  seatedTable: () => world?.interactables.find((entry) => entry.id === localState.seatedAt) ?? null,
   /** Cards physically on the felt, and whether any are still in flight. */
   feltCards: () => ({
     count: renderer.cardTable.cardCount,

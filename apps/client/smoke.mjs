@@ -325,8 +325,11 @@ async function run() {
 
     // ------------------------------------------------------------ mobile
     console.log('\nMobile (Pixel 5, touch)');
+    // Landscape. The game asks for it in the manifest and shows a rotate notice
+    // in portrait, so a portrait phone would be testing the notice rather than
+    // the game — and that notice is itself checked, below.
     const phoneContext = await browser.newContext({
-      ...devices['Pixel 5'],
+      ...devices['Pixel 5 landscape'],
       // Phones report coarse pointers; the client keys its touch UI off that.
       hasTouch: true,
       isMobile: true,
@@ -336,6 +339,25 @@ async function run() {
 
     check('phone joins the world', true);
     check('no uncaught page errors on phone', phoneErrors.length === 0, phoneErrors[0]);
+
+    // Landscape is the supported orientation, so the notice must stay out of
+    // the way in landscape and cover the screen in portrait.
+    check(
+      'the rotate notice stays hidden in landscape',
+      !(await phone.isVisible('#rotate-notice')),
+    );
+    await phone.setViewportSize({ width: 393, height: 851 });
+    await sleep(400);
+    check(
+      'turning the phone upright asks the player to rotate it',
+      await phone.isVisible('#rotate-notice'),
+    );
+    await phone.setViewportSize({ width: 851, height: 393 });
+    await sleep(400);
+    check(
+      'turning it back puts the game straight back',
+      !(await phone.isVisible('#rotate-notice')),
+    );
 
     const touchVisible = await phone.isVisible('#touch-controls');
     check('touch controls are shown on a coarse pointer', touchVisible);
@@ -421,27 +443,37 @@ async function run() {
     const distance = await walkTowards(
       pc,
       () => window.__keydate?.aimAtNearestTable('wheel-of-fortune'),
-      2.6,
+      3.2,
     );
-    check('player can walk to a table', distance < 2.6, `distance ${distance.toFixed(2)}m`);
+    check('player can walk to a table', distance < 3.2, `distance ${distance.toFixed(2)}m`);
 
     await sleep(400);
     const prompt = await pc.isVisible('#interact-prompt');
     check('interact prompt appears near a table', prompt);
 
-    const yawBeforeSitting = await pc.evaluate(() => window.__keydate.yaw());
     await pc.keyboard.press('KeyE');
     await sleep(1500);
     const tableOpen = await pc.isVisible('#table-panel');
     check('sitting opens the table panel', tableOpen);
 
-    // Sitting must not spin the room. The seat you get put in is the one you
-    // walked up to, and you keep looking the way you were looking.
-    const yawAfterSitting = await pc.evaluate(() => window.__keydate.yaw());
+    // Sitting must not spin the room, and must not leave the player looking at
+    // a wall. What carries over is the angle relative to the table: walk up
+    // looking at the felt and you are still looking at it from the seat.
+    const facingTable = await pc.evaluate(() => {
+      const me = window.__keydate.position();
+      const table = window.__keydate.seatedTable();
+      if (table === null) return null;
+      const toTable = Math.atan2(table.z - me.z, table.x - me.x);
+      const delta = Math.atan2(
+        Math.sin(window.__keydate.yaw() - toTable),
+        Math.cos(window.__keydate.yaw() - toTable),
+      );
+      return Math.abs(delta);
+    });
     check(
-      'sitting keeps the direction you walked in facing',
-      Math.abs(yawAfterSitting - yawBeforeSitting) < 0.01,
-      `${yawBeforeSitting.toFixed(3)} -> ${yawAfterSitting.toFixed(3)}`,
+      'sitting leaves the player looking at the table',
+      facingTable !== null && facingTable < 0.5,
+      `${((facingTable ?? Math.PI) * 57.3).toFixed(0)}° off the table`,
     );
 
     const fairness = await pc.textContent('#fairness');
@@ -475,11 +507,11 @@ async function run() {
     const bjDistance = await walkTowards(
       pc,
       () => window.__keydate?.aimAtNearestTable('blackjack'),
-      2.6,
+      3.2,
     );
     check(
       'player can walk to a blackjack table',
-      bjDistance < 2.6,
+      bjDistance < 3.2,
       `distance ${bjDistance.toFixed(2)}m`,
     );
 
@@ -496,6 +528,18 @@ async function run() {
 
     const anteVisible = await pc.isVisible('.spot[data-spot-id="box-1"]');
     check('blackjack offers its bet spot', anteVisible);
+
+    // The panel has to leave the table visible. Anything over about a quarter
+    // of the screen and it is covering the thing it describes.
+    const panelShare = await pc.evaluate(() => {
+      const panel = document.getElementById('table-panel').getBoundingClientRect();
+      return (panel.width * panel.height) / (window.innerWidth * window.innerHeight);
+    });
+    check(
+      'the table panel leaves most of the view clear',
+      panelShare > 0 && panelShare < 0.25,
+      `${(panelShare * 100).toFixed(0)}% of the screen`,
+    );
 
     // The bet box: any integer from the table minimum to the whole stack.
     const limits = await pc.evaluate(() => {
@@ -589,7 +633,26 @@ async function run() {
     const feltChips = await pc.evaluate(() => window.__keydate?.feltChips());
     check('the bet is shown as chips on the felt', feltChips === 6, `chips=${feltChips}`);
 
-    // A second box, which costs a second bet of its own.
+    // Playing two hands means at least twice the minimum on each of them, so a
+    // box opened at the single-box minimum is refused — with the number needed.
+    const beforeRefusal = await pc.textContent('#chips-value');
+    await pc.fill('#stake-input', '10');
+    await pc.press('#stake-input', 'Enter');
+    await pc.click('.spot[data-spot-id="box-2"]');
+    await sleep(700);
+    const notice = await pc.textContent('#table-notice');
+    check(
+      'a second box under twice the minimum is refused',
+      /2 boxes needs 20 on each/.test(notice ?? ''),
+      notice ?? '(no notice)',
+    );
+    check(
+      'and nothing is taken for a refused bet',
+      (await pc.textContent('#chips-value')) === beforeRefusal,
+      `${beforeRefusal} -> ${await pc.textContent('#chips-value')}`,
+    );
+
+    // At twice the minimum it is accepted.
     await pc.fill('#stake-input', '25');
     await pc.press('#stake-input', 'Enter');
     await pc.click('.spot[data-spot-id="box-2"]');

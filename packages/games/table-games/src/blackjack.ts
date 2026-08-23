@@ -429,30 +429,60 @@ export const blackjack: TableGameDefinition = {
   bettingClose: 'on-demand',
   bettingWindowMs: 10_000,
   /**
-   * One spot per box. Playing more hands means covering more spots, and each
-   * has to meet the table minimum on its own — so two hands cost at least twice
-   * the minimum and three at least three times, with no rule to enforce it.
+   * One spot per box, and the minimum on each rises with how many you play.
+   *
+   * This is the pit rule: a player taking two hands must bet at least twice the
+   * table minimum on *each* of them, three hands three times. It is not a
+   * penalty — it is what stops one player occupying half the felt for the price
+   * of one seat, and it is why the descriptions spell the numbers out.
    */
   spots: [
     {
       id: 'box-1',
       label: 'Box 1',
       payout: 1,
-      description: 'Even money. Blackjack pays 3 to 2. Dealer stands on all 17.',
+      description: 'Even money. Blackjack pays 3 to 2. Dealer stands on all 17. Minimum 10.',
     },
     {
       id: 'box-2',
       label: 'Box 2',
       payout: 1,
-      description: 'A second hand. Costs its own bet, and plays after the first.',
+      description: 'A second hand. Playing two means at least 20 on each of them.',
     },
     {
       id: 'box-3',
       label: 'Box 3',
       payout: 1,
-      description: 'A third hand. Same again — three boxes, three bets.',
+      description: 'A third hand. Playing three means at least 30 on each of them.',
     },
   ],
+
+  /**
+   * The rising minimum, checked against the whole of a player's felt.
+   *
+   * Adding a box raises the bar on the boxes already down, not just the new
+   * one — so opening a second hand while the first is still at the single-box
+   * minimum is refused, with the number the player needs.
+   */
+  checkWager({ existing, spotId, amount }): string | null {
+    if (boxIndex(spotId) < 0) return null;
+
+    const after = new Map(
+      existing.filter((wager) => boxIndex(wager.spotId) >= 0).map((w) => [w.spotId, w.amount]),
+    );
+    after.set(spotId, (after.get(spotId) ?? 0) + amount);
+
+    const boxes = after.size;
+    if (boxes <= 1) return null;
+
+    const required = blackjack.minWager * boxes;
+    for (const [id, staked] of after) {
+      if (staked >= required) continue;
+      const which = id === spotId ? 'this box' : boxLabel(id).toLowerCase();
+      return `Playing ${boxes} boxes needs ${required} on each — ${which} is short.`;
+    }
+    return null;
+  },
 
   interactive: interactive as InteractiveTableGame<never>,
 

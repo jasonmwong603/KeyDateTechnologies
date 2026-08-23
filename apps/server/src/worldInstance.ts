@@ -23,6 +23,7 @@ import {
   type PlayerPhysicsState,
   type World,
 } from '@keydate/sim';
+import { wrapAngle } from '@keydate/protocol';
 import { clampIntoxication, drink, findDrink, publicMenu, soberUp } from './bar.js';
 import { config } from './config.js';
 import { ChipLedger } from './ledger.js';
@@ -87,11 +88,12 @@ function nearestSeat(interactable: { seats: { x: number; z: number }[] }, x: num
 /**
  * Where a player ends up when they stand up, measured from the table centre.
  *
- * Far enough out to clear the stool they were on — its half-width plus their
- * own, plus a little — and well inside `INTERACT_RANGE`, so standing up never
- * puts the table out of reach.
+ * Far enough out to clear the stool they were on — stools sit at 2.5m and are
+ * 0.52m across, so their outer edge is 2.76m out, plus the player's own 0.35m
+ * half-width. And inside `INTERACT_RANGE`, so standing up never puts the table
+ * out of reach: getting up and sitting straight back down has to work.
  */
-const STAND_BACK_RADIUS = 2.85;
+const STAND_BACK_RADIUS = 3.25;
 
 /** Table state is pushed to seated players at this many ticks apart (~5Hz). */
 const TABLE_STATE_INTERVAL_TICKS = 6;
@@ -299,11 +301,25 @@ export class WorldInstance {
 
     const seat = interactable.seats[seatIndex % interactable.seats.length];
     if (seat !== undefined) {
-      // Position moves to the chair; facing does not. The player chose which
-      // way to look on the way in, and snapping the camera to the seat's
-      // inward angle throws away that choice — and, in first person, spins the
-      // whole room under them for no reason they asked for.
-      record.state = { ...record.state, x: seat.x, y: seat.y, z: seat.z };
+      // Position moves to the chair; the view carries over.
+      //
+      // What is preserved is the angle *relative to the table*, not the compass
+      // heading. Walk up looking straight at the felt and you are still looking
+      // straight at it from the seat; walk up glancing off to one side and you
+      // keep that glance. Either extreme is wrong: snapping to the seat's own
+      // inward angle spins the room under the player, and holding the compass
+      // heading now seats them facing a wall, because the seats are on the far
+      // side of a half-circle from where anybody walks in.
+      const approach = Math.atan2(interactable.z - record.state.z, interactable.x - record.state.x);
+      const offset = wrapAngle(record.state.yaw - approach);
+
+      record.state = {
+        ...record.state,
+        x: seat.x,
+        y: seat.y,
+        z: seat.z,
+        yaw: wrapAngle(seat.yaw + offset),
+      };
     }
     record.state.seatedAt = interactable.id;
     this.enqueueEvent(record, { kind: 'table:seated', tableId: interactable.id, seat: seatIndex });

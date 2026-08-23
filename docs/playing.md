@@ -99,6 +99,11 @@ world together.
 
 ### Phone or tablet
 
+**Hold the phone sideways.** Beer Bets is landscape-only: turn a phone upright and the
+game covers itself with a note asking you to turn it back. Portrait leaves a letterbox
+barely wider than the table panel, which is no way to look at a room. Turn it and the
+note is gone — nothing to dismiss.
+
 | Action                           | Gesture                                          |
 | -------------------------------- | ------------------------------------------------ |
 | Move                             | Drag anywhere on the **left half** of the screen |
@@ -134,9 +139,12 @@ Chips come from exactly one place — the tables — and they buy exactly one th
 The more you drink, the blurrier the room gets, and the harder it is to keep winning the
 chips that pay for the next round.
 
-1. **Walk to a table.** Six tables sit around the central plinth. A prompt appears when
-   you are close enough.
-2. **Sit down** with `E` (or **Use**).
+1. **Walk to a table.** Six tables sit around the central plinth, each a half circle:
+   dealer alone on the flat side, six stools around the curve. Every table has its curved
+   side turned toward the middle of the room, so walking in off the floor brings you out
+   among the empty seats. A prompt appears when you are close enough.
+2. **Sit down** with `E` (or **Use**). You take the stool you walked up to, still looking
+   at the felt the way you were looking at it a moment ago.
 3. **Set your bet.** Type any whole number from the table minimum up to your whole stack
    into the bet box, then tap a betting spot to put it down. Your chips appear on the felt
    in front of your seat — red 5, green 25, black 100, purple 500, gold 1000 — so everyone

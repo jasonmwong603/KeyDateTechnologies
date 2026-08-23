@@ -136,6 +136,17 @@ only ceiling is what the player is actually holding — the runtime refuses anyt
 ledger cannot cover regardless, and a real pit only posts a maximum because it is managing
 a bankroll that has to stay solvent, which nothing here is.
 
+`minWager` is a floor per bet, and the runtime enforces it without asking the game. For
+anything that depends on the _rest_ of a player's bets, implement the optional
+`checkWager({ existing, spotId, amount })` hook: return a string and the bet is refused
+with that string as the reason, `null` to allow it. It runs before a single chip moves, so
+a refusal costs the player nothing.
+
+Blackjack uses it for the one rule that cannot be expressed spot by spot — a second box
+needs twice the minimum on _each_ box, a third needs three times — because whether a bet
+on box 2 is legal depends entirely on what is sitting on box 1. Keep the returned message
+worth reading; it is shown to the player verbatim.
+
 ## Games where the player actually plays
 
 Everything above assumes the round is decided the moment bets close. Blackjack is not

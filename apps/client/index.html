@@ -145,6 +145,8 @@
         <button id="deal-button" type="button" hidden>Deal</button>
 
         <div id="table-wagers"></div>
+        <!-- Why the table refused something. Shown briefly, then it fades. -->
+        <div id="table-notice" hidden></div>
         <div id="table-result" hidden></div>
         <div id="fairness" class="fairness"></div>
       </div>
@@ -168,6 +170,19 @@
       <div id="touch-controls" hidden>
         <button id="touch-jump" type="button">Jump</button>
         <button id="touch-interact" type="button">Use</button>
+      </div>
+    </div>
+
+    <!--
+      Landscape only on a phone. Shown purely by media query rather than by a
+      `hidden` attribute, so it needs no script and cannot be left up by a bug:
+      turn the phone and it is gone.
+    -->
+    <div id="rotate-notice">
+      <div class="rotate-inner">
+        <div class="rotate-icon" aria-hidden="true">▭</div>
+        <h2>Turn your phone sideways</h2>
+        <p>Beer Bets is played in landscape. There is a whole room to look at.</p>
       </div>
     </div>
 

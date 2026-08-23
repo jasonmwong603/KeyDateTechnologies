@@ -1,4 +1,4 @@
-import { ENTITY_FLAG_SEATED, type ServerMessage } from '@keydate/protocol';
+import { ENTITY_FLAG_SEATED, type ServerMessage, wrapAngle } from '@keydate/protocol';
 import { INTERACT_RANGE, INTERACT_RANGE_SERVER_TOLERANCE, TICK_RATE } from '@keydate/sim';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { WorldInstance } from './worldInstance.js';
@@ -390,23 +390,45 @@ describe('WorldInstance tables', () => {
     expect(resolved.length).toBeGreaterThan(0);
   });
 
-  it('leaves a player facing the way they walked in', () => {
+  it('keeps a player looking at the table they just sat down at', () => {
     const client = new FakeClient();
     world.addPlayer('p1', 'Sam', client.send, 't1');
     const table = world.world.interactables.find((entry) => entry.gameId === 'blackjack')!;
     const record = world.getPlayer('p1')!;
 
-    // Walk up from the south, looking north at the table.
-    record.state.x = table.x;
-    record.state.z = table.z + 1.6;
-    record.state.yaw = -Math.PI / 2;
+    // Walk up looking straight at the table.
+    record.state.x = table.x + 3;
+    record.state.z = table.z;
+    record.state.yaw = Math.atan2(table.z - record.state.z, table.x - record.state.x);
+
+    world.handleInteract('p1', table.id);
+    expect(record.state.seatedAt).toBe(table.id);
+
+    // Still looking straight at it from the seat. Holding the compass heading
+    // instead would seat them facing a wall: the seats are on the far side of a
+    // half-circle from where anybody walks in.
+    const toTable = Math.atan2(table.z - record.state.z, table.x - record.state.x);
+    expect(Math.abs(record.state.yaw - toTable)).toBeLessThan(0.01);
+  });
+
+  it('carries a glance off to one side across with them', () => {
+    // What is preserved is the angle relative to the table, not the heading.
+    // Sitting must not silently re-aim a player who was deliberately looking
+    // somewhere else.
+    const client = new FakeClient();
+    world.addPlayer('p1', 'Sam', client.send, 't1');
+    const table = world.world.interactables.find((entry) => entry.gameId === 'blackjack')!;
+    const record = world.getPlayer('p1')!;
+
+    record.state.x = table.x + 3;
+    record.state.z = table.z;
+    const approach = Math.atan2(table.z - record.state.z, table.x - record.state.x);
+    record.state.yaw = approach + 0.4;
 
     world.handleInteract('p1', table.id);
 
-    // Sitting must not spin the room. In first person, snapping to the seat's
-    // own inward angle throws away the direction the player chose on the way in.
-    expect(record.state.yaw).toBe(-Math.PI / 2);
-    expect(record.state.seatedAt).toBe(table.id);
+    const toTable = Math.atan2(table.z - record.state.z, table.x - record.state.x);
+    expect(wrapAngle(record.state.yaw - toTable)).toBeCloseTo(0.4, 3);
   });
 
   it('seats a player in the chair nearest to where they were standing', () => {

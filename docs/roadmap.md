@@ -6,10 +6,11 @@ Ordered by what unblocks the most, not by what is most fun to build.
 
 Authoritative 30Hz simulation · client prediction and reconciliation · entity
 interpolation · delta-compressed snapshots · first and third person cameras · desktop
-and touch input · six tables across five games · blackjack with real hit/stand/double
-decisions · commit–reveal fairness verified
+and touch input · six half-circle tables across five games, seats and bets visible on the
+felt · blackjack with real hit/stand/double decisions and up to three boxes a player ·
+cards dealt in 3D out of the shoe · commit–reveal fairness verified
 client-side · chip ledger with bailouts · resume after disconnect · local and table chat
-· private worlds by session code.
+· private worlds by session code · landscape-only on phones.
 
 ## Next
 
@@ -75,6 +76,7 @@ Only usable from a Capacitor or Electron build, since browsers cannot do UDP. Se
 | Everyone replicates everyone        | Bandwidth is O(n²) in players                      | `WorldInstance.replicate`            |
 | No splitting in blackjack           | The one basic-strategy move a player cannot make   | `packages/games/.../blackjack.ts`    |
 | Avatars are placeholder figures     | A black pill with limbs, not a character           | `WorldRenderer.addAvatar`            |
+| Half-disc tables collide as slabs   | The curve is a three-step staircase up close       | `packages/sim/src/world.ts`          |
 | Single-process                      | No horizontal scaling; a restart drops every world | `apps/server/src/index.ts`           |
 | Client covered by smoke test only   | Broad checks, not fine-grained assertions          | `apps/client/smoke.mjs`              |
 

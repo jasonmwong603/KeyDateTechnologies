@@ -172,6 +172,13 @@ Five games across six tables. Every spot on every felt returns between 93% and 1
 what is staked on it, and a test fails if one ever climbs above 100% or drops below 93% —
 a spot with a positive expected return is a money printer and will be found.
 
+Every table is a half circle: the dealer stands alone at the flat chord, six stools sit
+around the curve, and each table turns its curved side toward the middle of the room. That
+last part is not decoration. There are no seats on the dealer's side, so a table facing
+the other way meant walking up to the flat edge, pressing `E`, and being teleported the
+whole way around the arc — a 180° swing of the room under a first-person camera. Turned
+this way you sit down roughly where you were already standing.
+
 **Blackjack** — two tables, and the only game where you actually play rather than bet.
 Eight-deck shoe on a continuous shuffler, dealer stands on all 17, blackjack pays 3 to 2,
 double down on any first two cards, and up to three boxes each.
@@ -284,7 +291,10 @@ The suite concentrates on the things that are expensive to get wrong:
   printer.
 - **The client actually working** — headless logic tests cannot see a camera pointed at
   a wall, a HUD panel swallowing every touch, or a render loop throwing each frame. All
-  three were real bugs here, and all three are what the browser test now covers.
+  three were real bugs here, and all three are what the browser test now covers. It also
+  measures how much of the screen the table panel covers and fails if it grows past a
+  quarter of it: the panel is what you play through, and it must not become what you look
+  at instead of the table.
 
 ---
 

@@ -373,6 +373,56 @@ describe('playing more than one box', () => {
     expect(game.settle(state).credits).toEqual([{ playerId: 'p1', amount: 200 }]);
   });
 
+  it('raises the minimum on every box as more are played', () => {
+    // The pit rule: two hands means twice the table minimum on each of them,
+    // three means three times. Not a penalty — it is what stops one player
+    // occupying half the felt for the price of one seat.
+    const check = blackjack.checkWager!;
+
+    // One box at the flat minimum is fine.
+    expect(check({ existing: [], spotId: 'box-1', amount: 10 })).toBeNull();
+
+    // Opening a second while the first is still at 10 is refused, and says so.
+    expect(check({ existing: [box('p1', 1, 10)], spotId: 'box-2', amount: 20 })).toMatch(
+      /2 boxes needs 20 on each/,
+    );
+
+    // With the first topped up, the second is accepted.
+    expect(check({ existing: [box('p1', 1, 20)], spotId: 'box-2', amount: 20 })).toBeNull();
+
+    // And a third needs 30 on all three.
+    expect(
+      check({ existing: [box('p1', 1, 20), box('p1', 2, 20)], spotId: 'box-3', amount: 30 }),
+    ).toMatch(/3 boxes needs 30 on each/);
+    expect(
+      check({ existing: [box('p1', 1, 30), box('p1', 2, 30)], spotId: 'box-3', amount: 30 }),
+    ).toBeNull();
+  });
+
+  it('counts a top-up toward the box it lands on', () => {
+    // Adding 10 to a box already holding 10 makes 20, which is what two boxes
+    // need — so the second box becomes legal by topping the first up.
+    const check = blackjack.checkWager!;
+    expect(
+      check({ existing: [box('p1', 1, 10), box('p1', 2, 20)], spotId: 'box-1', amount: 10 }),
+    ).toBeNull();
+  });
+
+  it('names which box is short, so the message is actionable', () => {
+    const check = blackjack.checkWager!;
+    // Box 1 is already good for three hands; box 2 is the one holding it up.
+    const message = check({
+      existing: [box('p1', 1, 30), box('p1', 2, 10)],
+      spotId: 'box-3',
+      amount: 30,
+    });
+    expect(message).toContain('box 2');
+  });
+
+  it('says nothing about spots that are not boxes', () => {
+    expect(blackjack.checkWager!({ existing: [], spotId: 'insurance', amount: 1 })).toBeNull();
+  });
+
   it('labels each box for the felt', () => {
     expect(boxLabel('box-1')).toBe('Box 1');
     expect(boxLabel('box-3')).toBe('Box 3');

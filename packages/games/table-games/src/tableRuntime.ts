@@ -284,11 +284,18 @@ export class TableRuntime {
       };
     }
 
+    // Rules that depend on the rest of a player's bets belong to the game: a
+    // table where playing more hands raises the minimum on all of them is not
+    // something the runtime could work out from a single number.
+    const mine = this.wagers.filter((wager) => wager.playerId === playerId);
+    const objection = this.definition.checkWager?.({ existing: mine, spotId, amount });
+    if (objection !== null && objection !== undefined) {
+      return { ok: false, code: 'invalid_action', message: objection };
+    }
+
     // The cap applies to a player's total exposure, not to each chip they push
     // out — otherwise the limit is trivially bypassed by splitting the bet.
-    const staked = this.wagers
-      .filter((wager) => wager.playerId === playerId)
-      .reduce((sum, wager) => sum + wager.amount, 0);
+    const staked = mine.reduce((sum, wager) => sum + wager.amount, 0);
     if (staked + amount > this.definition.maxWager) {
       return {
         ok: false,

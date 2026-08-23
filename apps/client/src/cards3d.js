@@ -27,8 +27,14 @@ const CARD_THICKNESS = 0.006;
 /** Height of the felt surface, from the table mesh in `renderer.js`. */
 const FELT_Y = 1.06;
 
-/** Where cards come from, in table-local space — the shoe prop, lifted a little. */
-const SHOE = new THREE.Vector3(0, 1.24, -0.55);
+/**
+ * The shoe, in table-local space — local +X points at the players, so this sits
+ * just inside the flat side at the dealer's right hand.
+ *
+ * Exported because `renderer.js` builds the shoe prop from the same numbers.
+ * Cards animate as coming out of it, so the two must not drift apart.
+ */
+export const SHOE_LOCAL = { x: 0.3, y: 1.26, z: 0.95 };
 
 const FLIGHT_MS = 460;
 const FLIP_MS = 340;
@@ -37,16 +43,22 @@ const STAGGER_MS = 130;
 /** How high a card arcs on its way across the table. */
 const ARC_HEIGHT = 0.3;
 
+/** How far in from the flat side the dealer's own hand is laid. */
+const DEALER_INSET = 0.62;
+
 /**
  * How far from the table centre a seat's cards land.
  *
- * Seats ring at 2.1m and the felt ends at 1.3m, so this is as close to the
- * player as a card can sit without hanging off the edge.
+ * The felt ends at 1.9m, so this is as close to the player as a card can sit
+ * without hanging off the curved edge.
  */
-export const SEAT_INSET = 1.02;
+export const SEAT_INSET = 1.5;
+
+/** How far out a seat's chips sit — inboard of the cards, pushed at the dealer. */
+export const BET_INSET = 1.02;
 
 /** Sideways gap between the boxes of a player holding more than one. */
-const BOX_SPACING = 0.5;
+const BOX_SPACING = 0.44;
 /** Sideways spacing between the cards of one hand. Wider than a card, so they
  *  sit side by side rather than stacked — a hole card half-buried under the
  *  upcard is the one card you most need to be able to point at. */
@@ -192,6 +204,10 @@ export class CardTable {
     /** The table these cards belong to, and the round they were dealt in. */
     this._tableId = null;
     this._round = null;
+    /** Which way the table faces — toward the players. Set when a table is adopted. */
+    this._facing = { x: 1, z: 0 };
+    /** Where cards fly from, in table-relative world coordinates. */
+    this._shoe = new THREE.Vector3();
     /** Cards dealt in this batch, so one deal staggers across the whole table. */
     this._dealtThisBatch = 0;
     this._batchAt = 0;
@@ -247,11 +263,17 @@ export class CardTable {
    */
   _restingPlace(seat, indexInHand, handSize, box = { index: 0, count: 1 }) {
     if (seat === null) {
-      // The dealer's hand. No seat, so it lies square to the table, well clear
-      // of the shoe: sat any closer, the shoe occludes the hole card from every
-      // seat on the far side of the table.
+      // The dealer's hand, laid on the felt just inside the flat side in front
+      // of where the dealer stands, fanned along the chord and pointing back at
+      // them. Every seat is on the curve, so this never lands in front of one.
       const spread = (indexInHand - (handSize - 1) / 2) * FAN_SPACING;
-      return { x: spread, z: 0.24, yaw: 0 };
+      const f = this._facing;
+      return {
+        x: f.x * DEALER_INSET + f.z * spread,
+        z: f.z * DEALER_INSET - f.x * spread,
+        // Long axis along the facing, so the cards read to the dealer.
+        yaw: Math.atan2(-f.x, -f.z),
+      };
     }
 
     const anchor = seatAnchor(seat, SEAT_INSET);
@@ -273,7 +295,7 @@ export class CardTable {
 
   _createCard(card, place, faceDown, delayMs) {
     const pivot = new THREE.Group();
-    pivot.position.copy(SHOE);
+    pivot.position.copy(this._shoe);
     pivot.rotation.y = place.yaw;
 
     const mesh = new THREE.Mesh(this._geometry, [
@@ -293,7 +315,7 @@ export class CardTable {
     return {
       pivot,
       mesh,
-      from: SHOE.clone(),
+      from: this._shoe.clone(),
       to: new THREE.Vector3(place.x, FELT_Y, place.z),
       startAt: performance.now() + delayMs,
       duration: FLIGHT_MS,
@@ -323,6 +345,17 @@ export class CardTable {
       this._root.position.set(interactable.x, 0, interactable.z);
       this._root.visible = true;
     }
+
+    // The root is never rotated — everything in it is placed from world-space
+    // offsets — so the shoe's table-local position is rotated into place here
+    // rather than by a parent transform.
+    this._facing = interactable.facing ?? { x: 1, z: 0 };
+    const f = this._facing;
+    this._shoe.set(
+      f.x * SHOE_LOCAL.x + f.z * SHOE_LOCAL.z,
+      SHOE_LOCAL.y,
+      f.z * SHOE_LOCAL.x - f.x * SHOE_LOCAL.z,
+    );
 
     if (hand === null || hand === undefined) {
       this._removeAllBut(new Set());

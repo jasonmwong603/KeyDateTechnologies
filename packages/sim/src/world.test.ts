@@ -59,13 +59,86 @@ describe('the casino floor', () => {
   });
 
   it('leaves room to walk between neighbouring stools', () => {
-    // Six stools ringing a table must not wall it off. The gap has to clear a
+    // Six stools along the arc must not wall it off. The gap has to clear a
     // player's own width, or a table becomes reachable only from the angles
     // that happen to line up with a gap.
     const table = world.interactables.find((entry) => entry.kind === 'table')!;
     const [first, second] = table.seats;
-    const gap = distanceXZ(first!.x, first!.z, second!.x, second!.z) - 0.62;
-    expect(gap).toBeGreaterThan(PLAYER_RADIUS * 2 + 0.3);
+    const stool = world.colliders.find((box) => box.kind === 'seat')!;
+    const width = stool.maxX - stool.minX;
+    const gap = distanceXZ(first!.x, first!.z, second!.x, second!.z) - width;
+    expect(gap).toBeGreaterThan(PLAYER_RADIUS * 2);
+  });
+
+  it('makes every table a half circle, dealer on the flat side', () => {
+    for (const table of world.interactables.filter((entry) => entry.kind === 'table')) {
+      const facing = table.facing!;
+      expect(Math.hypot(facing.x, facing.z)).toBeCloseTo(1, 6);
+      // Cardinal, which is what lets the half-disc be approximated by
+      // axis-aligned slabs.
+      expect(facing.x === 0 || facing.z === 0).toBe(true);
+
+      // Every seat is on the players' side of the chord, and none of them is
+      // standing where the dealer stands.
+      for (const seat of table.seats) {
+        const along = (seat.x - table.x) * facing.x + (seat.z - table.z) * facing.z;
+        expect(along).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it('turns every table so the seats face the middle of the room', () => {
+    for (const table of world.interactables.filter((entry) => entry.kind === 'table')) {
+      const facing = table.facing!;
+      // Walking in off the floor has to bring you out among the stools, not
+      // behind the dealer: there are no seats on the dealer's side, so sitting
+      // down from there would teleport the player around the whole arc.
+      const inward = -table.x * facing.x + -table.z * facing.z;
+      expect(inward).toBeGreaterThan(0);
+    }
+  });
+
+  it('keeps the table solid only on the player side of the chord', () => {
+    for (const table of world.interactables.filter((entry) => entry.kind === 'table')) {
+      const facing = table.facing!;
+      // A pace behind the flat side is where the dealer stands. Nothing solid
+      // may be there, or the dealer would be standing inside the table.
+      const behindX = table.x - facing.x * 0.5;
+      const behindZ = table.z - facing.z * 0.5;
+      const inside = world.colliders.some(
+        (box) =>
+          box.kind === 'table' &&
+          behindX > box.minX &&
+          behindX < box.maxX &&
+          behindZ > box.minZ &&
+          behindZ < box.maxZ,
+      );
+      expect(inside).toBe(false);
+    }
+  });
+
+  it('never puts solid table where the felt is not', () => {
+    // The corners of a bounding box around a half-disc are empty to look at and
+    // solid to walk into. The slab approximation exists to avoid exactly that,
+    // so every solid point has to be inside the true half-disc.
+    const radius = 1.9;
+    for (const table of world.interactables.filter((entry) => entry.kind === 'table')) {
+      for (const box of world.colliders.filter((entry) => entry.kind === 'table')) {
+        const cx = (box.minX + box.maxX) / 2;
+        const cz = (box.minZ + box.maxZ) / 2;
+        if (distanceXZ(cx, cz, table.x, table.z) > radius * 2) continue;
+
+        // Each corner of each slab must lie inside the disc.
+        for (const [x, z] of [
+          [box.minX, box.minZ],
+          [box.minX, box.maxZ],
+          [box.maxX, box.minZ],
+          [box.maxX, box.maxZ],
+        ]) {
+          expect(distanceXZ(x!, z!, table.x, table.z)).toBeLessThanOrEqual(radius + 0.001);
+        }
+      }
+    }
   });
 
   it('never spawns a player inside anything', () => {
@@ -95,7 +168,7 @@ describe('the casino floor', () => {
         );
 
         let closest = Infinity;
-        for (let tick = 0; tick < 200; tick += 1) {
+        for (let tick = 0; tick < 260; tick += 1) {
           state = stepPlayer(state, input({ moveZ: 1, yaw: angle + Math.PI }), world, TICK_DT);
           closest = Math.min(closest, distanceXZ(state.x, state.z, table.x, table.z));
         }

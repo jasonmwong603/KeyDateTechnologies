@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { seatAnchor } from './cards3d.js';
+import { BET_INSET, seatAnchor } from './cards3d.js';
 
 /**
  * Chips on the felt.
@@ -34,10 +34,8 @@ const CHIP_RADIUS = 0.058;
 const CHIP_HEIGHT = 0.014;
 /** Height of the felt surface, matching the table mesh in `renderer.js`. */
 const FELT_Y = 1.06;
-/** How far from the table centre a bet is pushed. Inboard of the cards. */
-const BET_INSET = 0.6;
 /** Sideways gap between the boxes of a player holding more than one. */
-const BOX_SPACING = 0.5;
+const BOX_SPACING = 0.44;
 /** Chips per column before a stack starts a new one beside it. */
 const COLUMN_HEIGHT = 8;
 /** Columns before the stack stops growing and the label carries the rest. */
