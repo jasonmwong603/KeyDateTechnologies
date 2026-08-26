@@ -243,11 +243,17 @@ export class TableRuntime {
     // already walked out of the room. One action is not always enough to end a
     // hand — an auto-hit that draws a five leaves them still to act — so play
     // it out until the turn genuinely moves on.
+    //
+    // The bound is generous rather than tight: a blackjack player holding three
+    // boxes and splitting each of them to the limit is twelve hands, every one
+    // of which may draw several cards. It exists to turn a rules bug that never
+    // advances the turn into a thrown error instead of a hung server tick, and
+    // a bound that a legal hand can reach would do the opposite.
     let guard = 0;
     while (this.phase === 'decisions' && this.currentActor === playerId) {
       this.applyAutoAction();
       guard += 1;
-      if (guard > 64) {
+      if (guard > 512) {
         throw new Error(`Table ${this.tableId}: auto-play never released the turn.`);
       }
     }

@@ -190,8 +190,12 @@ calls the deal, then gives everyone ten seconds of last call.
 Playing more than one hand needs no rule of its own. Each box is a separate betting spot
 that has to meet the table minimum on its own, so two hands cost at least twice the
 minimum and three at least three times — the rule falls out of the spots rather than
-being enforced on top of them. It is not splitting: a split reacts to a pair already
-dealt, where boxes are chosen and paid for before a card comes out.
+being enforced on top of them.
+
+Boxes and splits look alike on the felt and are not the same thing. A box is chosen and
+paid for before a card is seen; a split reacts to a pair that has already been dealt. A
+split hand still belongs to the box it came from, and its extra stake goes onto that
+box's pile rather than opening a fourth one.
 
 The shoe is a **continuous shuffling machine**. Every round is dealt from a freshly
 shuffled eight-deck shoe, exactly as a CSM behaves — cards go back in the moment the hand
@@ -203,12 +207,34 @@ one at a time, turn face up as they cross the table, and settle in front of whoe
 belong to. The dealer's hole card stays face down, on the table, until the hand ends.
 Bets sit beside them as chip stacks — red 5, green 25, black 100, purple 500, gold 1000,
 and a white 1 for the change, because a bet is any whole number and a stack that does not
-add up to it would be worse than no stack. No splitting, no insurance, no surrender: a split
-turns one seat into several simultaneous hands, which the turn order and the wire state
-are not built for, and half-implementing it is worse than leaving it out.
+add up to it would be worse than no stack.
 
-It is also the reason the table phase machine grew a `decisions` phase — see
-[Fairness with a decision in it](#fairness-with-a-decision-in-it) below.
+**Splitting** is offered on any two cards of equal _value_ — a king and a jack split, since
+insisting on matching ranks draws a distinction the player cannot see on the felt. One box
+can be split up to three times, so four hands off it, and a split hand may still
+double. Split aces get one card each and stand, which is the rule that stops a pair of
+aces being the strongest hand in the game to keep hitting. Twenty-one after a split is an
+ordinary twenty-one at even money, not a natural at three to two — the rule everybody
+remembers wrongly, and worth half a stake on the most-split hand there is.
+
+**Late surrender** gives back half the stake, and only as the very first decision on an
+unsplit hand. Allowing it after a hit would let a player draw a card and then take half
+their money back on seeing it, which is an escape hatch rather than a rule.
+
+Insurance is the one move still missing, and deliberately: it is a side bet on the
+dealer's hole card at 2 to 1 when the true odds are worse than that, so it exists in a
+real pit to be sold to people who do not know that. Nothing here needs it.
+
+Auto-play never doubles, splits or surrenders on an absent player's behalf. The first two
+would spend chips they did not choose to spend and the third would give away half a stake
+they never agreed to give away — and since `resolve` plays every hand that way, the
+paytable is measured on a table nobody is helping, which is the conservative direction to
+be wrong in.
+
+Blackjack is why the table phase machine has a `decisions` phase at all — see
+[Fairness with a decision in it](#fairness-with-a-decision-in-it) below. Splitting is the
+part of it that makes the list of hands grow while that phase is running, which is the
+awkward case every other game there gets to ignore.
 
 **Roulette** — European single zero. One green pocket, not two: the American double-zero
 wheel doubles the house edge to 5.26% for no extra gameplay. Every spot is priced at
@@ -322,8 +348,8 @@ service to deploy, no CORS, and no separate origin to configure.
 
 Working today: authoritative 30Hz simulation, client prediction and reconciliation,
 entity interpolation, delta-compressed snapshots, both camera modes, desktop and touch
-input, six tables across five games including blackjack with real hit/stand/double
-decisions, commit–reveal fairness, chip ledger with bailouts,
+input, six half-circle tables across five games including blackjack with hit, stand,
+double, split and surrender, commit–reveal fairness, chip ledger with bailouts,
 resume-after-disconnect, local and table chat.
 
 Installs to a phone home screen as a full-screen app.

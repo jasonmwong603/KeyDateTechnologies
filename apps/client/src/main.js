@@ -34,6 +34,7 @@ import { WorldRenderer } from './renderer.js';
  */
 
 const canvas = document.getElementById('viewport');
+const touchControls = document.getElementById('touch-controls');
 const connection = new Connection();
 const input = new InputController(canvas);
 const renderer = new WorldRenderer(canvas);
@@ -143,8 +144,24 @@ connection.on('welcome', (message) => {
   hud.show();
   hud.setSession(message.sessionCode);
 
-  if (input.isTouchDevice) document.getElementById('touch-controls').hidden = false;
+  refreshTouchControls();
 });
+
+/**
+ * Shows the touch buttons, except while the player is sitting at a table.
+ *
+ * Seated, neither of them does anything you would want. Jump is refused by the
+ * simulation outright, and Use only stands you back up — which the panel's own
+ * **Stand up** button already does, right next to the cards. What they do
+ * instead is sit on top of the felt: two large targets in the bottom-right
+ * corner of a phone held sideways, exactly where the table panel and your own
+ * cards are. Taking them away is the difference between playing a hand and
+ * playing around two buttons.
+ */
+function refreshTouchControls() {
+  const seated = localState !== null && localState.seatedAt !== null;
+  touchControls.hidden = !input.isTouchDevice || seated;
+}
 
 // ---------------------------------------------------------------------------
 // Snapshots: reconciliation for the local player, interpolation for everyone else
@@ -250,6 +267,10 @@ function applyLocalCorrection(entity, ackedInput) {
   } else {
     localState.seatedAt = corrected.seatedAt;
   }
+
+  // Only on the tick the seat actually changes. The render loop runs sixty
+  // times a second and has no business writing to the DOM on every one of them.
+  if (seatChanged) refreshTouchControls();
 }
 
 // ---------------------------------------------------------------------------

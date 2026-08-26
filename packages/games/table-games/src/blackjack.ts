@@ -23,8 +23,11 @@ import {
  *   - Up to three boxes per player.
  *   - Dealer stands on all 17, soft included.
  *   - Blackjack pays 3 to 2.
- *   - Double down on any first two cards.
- *   - No splitting, no insurance, no surrender.
+ *   - Double down on any first two cards, after a split included.
+ *   - Split any two cards of equal value, up to three times per box.
+ *   - Split aces get one card each and stand.
+ *   - Late surrender: give up half the stake before taking a card.
+ *   - No insurance.
  *
  * **The shoe is a continuous shuffling machine.** Every round is dealt from a
  * freshly shuffled eight-deck shoe, which is exactly what a CSM does: cards go
@@ -33,10 +36,11 @@ import {
  * which matters here rather more than in a real pit — the seed for each round
  * is published afterwards, so a counter would not even have to count.
  *
- * Splits are the notable omission. Playing several *boxes* is supported, and
- * looks similar, but it is not the same thing: boxes are chosen and paid for
- * before any card is seen, whereas a split doubles a stake in reaction to a
- * pair that has already been dealt. See `docs/roadmap.md`.
+ * Boxes and splits look similar on the felt and are not the same thing. A box
+ * is chosen and paid for before any card is seen; a split doubles a stake in
+ * reaction to a pair that has already been dealt. Both are supported, and a
+ * split hand still belongs to the box it came from — its extra chips go on that
+ * box's pile, not onto a fourth box.
  */
 
 /** Eight decks, reshuffled every round — see the note on the CSM above. */
@@ -57,19 +61,50 @@ export const BOX_SPOTS = ['box-1', 'box-2', 'box-3'] as const;
 const DEALER_STANDS_ON = 17;
 export const BLACKJACK_PAYOUT = 1.5;
 
+/**
+ * How many times one box may be split.
+ *
+ * Three, so a box can become at most four hands — the usual pit limit, and the
+ * point past which a player is holding more cards than fit in front of a seat.
+ */
+export const MAX_SPLITS = 3;
+
+/** What a surrendered hand gets back, as a fraction of its stake. */
+export const SURRENDER_RETURN = 0.5;
+
 export interface BlackjackHand {
+  /**
+   * Unique for the life of the round, and stable once assigned.
+   *
+   * A split turns one hand into two on the same box, so neither the player id
+   * nor the box identifies a hand any more. Everything that has to follow one
+   * across updates — the panel rows, the cards on the felt — keys off this.
+   */
+  handId: string;
   playerId: string;
   /**
    * Which box this hand is playing, e.g. `box-2`.
    *
    * Carried on the hand because a player can hold several at once, and a
-   * double has to add its chips to the right one.
+   * double has to add its chips to the right one. Split hands keep the box they
+   * came from: their chips go on that pile.
    */
   spotId: string;
   /** Chips at risk. Doubles when the player doubles down. */
   stake: number;
   cards: Card[];
   doubled: boolean;
+  /**
+   * How many splits this hand descends from. Zero for a hand as dealt.
+   *
+   * More than a counter: a two-card 21 in a split hand is an ordinary 21 and
+   * pays even money, not a natural at 3 to 2.
+   */
+  splitDepth: number;
+  /** Split from a pair of aces: one card each, and no further decision. */
+  splitAces: boolean;
+  /** Given up before taking a card. Half the stake comes back. */
+  surrendered: boolean;
   /** True once the hand can take no more cards, however that happened. */
   finished: boolean;
 }
@@ -84,6 +119,8 @@ export interface BlackjackState {
   turn: number;
   /** Set at the deal. Ends the hand immediately — nobody gets to decide. */
   dealerBlackjack: boolean;
+  /** Source of the next `handId`. Part of the state so a replay assigns the same ones. */
+  nextHandId: number;
 }
 
 /**
@@ -121,6 +158,55 @@ export function isBust(cards: readonly Card[]): boolean {
 /** Twenty-one on the first two cards, and only on the first two. */
 export function isBlackjack(cards: readonly Card[]): boolean {
   return cards.length === 2 && handValue(cards).total === 21;
+}
+
+/** What one card is worth on its own — 11 for an ace, 10 for any face card. */
+function cardValue(card: Card): number {
+  return handValue([card]).total;
+}
+
+/**
+ * A natural: twenty-one as dealt, paying 3 to 2.
+ *
+ * Split hands are excluded on purpose, and this is the rule everybody
+ * remembers wrongly. Splitting a pair of aces and drawing a ten gives 21, but
+ * it is not a blackjack — it pays even money. Getting this wrong hands the
+ * player an extra half a stake on the single most-split hand in the game.
+ */
+export function isNatural(hand: Pick<BlackjackHand, 'cards' | 'splitDepth'>): boolean {
+  return hand.splitDepth === 0 && isBlackjack(hand.cards);
+}
+
+/**
+ * Whether a hand may be split.
+ *
+ * Equal *value* rather than equal rank, which is the more generous of the two
+ * usual readings: a king and a jack are both worth ten, so they split. A pit
+ * that insists on matching ranks is drawing a distinction the player cannot see
+ * on the felt.
+ *
+ * Split aces are never resplit. That is redundant today — they are dealt one
+ * card and finished, so nobody is ever asked — but it is the rule, and stating
+ * it here is what stops a later change to the one-card rule silently taking the
+ * resplit ban with it.
+ */
+export function canSplit(hand: BlackjackHand): boolean {
+  if (hand.cards.length !== 2 || hand.splitDepth >= MAX_SPLITS) return false;
+  if (hand.splitAces) return false;
+  const [first, second] = hand.cards as [Card, Card];
+  return cardValue(first) === cardValue(second);
+}
+
+/**
+ * Whether a hand may be surrendered.
+ *
+ * Late surrender, and only as the very first decision: two cards, nothing
+ * doubled, nothing split. Allowing it after a hit would let a player draw a
+ * card and then take half their money back on seeing it, which is not a rule
+ * so much as an escape hatch.
+ */
+export function canSurrender(hand: BlackjackHand): boolean {
+  return hand.cards.length === 2 && hand.splitDepth === 0 && !hand.doubled;
 }
 
 // ---------------------------------------------------------------------------
@@ -178,12 +264,16 @@ const interactive: InteractiveTableGame<BlackjackState> = {
     // order matters: it is fixed by the shoe, and the shoe is fixed by the
     // committed seed, so this is part of what the fairness proof covers.
     let cursor = 0;
-    const hands: BlackjackHand[] = ordered.map((wager) => ({
+    const hands: BlackjackHand[] = ordered.map((wager, index) => ({
+      handId: `h${index + 1}`,
       playerId: wager.playerId,
       spotId: wager.spotId,
       stake: wager.amount,
       cards: [],
       doubled: false,
+      splitDepth: 0,
+      splitAces: false,
+      surrendered: false,
       finished: false,
     }));
 
@@ -202,7 +292,15 @@ const interactive: InteractiveTableGame<BlackjackState> = {
       if (dealerBlackjack || isBlackjack(hand.cards)) hand.finished = true;
     }
 
-    return advance({ shoe, cursor, dealer, hands, turn: 0, dealerBlackjack });
+    return advance({
+      shoe,
+      cursor,
+      dealer,
+      hands,
+      turn: 0,
+      dealerBlackjack,
+      nextHandId: hands.length + 1,
+    });
   },
 
   actor(state: BlackjackState): string | null {
@@ -223,14 +321,31 @@ const interactive: InteractiveTableGame<BlackjackState> = {
     if (hand.cards.length === 2) {
       options.push({ id: 'double', label: 'Double', hint: 'Double the stake, take one card' });
     }
+    if (canSplit(hand)) {
+      options.push({
+        id: 'split',
+        label: 'Split',
+        hint: `Two hands, ${hand.stake.toLocaleString()} on each`,
+      });
+    }
+    if (canSurrender(hand)) {
+      options.push({
+        id: 'surrender',
+        label: 'Surrender',
+        hint: `Fold for ${Math.floor(hand.stake * SURRENDER_RETURN).toLocaleString()} back`,
+      });
+    }
     return options;
   },
 
   stakeDelta(state: BlackjackState, actionId: string): number {
-    if (actionId !== 'double') return 0;
     const hand = currentHand(state);
-    if (hand === undefined || hand.cards.length !== 2) return 0;
-    return hand.stake;
+    if (hand === undefined) return 0;
+    // Both moves that cost chips cost exactly one more stake: doubling buys a
+    // second bet on the same hand, splitting buys the same bet on a second one.
+    if (actionId === 'double') return hand.cards.length === 2 ? hand.stake : 0;
+    if (actionId === 'split') return canSplit(hand) ? hand.stake : 0;
+    return 0;
   },
 
   /**
@@ -251,6 +366,56 @@ const interactive: InteractiveTableGame<BlackjackState> = {
       const hands = [...state.hands];
       hands[state.turn] = { ...hand, finished: true };
       return advance({ ...state, hands });
+    }
+
+    if (actionId === 'surrender' && canSurrender(hand)) {
+      const hands = [...state.hands];
+      hands[state.turn] = { ...hand, surrendered: true, finished: true };
+      return advance({ ...state, hands });
+    }
+
+    if (actionId === 'split' && canSplit(hand)) {
+      // Both halves are given their second card straight away, rather than the
+      // pit's order of playing the first hand right out before the second is
+      // even dealt.
+      //
+      // That is a real difference, not just a presentational one: hit the first
+      // hand and the pit's second half would get a later card off the shoe than
+      // it gets here. It is a house rule either way, chosen because the player
+      // can then see both hands before deciding anything about either. What it
+      // does not affect is the fairness proof — every card still comes off the
+      // committed shoe in cursor order, so the round replays exactly.
+      const [first, second] = hand.cards as [Card, Card];
+      const aces = first.rank === 'A';
+      const depth = hand.splitDepth + 1;
+
+      const half = (card: Card, drawn: Card, handId: string): BlackjackHand => {
+        const cards = [card, drawn];
+        return {
+          ...hand,
+          handId,
+          cards,
+          splitDepth: depth,
+          splitAces: aces,
+          // Split aces get exactly one card each. Without that rule a pair of
+          // aces is the strongest hand in the game to keep hitting.
+          finished: aces || handValue(cards).total >= 21,
+        };
+      };
+
+      const hands = [...state.hands];
+      hands.splice(
+        state.turn,
+        1,
+        half(first, deal(state.shoe, state.cursor, 1)[0] as Card, hand.handId),
+        half(second, deal(state.shoe, state.cursor + 1, 1)[0] as Card, `h${state.nextHandId}`),
+      );
+      return advance({
+        ...state,
+        hands,
+        cursor: state.cursor + 2,
+        nextHandId: state.nextHandId + 1,
+      });
     }
 
     if (actionId === 'double' && hand.cards.length === 2) {
@@ -282,11 +447,20 @@ const interactive: InteractiveTableGame<BlackjackState> = {
   /**
    * What the table plays for somebody who ran out of time or walked away.
    *
-   * A simplified basic strategy: it never doubles (that would spend chips the
-   * player did not choose to spend), and otherwise plays the standard hard and
-   * soft totals against the dealer's upcard. Standing on everything would be
-   * simpler and noticeably worse for the absent player, which is the wrong
-   * default when the table is deciding on their behalf.
+   * A simplified basic strategy: it plays the standard hard and soft totals
+   * against the dealer's upcard. Standing on everything would be simpler and
+   * noticeably worse for the absent player, which is the wrong default when the
+   * table is deciding on their behalf.
+   *
+   * It never doubles, splits or surrenders. The first two would spend chips the
+   * player did not choose to spend; the third would give away half a stake they
+   * never agreed to give away. All three are the player's call and nobody
+   * else's, so the table declines to make it for them.
+   *
+   * This is also what keeps the paytable honest. `resolve` plays every hand
+   * through here, and the 200,000-hand expected-return test measures that — so
+   * the measured return is the return of a table nobody is helping, which is
+   * the conservative direction to be wrong in.
    */
   autoAction(state: BlackjackState): string {
     const hand = currentHand(state);
@@ -318,6 +492,7 @@ const interactive: InteractiveTableGame<BlackjackState> = {
       dealerBlackjack: state.dealerBlackjack,
       turnPlayerId: currentHand(state)?.playerId ?? null,
       hands: state.hands.map((hand) => ({
+        handId: hand.handId,
         playerId: hand.playerId,
         spotId: hand.spotId,
         box: boxLabel(hand.spotId),
@@ -326,8 +501,10 @@ const interactive: InteractiveTableGame<BlackjackState> = {
         total: handValue(hand.cards).total,
         soft: handValue(hand.cards).soft,
         bust: isBust(hand.cards),
-        blackjack: isBlackjack(hand.cards),
+        blackjack: isNatural(hand),
         doubled: hand.doubled,
+        split: hand.splitDepth > 0,
+        surrendered: hand.surrendered,
         finished: hand.finished,
       })),
     };
@@ -339,7 +516,9 @@ const interactive: InteractiveTableGame<BlackjackState> = {
     // without drawing, exactly as in a pit.
     const dealer = [...state.dealer];
     let cursor = state.cursor;
-    const contested = state.hands.some((hand) => !isBust(hand.cards));
+    // A surrendered hand is out, exactly like a bust one: the dealer has nothing
+    // left to beat and does not draw for it.
+    const contested = state.hands.some((hand) => !isBust(hand.cards) && !hand.surrendered);
 
     if (!state.dealerBlackjack && contested) {
       while (handValue(dealer).total < DEALER_STANDS_ON) {
@@ -357,11 +536,18 @@ const interactive: InteractiveTableGame<BlackjackState> = {
 
     for (const hand of state.hands) {
       const { total } = handValue(hand.cards);
-      const natural = isBlackjack(hand.cards);
+      const natural = isNatural(hand);
       let payout = 0;
       let outcome: string;
 
-      if (isBust(hand.cards)) {
+      if (hand.surrendered) {
+        // Half back, floored — a 25-chip surrender returns 12, not 12.5. The
+        // rounding goes to the house here for the same reason it goes to the
+        // player on a natural: chips are whole, and the direction has to be
+        // fixed rather than decided case by case.
+        payout = Math.floor(hand.stake * SURRENDER_RETURN);
+        outcome = 'surrender';
+      } else if (isBust(hand.cards)) {
         outcome = 'bust';
       } else if (natural && !dealerNatural) {
         // 3:2, floored — a 25-chip natural pays 37 in winnings, not 37.5.
@@ -381,6 +567,7 @@ const interactive: InteractiveTableGame<BlackjackState> = {
 
       if (payout > 0) credits.push({ playerId: hand.playerId, amount: payout });
       outcomes.push({
+        handId: hand.handId,
         playerId: hand.playerId,
         spotId: hand.spotId,
         box: boxLabel(hand.spotId),
@@ -388,6 +575,7 @@ const interactive: InteractiveTableGame<BlackjackState> = {
         total,
         stake: hand.stake,
         doubled: hand.doubled,
+        split: hand.splitDepth > 0,
         outcome,
         payout,
       });
@@ -441,7 +629,9 @@ export const blackjack: TableGameDefinition = {
       id: 'box-1',
       label: 'Box 1',
       payout: 1,
-      description: 'Even money. Blackjack pays 3 to 2. Dealer stands on all 17. Minimum 10.',
+      description:
+        'Even money. Blackjack pays 3 to 2. Dealer stands on all 17. ' +
+        'Double, split equal cards, or surrender for half. Minimum 10.',
     },
     {
       id: 'box-2',

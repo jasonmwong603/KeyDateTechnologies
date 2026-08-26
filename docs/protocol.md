@@ -24,7 +24,7 @@ look like a netcode bug.
 | `table:clear`  | Pull your chips back while betting is open                                                    |
 | `table:ready`  | Declare readiness so the table can resolve early                                              |
 | `table:deal`   | Tell the dealer to deal, at a table that waits to be asked                                    |
-| `table:action` | Take your turn at a table that has one — `hit`, `stand`, `double`                             |
+| `table:action` | Take your turn at a table that has one — `hit`, `stand`, `double`, `split`, `surrender`       |
 | `chat`         | `local` (whole floor) or `table` (your table only)                                            |
 | `view-mode`    | Cosmetic; which camera you are using                                                          |
 | `ping`         | Latency and clock-offset probe                                                                |
@@ -120,6 +120,15 @@ active a `decision` block rides along:
 `view` is produced by the rules module, never dumped from its state — the rest of the
 shoe and the dealer's hole card are in that state, and neither goes out until the hand is
 over.
+
+Nothing in `actions` is fixed by the protocol: the client builds the buttons from whatever
+the list holds, so a game gaining a move needs no wire change and no client change. What
+it must not do is let a client invent one — `takeAction` refuses any id the game did not
+just offer, which is checked with adversarial tests.
+
+Each hand in blackjack's `view` carries a `handId`. A split puts two hands on one betting
+spot, so neither the player id nor the spot identifies a hand any more, and anything that
+follows one across updates — the panel rows, the cards on the felt — keys off that id.
 
 `lastResult` carries the revealed seed **and the round's action log**. A one-shot round is
 reproducible from its seed alone; an interactive one is reproducible from (seed, actions),

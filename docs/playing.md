@@ -110,11 +110,18 @@ note is gone — nothing to dismiss.
 | Look                             | Drag anywhere on the **right half**              |
 | Jump                             | **Jump** button                                  |
 | Sit at a table, order at the bar | **Use** button                                   |
+| Stand back up                    | **Stand up**, in the table panel                 |
 | Chat                             | Tap the chat box                                 |
 | Switch camera                    | **Third person** button, top right               |
 
 There is no on-screen joystick to hit precisely — anywhere on the left half works as a
 virtual stick from wherever your thumb lands.
+
+**Jump and Use disappear while you are sitting at a table.** Neither does anything at a
+table — you cannot jump off a stool, and Use would only stand you up, which the panel's
+own **Stand up** button already does. What they were doing instead was sitting on top of
+the felt: two large targets in exactly the corner your cards and the table panel occupy.
+Stand up and they come straight back.
 
 ---
 
@@ -171,17 +178,37 @@ table minimum on its own, so two hands cost at least twice the minimum and three
 three times.
 
 This is not splitting. A split reacts to a pair you have already been dealt; boxes are
-chosen and paid for before a single card comes out.
+chosen and paid for before a single card comes out. You can do both — split a box and
+still be holding two more.
+
+### Splitting, and giving one up
+
+Two cards of the same value get a **Split** button: it costs another bet the same size as
+the one already down, and you play the two halves one after the other. Equal _value_, not
+equal rank — a king and a jack both count ten, so they split. You can split the same box
+up to three times, which is four hands off one box, and you can still double any of them.
+
+Two things about splits that people get wrong at real tables as well:
+
+- **Split aces get one card each and then stand.** Otherwise a pair of aces would be the
+  best hand in the game to keep hitting.
+- **Twenty-one after a split is not blackjack.** It pays even money, not 3 to 2. A natural
+  is twenty-one on the two cards you were dealt.
+
+**Surrender** is the other way out: give the hand up before you take a card and half your
+stake comes back. It is only offered on your very first decision, on a hand you have not
+split — once you have seen a third card, the moment has passed. Sixteen against a dealer's
+ten is the hand it is for.
 
 ### The games
 
-| Game                 | Where                                 | What it is                                                                                                                                                                                                                                                                                                       |
-| -------------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Blackjack**        | Two tables, north-west and south-east | Eight decks on a continuous shuffler, dealer stands on all 17, blackjack pays 3 to 2. Hit, stand, or double on your first two cards. Play up to three boxes at once, each costing its own bet. Bet anything from 10 up to your whole stack, no table maximum, and the round starts when somebody calls the deal. |
-| **Roulette**         | North-east                            | European single zero — one green pocket, not two. Red/black, odd/even, halves, dozens, and the zero straight up at 35 to 1.                                                                                                                                                                                      |
-| **Baccarat**         | South-west                            | Punto banco. Back the player, the banker, or a tie; the drawing rules do the rest. Banker pays 0.95 to 1 after commission, a tie pays 9 to 1 and pushes the other two.                                                                                                                                           |
-| **Wheel of Fortune** | West wall                             | The house game. The `9x` spot is priced at exactly true odds — the one bet on the floor with no house edge at all.                                                                                                                                                                                               |
-| **High Card Duel**   | East wall                             | No house cut whatsoever. Everyone antes, highest card takes the pot. Needs two players.                                                                                                                                                                                                                          |
+| Game                 | Where                                 | What it is                                                                                                                                                                                                                                                                                                                      |
+| -------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Blackjack**        | Two tables, north-west and south-east | Eight decks on a continuous shuffler, dealer stands on all 17, blackjack pays 3 to 2. Hit, stand, double, split equal cards, or surrender for half. Play up to three boxes at once, each costing its own bet. Bet anything from 10 up to your whole stack, no table maximum, and the round starts when somebody calls the deal. |
+| **Roulette**         | North-east                            | European single zero — one green pocket, not two. Red/black, odd/even, halves, dozens, and the zero straight up at 35 to 1.                                                                                                                                                                                                     |
+| **Baccarat**         | South-west                            | Punto banco. Back the player, the banker, or a tie; the drawing rules do the rest. Banker pays 0.95 to 1 after commission, a tie pays 9 to 1 and pushes the other two.                                                                                                                                                          |
+| **Wheel of Fortune** | West wall                             | The house game. The `9x` spot is priced at exactly true odds — the one bet on the floor with no house edge at all.                                                                                                                                                                                                              |
+| **High Card Duel**   | East wall                             | No house cut whatsoever. Everyone antes, highest card takes the pot. Needs two players.                                                                                                                                                                                                                                         |
 
 Every spot on every felt returns between 93% and 100% of what is staked on it, and there
 is a test that fails if one ever climbs above 100% or drops below 93%. Roulette is

@@ -7,7 +7,7 @@ Ordered by what unblocks the most, not by what is most fun to build.
 Authoritative 30Hz simulation · client prediction and reconciliation · entity
 interpolation · delta-compressed snapshots · first and third person cameras · desktop
 and touch input · six half-circle tables across five games, seats and bets visible on the
-felt · blackjack with real hit/stand/double decisions and up to three boxes a player ·
+felt · blackjack with hit, stand, double, split and surrender, up to three boxes a player ·
 cards dealt in 3D out of the shoe · commit–reveal fairness verified
 client-side · chip ledger with bailouts · resume after disconnect · local and table chat
 · private worlds by session code · landscape-only on phones.
@@ -47,12 +47,11 @@ aim-dependent. It becomes necessary the moment any interaction is timing-critica
 built; blackjack brought the `decisions` phase with it, so a game needing per-player
 sequential choices no longer needs a new phase machine, only an `InteractiveTableGame`.
 
-**Splitting in blackjack.** Still left out, though the ground under it has shifted:
-playing several _boxes_ is supported now, so the turn order, the action panel and the wire
-state all handle one player holding three hands at once. What splitting still needs is the
-part boxes do not have — reacting to a pair _after_ it is dealt, which means creating a
-hand mid-round and taking chips for it at that moment. Insurance and surrender are the
-same shape of decision and are absent for the same reason.
+**Insurance in blackjack.** The last of the standard moves still missing, and the one
+there is least reason to add. It is a side bet on the dealer's hole card paying 2 to 1
+against true odds that are worse than that, which is why a real pit offers it: it is sold
+to players who have not done the arithmetic. Splitting and surrender were worth building
+because a player who knows what they are doing is right to use them. This is the opposite.
 
 **Sequential betting.** Poker, and anything else where a bet depends on what the person
 before you bet, still does not fit: the betting window is one shared window, not a
@@ -74,7 +73,7 @@ Only usable from a Capacitor or Electron build, since browsers cannot do UDP. Se
 | Non-cryptographic commitment digest | Fairness proof is weaker than the UI implies       | `packages/netcode/src/commitment.ts` |
 | No persistence                      | Chips reset when a world empties                   | `apps/server/src/ledger.ts`          |
 | Everyone replicates everyone        | Bandwidth is O(n²) in players                      | `WorldInstance.replicate`            |
-| No splitting in blackjack           | The one basic-strategy move a player cannot make   | `packages/games/.../blackjack.ts`    |
+| No insurance in blackjack           | The one move still missing, and a bad bet anyway   | `packages/games/.../blackjack.ts`    |
 | Avatars are placeholder figures     | A black pill with limbs, not a character           | `WorldRenderer.addAvatar`            |
 | Half-disc tables collide as slabs   | The curve is a three-step staircase up close       | `packages/sim/src/world.ts`          |
 | Single-process                      | No horizontal scaling; a restart drops every world | `apps/server/src/index.ts`           |

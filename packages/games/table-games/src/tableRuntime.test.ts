@@ -461,6 +461,137 @@ describe('a table with a decision phase', () => {
     expect(bjTable.currentActor).toBe('a');
   });
 
+  /**
+   * Deals until a hand comes up that offers `actionId`, leaving `bjTable`
+   * parked on it. Returns false if no seed in range produced one.
+   *
+   * Splits need a pair and surrender needs an unspoilt first decision, neither
+   * of which a fixed seed reliably produces. Hunting for one keeps these tests
+   * about the runtime's handling of the action rather than about which shoe the
+   * seed happened to shuffle.
+   */
+  function dealUntilOffered(actionId: string, stake = 100): boolean {
+    for (let candidate = 1; candidate <= 400; candidate += 1) {
+      bjHost = new FakeHost(10_000, ['a']);
+      bjTable = new TableRuntime(2, blackjack, bjHost, () => candidate);
+      dealIn(['a'], stake);
+      if (bjTable.currentPhase !== 'decisions') continue;
+      const offered = bjTable.toPublicState().decision!.actions.map((action) => action.id);
+      if (offered.includes(actionId)) return true;
+    }
+    return false;
+  }
+
+  it('debits a second stake for a split and puts it on that box', () => {
+    expect(dealUntilOffered('split')).toBe(true);
+
+    const before = bjHost.balances.get('a')!;
+    expect(bjTable.takeAction('a', 'split')).toEqual({ ok: true });
+    expect(bjHost.balances.get('a')).toBe(before - 100);
+
+    // Two hands on one box, and the box holding both of their stakes. A split
+    // is not a fourth box — its chips belong on the pile it came from.
+    const state = bjTable.toPublicState();
+    expect(state.wagers).toHaveLength(1);
+    expect(state.wagers[0]).toMatchObject({ spotId: 'box-1', amount: 200 });
+
+    const hands = state.decision?.view.hands as { spotId: string }[] | undefined;
+    if (hands !== undefined) {
+      expect(hands).toHaveLength(2);
+      expect(hands.every((hand) => hand.spotId === 'box-1')).toBe(true);
+    }
+  });
+
+  it('refuses a split the player cannot cover, and does not apply it', () => {
+    // Same guard as the double: the extra stake is taken before the action is
+    // applied, so a hand can never be playing for chips that were never debited.
+    let found = false;
+    for (let candidate = 1; candidate <= 400 && !found; candidate += 1) {
+      bjHost = new FakeHost(1_000, ['a']);
+      bjTable = new TableRuntime(2, blackjack, bjHost, () => candidate);
+      bjTable.sit('a');
+      bjTable.update();
+      // Everything on the felt, so there is nothing left to split with.
+      bjTable.placeWager('a', 'box-1', 1_000);
+      bjTable.callDeal('a');
+      bjHost.advance(blackjack.bettingWindowMs + 1);
+      bjTable.update();
+      if (bjTable.currentPhase !== 'decisions') continue;
+      found = bjTable.toPublicState().decision!.actions.some((action) => action.id === 'split');
+    }
+    expect(found).toBe(true);
+
+    const result = bjTable.takeAction('a', 'split');
+    if (result.ok) throw new Error('Expected the split to be refused.');
+    expect(result.code).toBe('insufficient_chips');
+    expect(bjHost.balances.get('a')).toBe(0);
+    // The hand is untouched: still one hand, still this player's turn.
+    expect(bjTable.currentActor).toBe('a');
+    const hands = bjTable.toPublicState().decision?.view.hands as unknown[];
+    expect(hands).toHaveLength(1);
+  });
+
+  it('costs nothing to surrender, and returns half at the payout', () => {
+    expect(dealUntilOffered('surrender')).toBe(true);
+
+    const staked = bjHost.balances.get('a')!;
+    expect(bjTable.takeAction('a', 'surrender')).toEqual({ ok: true });
+    // Declaring it is free — the stake was already taken when the bet went down.
+    expect(bjHost.balances.get('a')).toBe(staked);
+
+    while (bjTable.currentPhase !== 'payout') {
+      bjHost.advance(1_000);
+      bjTable.update();
+    }
+    // Half of a 100 stake back, and nothing else: the hand folded.
+    expect(bjHost.balances.get('a')).toBe(staked + 50);
+  });
+
+  it('keeps every hand backed by chips that were actually taken', () => {
+    // The invariant splits and doubles can quietly break: a hand that appears
+    // without its stake being debited is free money, and a debit without a hand
+    // to show for it is money taken for nothing. Play greedily — split and
+    // double at every opportunity — across many shoes and check the two sides
+    // against each other every round.
+    for (let candidate = 1; candidate <= 60; candidate += 1) {
+      bjHost = new FakeHost(100_000, ['a']);
+      bjTable = new TableRuntime(2, blackjack, bjHost, () => candidate);
+      const opening = bjHost.balances.get('a')!;
+      dealIn(['a'], 100);
+
+      let guard = 0;
+      while (bjTable.currentActor === 'a') {
+        const offered = bjTable.toPublicState().decision!.actions.map((action) => action.id);
+        const choice = offered.includes('split')
+          ? 'split'
+          : offered.includes('double')
+            ? 'double'
+            : 'stand';
+        bjTable.takeAction('a', choice);
+        guard += 1;
+        if (guard > 128) throw new Error('The hand never ended.');
+      }
+
+      // Read before the payout: nothing has been credited back yet, so this is
+      // exactly what the round cost.
+      const spent = opening - bjHost.balances.get('a')!;
+
+      // The felt agrees with the ledger.
+      const staked = bjTable.toPublicState().wagers.reduce((sum, wager) => sum + wager.amount, 0);
+      expect(staked).toBe(spent);
+
+      while (bjTable.currentPhase !== 'payout') {
+        bjHost.advance(1_000);
+        bjTable.update();
+      }
+
+      // And every hand that was settled agrees with it too — four hands off one
+      // box must add up to the four stakes that were taken for them.
+      const hands = bjTable.toPublicState().lastResult!.detail.hands as { stake: number }[];
+      expect(hands.reduce((sum, hand) => sum + hand.stake, 0)).toBe(spent);
+    }
+  });
+
   it('decides for a player who runs out of time', () => {
     dealIn(['a', 'b']);
     expect(bjTable.currentActor).toBe('a');

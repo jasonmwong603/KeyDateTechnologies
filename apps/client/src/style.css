@@ -615,15 +615,28 @@ kbd {
   border-color: rgba(248, 113, 113, 0.4);
 }
 
+/* Surrender is neither: half the stake came back, so it is neither the red of
+   a loss nor the green of a win. */
+.hand-row[data-outcome='surrender'] {
+  border-color: rgba(226, 195, 106, 0.4);
+  opacity: 0.75;
+}
+
 .hand-note {
   margin-left: auto;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
 
+/*
+ * Up to five buttons — hit, stand, double, split, surrender — on a panel that
+ * is deliberately small. Auto-fit rather than a fixed three columns: with three
+ * on offer they take a row each way, and with five they wrap to two rows
+ * instead of squeezing "Surrender" into a third of a narrow panel.
+ */
 #hand-actions {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(5.5rem, 1fr));
   gap: 0.3rem;
 }
 
@@ -678,6 +691,11 @@ kbd {
 .result-lose,
 .result-bust {
   color: var(--bad);
+}
+
+.result-surrender,
+.result-push {
+  color: var(--muted);
 }
 
 #stake-row {

@@ -183,13 +183,34 @@ them. Assert it against a live round; `blackjack.test.ts` does, and so does
 Anything a player must not see mid-hand — the dealer's hole card — is in the state but
 must stay out of `view()`. The runtime only ever publishes `view()`, never the state.
 
-### What to leave out
+### Actions that change how many hands there are
 
-Blackjack has no splitting, and that is a scope decision rather than an oversight. A
-split turns one seat into several simultaneous hands, and the turn order, the action
-panel and the wire state are all built around one hand per player. Adding it is a real
-change. If you are extending a game, check whether the shape you want fits the phase
-machine before assuming it does.
+A split is the awkward case, because it makes the list of hands grow _during_ the
+decision phase. Three things follow from that, and all three are worth copying if you add
+a game that does something similar.
+
+**Give every hand a stable id.** Once two hands share a betting spot, neither the player
+nor the spot identifies one. `BlackjackState` carries a `nextHandId` counter and hands out
+`handId`s from it; the panel rows and the cards on the felt key off that. The counter is
+part of the state rather than a module-level variable on purpose — a replay has to assign
+the same ids, and anything outside the state is not covered by the seed.
+
+**Charge through `stakeDelta` and `activeSpot`, never directly.** The runtime debits the
+extra stake _before_ applying, and refuses the action if the player cannot cover it, so a
+hand can never end up playing for chips that were never taken. `activeSpot` is what puts
+those chips on the right pile: a split belongs to the box it came from, and without it the
+chips land on whichever box the player bet on first.
+
+**Do not let `autoAction` choose it.** Anything that costs chips, or gives them away, is
+the player's decision. The table plays for somebody who has walked away, and it must not
+spend their money doing it. This also keeps the paytable honest — `resolve` plays every
+hand through `autoAction`, so the measured expected return is the return of a table where
+nobody is helping.
+
+If you are extending a game, check whether the shape you want fits the phase machine
+before assuming it does. Blackjack's turn order is an index into an array of hands, which
+made splitting a `splice`; a game that needed several hands live _at once_ would not fit
+so easily.
 
 ## Designing a paytable
 

@@ -50,12 +50,16 @@ function stacked(ranks: readonly Rank[], wagers: readonly Wager[]): BlackjackSta
 
   // Re-run the deal by hand against the stacked shoe: two cards to each seat in
   // turn, then two to the dealer, exactly as `begin` does it.
-  const hands = wagers.map((wager) => ({
+  const hands = wagers.map((wager, index) => ({
+    handId: `h${index + 1}`,
     playerId: wager.playerId,
     spotId: wager.spotId,
     stake: wager.amount,
     cards: [] as Card[],
     doubled: false,
+    splitDepth: 0,
+    splitAces: false,
+    surrendered: false,
     finished: false,
   }));
   let cursor = 0;
@@ -75,7 +79,15 @@ function stacked(ranks: readonly Rank[], wagers: readonly Wager[]): BlackjackSta
 
   let turn = 0;
   while (turn < hands.length && (hands[turn] as { finished: boolean }).finished) turn += 1;
-  return { ...state, dealer, hands, cursor, turn, dealerBlackjack };
+  return {
+    ...state,
+    dealer,
+    hands,
+    cursor,
+    turn,
+    dealerBlackjack,
+    nextHandId: hands.length + 1,
+  };
 }
 
 describe('handValue', () => {
@@ -123,9 +135,16 @@ describe('the decision phase', () => {
     expect(state.cursor).toBe(6);
   });
 
-  it('offers hit, stand and double on a fresh hand', () => {
+  it('offers hit, stand, double and surrender on a fresh hand', () => {
+    // 9 and 7 are not a pair, so this hand cannot split — the four moves that
+    // are always available on a first decision are these.
     const state = stacked(['9', '7', 'K', '4'], [ante('p1')]);
-    expect(game.actions(state).map((action) => action.id)).toEqual(['hit', 'stand', 'double']);
+    expect(game.actions(state).map((action) => action.id)).toEqual([
+      'hit',
+      'stand',
+      'double',
+      'surrender',
+    ]);
   });
 
   it('withdraws the double once a card has been taken', () => {
@@ -273,6 +292,194 @@ describe('settling', () => {
   it('ignores a spot it does not offer', () => {
     const state = game.begin([{ playerId: 'p1', spotId: 'insurance', amount: 100 }], createRng(2));
     expect(state.hands).toEqual([]);
+  });
+});
+
+describe('splitting', () => {
+  it('offers the split on a pair', () => {
+    const state = stacked(['8', '8', 'K', '4'], [ante('p1')]);
+    expect(game.actions(state).map((action) => action.id)).toContain('split');
+  });
+
+  it('offers it on two cards of the same value but different ranks', () => {
+    // A king and a jack are both worth ten. Insisting on matching ranks draws a
+    // distinction the player cannot see on the felt.
+    const state = stacked(['K', 'J', '9', '4'], [ante('p1')]);
+    expect(game.actions(state).map((action) => action.id)).toContain('split');
+  });
+
+  it('does not offer it on two cards of different values', () => {
+    const state = stacked(['9', '8', 'K', '4'], [ante('p1')]);
+    expect(game.actions(state).map((action) => action.id)).not.toContain('split');
+  });
+
+  it('does not offer it once a card has been taken', () => {
+    const state = game.apply(stacked(['8', '8', 'K', '4', '2'], [ante('p1')]), 'hit');
+    expect(game.actions(state).map((action) => action.id)).not.toContain('split');
+  });
+
+  it('turns one hand into two, each with the original stake', () => {
+    const state = game.apply(stacked(['8', '8', 'K', '4', '3', '9'], [ante('p1', 100)]), 'split');
+    expect(state.hands).toHaveLength(2);
+    expect(state.hands.map((hand) => hand.stake)).toEqual([100, 100]);
+    expect(state.hands.map((hand) => hand.cards.map((card) => card.rank))).toEqual([
+      ['8', '3'],
+      ['8', '9'],
+    ]);
+  });
+
+  it('charges exactly one more stake for it', () => {
+    const state = stacked(['8', '8', 'K', '4'], [ante('p1', 250)]);
+    expect(game.stakeDelta(state, 'split')).toBe(250);
+  });
+
+  it('puts the extra chips on the box the split came from', () => {
+    // Not on a fourth box: a split belongs to the box it was dealt to, and its
+    // chips have to land on that pile or the felt stops matching the hand.
+    // Dealt one card at a time round the boxes, so box 1 takes the eights.
+    const state = stacked(
+      ['8', '5', '8', '5', 'K', '4', '3', '9'],
+      [box('p1', 1), box('p1', 2, 100)],
+    );
+    expect(game.activeSpot?.(state)).toBe('box-1');
+    const after = game.apply(state, 'split');
+    expect(after.hands.map((hand) => hand.spotId)).toEqual(['box-1', 'box-1', 'box-2']);
+  });
+
+  it('keeps both halves on the same player, played one after the other', () => {
+    const state = game.apply(stacked(['8', '8', 'K', '4', '3', '9'], [ante('p1')]), 'split');
+    expect(game.actor(state)).toBe('p1');
+    const stoodFirst = game.apply(state, 'stand');
+    expect(game.actor(stoodFirst)).toBe('p1');
+    expect(game.actor(game.apply(stoodFirst, 'stand'))).toBeNull();
+  });
+
+  it('gives each half a distinct id, so the two can be told apart', () => {
+    const state = game.apply(stacked(['8', '8', 'K', '4', '3', '9'], [ante('p1')]), 'split');
+    const ids = state.hands.map((hand) => hand.handId);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('does not treat twenty-one after a split as a natural', () => {
+    // The rule everybody remembers wrongly. Split aces, draw a ten, and it is
+    // an ordinary 21 at even money — not a blackjack at three to two.
+    // Dealer sits on 13 and draws the five, so both twenty-ones win outright.
+    const split = game.apply(
+      stacked(['A', 'A', '9', '4', 'K', 'Q', '5'], [ante('p1', 100)]),
+      'split',
+    );
+    const resolution = game.settle(split);
+
+    const hands = resolution.detail.hands as { total: number; outcome: string; payout: number }[];
+    expect(hands.map((hand) => hand.total)).toEqual([21, 21]);
+    expect(hands.map((hand) => hand.outcome)).toEqual(['win', 'win']);
+    expect(hands.map((hand) => hand.payout)).toEqual([200, 200]);
+  });
+
+  it('gives split aces one card each and no further decision', () => {
+    const state = game.apply(stacked(['A', 'A', 'K', '4', '5', '6'], [ante('p1')]), 'split');
+    expect(state.hands.every((hand) => hand.finished)).toBe(true);
+    expect(state.hands.map((hand) => hand.cards)).toHaveLength(2);
+    expect(game.actor(state)).toBeNull();
+  });
+
+  it('lets a split hand double, and charges that hand its own stake', () => {
+    const state = game.apply(stacked(['8', '8', 'K', '4', '3', '9'], [ante('p1', 100)]), 'split');
+    expect(game.actions(state).map((action) => action.id)).toContain('double');
+    expect(game.stakeDelta(state, 'double')).toBe(100);
+  });
+
+  it('allows a pair to be resplit, up to four hands from one box', () => {
+    // Eight eights: every draw pairs again, so the limit is the only thing that
+    // stops it.
+    let state = stacked(['8', '8', 'K', '4', '8', '8', '8', '8', '8', '8'], [ante('p1')]);
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      if (!game.actions(state).some((action) => action.id === 'split')) break;
+      state = game.apply(state, 'split');
+    }
+    expect(state.hands).toHaveLength(4);
+    expect(game.actions(state).map((action) => action.id)).not.toContain('split');
+  });
+
+  it('never splits on the player’s behalf', () => {
+    // Auto-play spends nothing the absent player did not choose to spend, and a
+    // split is a second bet.
+    const state = stacked(['8', '8', 'K', '4'], [ante('p1')]);
+    expect(game.autoAction(state)).not.toBe('split');
+  });
+
+  it('replays a split round from its seed and action log', () => {
+    const wagers = [ante('p1', 100)];
+    const rng = () => createRng(4242);
+
+    // Whatever the shoe deals, play the log the live table would have produced.
+    let live = game.begin(wagers, rng());
+    const actions: string[] = [];
+    while (game.actor(live) !== null && actions.length < 64) {
+      const offered = game.actions(live).map((action) => action.id);
+      const choice = offered.includes('split') ? 'split' : game.autoAction(live);
+      actions.push(choice);
+      live = game.apply(live, choice);
+    }
+
+    const replayed = replayInteractiveRound(blackjack, wagers, rng(), actions);
+    expect(replayed).toEqual(game.settle(live));
+  });
+});
+
+describe('surrender', () => {
+  it('gives back half the stake and ends the hand', () => {
+    const state = game.apply(stacked(['K', '6', '9', '7'], [ante('p1', 100)]), 'surrender');
+    expect(game.actor(state)).toBeNull();
+
+    const resolution = game.settle(state);
+    expect(resolution.credits).toEqual([{ playerId: 'p1', amount: 50 }]);
+  });
+
+  it('rounds the half down rather than inventing a chip', () => {
+    const state = game.apply(stacked(['K', '6', '9', '7'], [ante('p1', 25)]), 'surrender');
+    expect(game.settle(state).credits).toEqual([{ playerId: 'p1', amount: 12 }]);
+  });
+
+  it('costs nothing to declare', () => {
+    const state = stacked(['K', '6', '9', '7'], [ante('p1')]);
+    expect(game.stakeDelta(state, 'surrender')).toBe(0);
+  });
+
+  it('is withdrawn once a card has been taken', () => {
+    // Late surrender, and only as the first decision. Drawing a card and then
+    // taking half the money back on seeing it is an escape hatch, not a rule.
+    const state = game.apply(stacked(['K', '6', '9', '7', '2'], [ante('p1')]), 'hit');
+    expect(game.actions(state).map((action) => action.id)).not.toContain('surrender');
+  });
+
+  it('is not offered on a split hand', () => {
+    const state = game.apply(stacked(['8', '8', 'K', '4', '3', '9'], [ante('p1')]), 'split');
+    expect(game.actions(state).map((action) => action.id)).not.toContain('surrender');
+  });
+
+  it('takes the hand out of the dealer’s way entirely', () => {
+    // With nothing left to beat, the dealer stands where they are rather than
+    // drawing to seventeen for a hand that has already folded.
+    const state = game.apply(stacked(['K', '6', '9', '7', '5'], [ante('p1')]), 'surrender');
+    const detail = game.settle(state).detail as { dealer: unknown[] };
+    expect(detail.dealer).toHaveLength(2);
+  });
+
+  it('never surrenders on the player’s behalf', () => {
+    // Sixteen against a ten is the textbook surrender, and precisely the hand
+    // where giving away half a stake nobody agreed to give away would hurt.
+    const state = stacked(['K', '6', 'K', '7'], [ante('p1')]);
+    expect(game.autoAction(state)).not.toBe('surrender');
+  });
+
+  it('surrenders one box without touching the others', () => {
+    const state = stacked(['K', '6', '5', '5', '9', '7'], [box('p1', 1, 100), box('p1', 2, 100)]);
+    const after = game.apply(state, 'surrender');
+
+    expect(after.hands[0]?.surrendered).toBe(true);
+    expect(after.hands[1]?.surrendered).toBe(false);
+    expect(game.actor(after)).toBe('p1');
   });
 });
 

@@ -505,12 +505,15 @@ export class Hud {
             ? 'blackjack'
             : String(detail.dealerTotal ?? ''),
         seats: (detail.hands ?? []).map((entry) => ({
-          key: `${entry.playerId}:${entry.spotId ?? 'box-1'}`,
+          key: this._handKey(entry),
           playerId: entry.playerId,
           spotId: entry.spotId ?? 'box-1',
           label: this._handLabel(state, entry, detail.hands ?? []),
           cards: entry.cards,
-          note: `${entry.total}${entry.doubled ? ' · doubled' : ''}`,
+          note:
+            entry.outcome === 'surrender'
+              ? 'surrendered'
+              : `${entry.total}${entry.doubled ? ' · doubled' : ''}`,
           outcome: entry.outcome,
           mine: entry.playerId === this.connection.playerId,
           acting: false,
@@ -533,10 +536,11 @@ export class Hud {
 
     const actor = state.decision?.actor ?? null;
     const hands = view.hands ?? [];
-    // Only one hand is live at a time, and with three boxes to one player the
-    // actor's id no longer identifies it. The first unfinished hand belonging to
-    // the actor is the one on the clock.
-    const activeKey = hands.find((entry) => entry.playerId === actor && !entry.finished);
+    // Only one hand is live at a time, and the actor's id no longer identifies
+    // which — they may be holding three boxes, and any of those may have been
+    // split. The server plays them in array order, so the first unfinished hand
+    // belonging to the actor is the one on the clock.
+    const activeHand = hands.find((entry) => entry.playerId === actor && !entry.finished);
 
     return {
       // A null in the card list renders face down — which is exactly what the
@@ -544,21 +548,35 @@ export class Hud {
       dealer: view.dealerCards ?? (view.dealerUpcard ? [view.dealerUpcard, null] : []),
       dealerNote: view.dealerBlackjack ? 'blackjack' : '',
       seats: hands.map((entry) => ({
-        key: `${entry.playerId}:${entry.spotId ?? 'box-1'}`,
+        key: this._handKey(entry),
         playerId: entry.playerId,
         spotId: entry.spotId ?? 'box-1',
         label: this._handLabel(state, entry, hands),
         cards: entry.cards,
-        note: entry.bust
-          ? 'bust'
-          : entry.blackjack
-            ? 'blackjack'
-            : `${entry.soft ? 'soft ' : ''}${entry.total}${entry.doubled ? ' · doubled' : ''}`,
+        note: entry.surrendered
+          ? 'surrendered'
+          : entry.bust
+            ? 'bust'
+            : entry.blackjack
+              ? 'blackjack'
+              : `${entry.soft ? 'soft ' : ''}${entry.total}${entry.doubled ? ' · doubled' : ''}`,
         outcome: '',
         mine: entry.playerId === this.connection.playerId,
-        acting: entry === activeKey,
+        acting: entry === activeHand,
       })),
     };
+  }
+
+  /**
+   * What one hand is tracked by, across updates.
+   *
+   * A split puts two hands on the same box, so neither the player nor the box
+   * identifies one any more — the server hands out a `handId` for exactly this.
+   * The fallback is for a game that deals one hand per spot and has no need of
+   * one.
+   */
+  _handKey(entry) {
+    return entry.handId ?? `${entry.playerId}:${entry.spotId ?? 'box-1'}`;
   }
 
   /**
@@ -566,15 +584,18 @@ export class Hud {
    *
    * The box number only appears when the player is actually holding more than
    * one — "You · Box 1 · 100" on a single hand is noise, and the box numbers
-   * are what tell three hands apart when there are three.
+   * are what tell three hands apart when there are three. A split shows the box
+   * as well, because it puts two hands on one box: without it both halves would
+   * be labelled identically, which is exactly when you need to tell them apart.
    */
   _handLabel(state, entry, allHands) {
     const who =
       entry.playerId === this.connection.playerId ? 'You' : this._seatLabel(state, entry.playerId);
     const boxes = allHands.filter((hand) => hand.playerId === entry.playerId).length;
-    const box = boxes > 1 && entry.box ? ` · ${entry.box}` : '';
+    const box = (boxes > 1 || entry.split) && entry.box ? ` · ${entry.box}` : '';
+    const split = entry.split ? ' · split' : '';
     const stake = entry.stake === undefined ? '' : ` · ${Number(entry.stake).toLocaleString()}`;
-    return `${who}${box}${stake}`;
+    return `${who}${box}${split}${stake}`;
   }
 
   _clearHand() {
@@ -772,18 +793,40 @@ export class Hud {
       box.append(cards);
     }
 
-    // Your own line out of a multi-seat hand, so you do not have to work out
+    // Your own outcome out of a multi-seat hand, so you do not have to work out
     // which of six results was yours.
-    const mine = (result.detail?.hands ?? []).find(
+    //
+    // Boxes and splits mean "yours" can be several hands, and then this is a
+    // single net figure rather than a line each. The rows above already spell
+    // out every hand — repeating them here would say the same thing twice, and
+    // two halves of one split would repeat it under the same box number. What
+    // is genuinely missing from those rows is the only question you actually
+    // have after four hands: am I up or down?
+    const mine = (result.detail?.hands ?? []).filter(
       (hand) => hand.playerId === this.connection.playerId,
     );
-    if (mine !== undefined) {
+
+    if (mine.length === 1) {
+      const only = mine[0];
       const line = document.createElement('div');
-      line.className = `result-mine result-${mine.outcome}`;
+      line.className = `result-mine result-${only.outcome}`;
+      const verb = only.outcome === 'push' ? 'push' : only.outcome;
       line.textContent =
-        mine.payout > 0
-          ? `You ${mine.outcome === 'push' ? 'push' : mine.outcome} on ${mine.total} — ${mine.payout} back`
-          : `You ${mine.outcome} on ${mine.total}`;
+        only.payout > 0
+          ? `You ${verb} on ${only.total} — ${only.payout} back`
+          : `You ${verb} on ${only.total}`;
+      box.append(line);
+    } else if (mine.length > 1) {
+      const staked = mine.reduce((sum, hand) => sum + (hand.stake ?? 0), 0);
+      const back = mine.reduce((sum, hand) => sum + (hand.payout ?? 0), 0);
+      const net = back - staked;
+
+      const line = document.createElement('div');
+      line.className = `result-mine result-${net > 0 ? 'win' : net < 0 ? 'lose' : 'push'}`;
+      line.textContent =
+        net === 0
+          ? `${mine.length} hands, even on ${staked.toLocaleString()} staked`
+          : `${mine.length} hands, ${net > 0 ? '+' : '−'}${Math.abs(net).toLocaleString()} on ${staked.toLocaleString()} staked`;
       box.append(line);
     }
 

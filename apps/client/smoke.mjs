@@ -419,6 +419,44 @@ async function run() {
 
     await phone.screenshot({ path: path.join(SHOT_DIR, 'mobile-portrait.png') });
 
+    // Seated, Jump and Use are two large buttons in the bottom-right corner of
+    // a phone held sideways — which is exactly where the table panel and the
+    // player's own cards are. Neither does anything useful at a table: jumping
+    // is refused outright, and Use only stands you up, which the panel's own
+    // button already does. So they go away.
+    const phoneTable = await walkTowards(
+      phone,
+      () => window.__keydate?.aimAtNearestTable('roulette'),
+      3.2,
+    );
+    let phoneSeated = false;
+    if (phoneTable < 3.4) {
+      await phone.tap('#touch-interact');
+      await sleep(1500);
+      phoneSeated = await phone.evaluate(() => window.__keydate?.seatedAt() !== null);
+    }
+    check(
+      'phone player can sit down with the Use button',
+      phoneSeated,
+      `${phoneTable.toFixed(2)}m`,
+    );
+    check(
+      'the touch buttons get out of the way once seated',
+      !(await phone.isVisible('#touch-controls')),
+    );
+
+    // And the panel is what the corner is for now — a tap there has to reach it.
+    const seatedHit = await phone.evaluate(() => {
+      const panel = document.getElementById('table-panel').getBoundingClientRect();
+      const element = document.elementFromPoint(panel.right - 40, panel.bottom - 20);
+      return element?.closest('#table-panel') !== null;
+    });
+    check('the table panel owns that corner while seated', seatedHit);
+
+    await phone.click('#leave-table');
+    await sleep(1200);
+    check('they come back when the player stands up', await phone.isVisible('#touch-controls'));
+
     // --------------------------------------------------- two players together
     console.log('\nMultiplayer');
     const seenEachOther = await pc.evaluate(() => window.__keydate?.remoteCount() ?? 0);
@@ -743,7 +781,7 @@ async function run() {
     }
 
     /** Bets and calls the deal once the table is taking bets again. */
-    async function betAndDeal(amount) {
+    async function betAndDeal(amount, boxes = ['box-1', 'box-2']) {
       for (let attempt = 0; attempt < 60; attempt += 1) {
         const open = await pc.evaluate(
           () => document.querySelector('.spot[data-spot-id="box-1"]')?.disabled === false,
@@ -753,8 +791,7 @@ async function run() {
       }
       await pc.fill('#stake-input', String(amount));
       await pc.press('#stake-input', 'Enter');
-      await pc.click('.spot[data-spot-id="box-1"]');
-      await pc.click('.spot[data-spot-id="box-2"]');
+      for (const box of boxes) await pc.click(`.spot[data-spot-id="${box}"]`);
       await sleep(400);
       await pc.click('#deal-button');
       for (let attempt = 0; attempt < 40; attempt += 1) {
@@ -909,6 +946,110 @@ async function run() {
       Boolean(bjFairness && bjFairness.includes('Verified')),
       bjFairness?.slice(0, 70),
     );
+
+    // ------------------------------------------------- splitting and folding
+    //
+    // Neither move comes up on demand: a split needs a pair, and surrender is
+    // only offered on an untouched first decision. So the test deals hand after
+    // hand and takes whichever of the two the table offers, rather than
+    // asserting that a particular shoe produces one.
+    //
+    // What it is really checking is the end-to-end path — that the button the
+    // server offers is a button the player can press and that the table accepts
+    // it. A rule can be right in `blackjack.ts` and still be unreachable.
+    //
+    // Three boxes rather than two, purely to find a pair sooner: about one hand
+    // in seven is splittable, so three of them is the difference between this
+    // section usually taking three deals and usually taking seven.
+    const played = { split: null, surrender: null };
+    for (let hand = 0; hand < 12; hand += 1) {
+      if (played.split !== null && played.surrender !== null) break;
+      if (!(await betAndDeal(50, ['box-1', 'box-2', 'box-3']))) break;
+
+      const turn = await awaitTurnOrResult();
+      if (turn.kind !== 'turn') continue;
+
+      // Take whichever is still wanted; a split is the rarer of the two, so it
+      // wins when both are on the table.
+      const wanted = ['split', 'surrender'].find(
+        (id) => played[id] === null && turn.live.actions.includes(id),
+      );
+
+      if (wanted !== undefined) {
+        const chipsBefore = await pc.evaluate(() =>
+          Number(document.getElementById('chips-value').textContent.replace(/[^0-9]/g, '')),
+        );
+        const handsBefore = turn.live.myHands;
+        await pc.click(`.hand-action[data-action-id="${wanted}"]`).catch(() => {});
+        await sleep(900);
+
+        played[wanted] = await pc.evaluate(
+          (before) => ({
+            chips: Number(
+              document.getElementById('chips-value').textContent.replace(/[^0-9]/g, ''),
+            ),
+            chipsBefore: before,
+            rows: document.querySelectorAll('#hand-seats .hand-row.mine').length,
+            felt: window.__keydate?.feltCards()?.count ?? 0,
+            notice: document.getElementById('table-notice').hidden
+              ? ''
+              : document.getElementById('table-notice').textContent,
+          }),
+          chipsBefore,
+        );
+        played[wanted].handsBefore = handsBefore;
+      }
+
+      // Whatever happened, play the hand out so the table opens for betting.
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        const standing = await pc.$('.hand-action[data-action-id="stand"]');
+        if (standing === null) break;
+        await standing.click().catch(() => {});
+        await sleep(350);
+      }
+      for (let attempt = 0; attempt < 30; attempt += 1) {
+        if (await pc.isVisible('#table-result')) break;
+        await sleep(400);
+      }
+    }
+
+    check(
+      'a splittable pair comes up and the split is offered',
+      played.split !== null,
+      played.split === null ? 'no pair in 14 hands' : `${played.split.handsBefore} hand(s) before`,
+    );
+    if (played.split !== null) {
+      check('the table accepts the split', played.split.notice === '', played.split.notice);
+      check(
+        'splitting turns one hand into two',
+        played.split.rows > played.split.handsBefore,
+        `${played.split.handsBefore} -> ${played.split.rows} rows`,
+      );
+      check(
+        'the second hand costs a second stake',
+        played.split.chips === played.split.chipsBefore - 50,
+        `${played.split.chipsBefore} -> ${played.split.chips}`,
+      );
+      check(
+        'both halves are dealt onto the felt',
+        played.split.felt >= 6,
+        `${played.split.felt} cards on the table`,
+      );
+    }
+
+    check('surrender is offered on a fresh hand', played.surrender !== null);
+    if (played.surrender !== null) {
+      check(
+        'the table accepts the surrender',
+        played.surrender.notice === '',
+        played.surrender.notice,
+      );
+      check(
+        'surrendering costs nothing to declare',
+        played.surrender.chips === played.surrender.chipsBefore,
+        `${played.surrender.chipsBefore} -> ${played.surrender.chips}`,
+      );
+    }
 
     // ------------------------------------------------------------------ bar
     // The whole premise in one pass: walk to the bar, buy a drink, confirm it
