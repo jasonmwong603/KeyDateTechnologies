@@ -4,7 +4,12 @@ import {
   PredictionBuffer,
   needsCorrection,
 } from '@keydate/netcode';
-import { ENTITY_FLAG_SEATED, INPUT_BUTTON_INTERACT, wrapAngle } from '@keydate/protocol';
+import {
+  ENTITY_FLAG_SEATED,
+  INPUT_BUTTON_INTERACT,
+  INPUT_BUTTON_SPRINT,
+  wrapAngle,
+} from '@keydate/protocol';
 import {
   INTERACT_RANGE,
   TICK_DT,
@@ -466,6 +471,8 @@ window.__keydate = {
   },
   /** Current horizontal speed in metres per second. Test hook. */
   speed: () => Math.hypot(localState.vx, localState.vz),
+  /** Whether the sprint button is currently held, whichever key set it. Test hook. */
+  sprinting: () => (input.buttons & INPUT_BUTTON_SPRINT) !== 0,
   seatedAt: () => localState.seatedAt,
   /**
    * Sends a raw client message, bypassing the UI. Test hook.

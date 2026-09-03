@@ -312,21 +312,24 @@ async function run() {
     check('camera toggles to third person', cameraMode === 'third-person', `mode=${cameraMode}`);
 
     /**
-     * Top speed reached while a key combination is held.
+     * Top speed reached over a short burst, after turning to face `aim`.
      *
      * Speed rather than distance travelled, which is what this used to measure
-     * and what made it flaky. Distance over a fixed wall-clock window is
-     * really a measurement of how many simulation ticks the machine found time
-     * for, and it also silently becomes a measurement of the furniture the
-     * moment a run walks into a table. Peak speed is neither: the simulation
-     * caps it at the constant for the movement mode, so it is the same number
-     * on a busy machine as on an idle one.
+     * and what made it flaky twice over. Distance across a fixed wall-clock
+     * window is really a measurement of how many simulation ticks the machine
+     * found time for — and it silently becomes a measurement of the furniture
+     * the moment a run walks into a table, which is what three consecutive
+     * runs at the same table did. Peak speed is neither: the simulation caps it
+     * at the constant for the movement mode, so it reads the same on a busy
+     * machine as an idle one, and re-aiming each burst keeps the player off the
+     * woodwork.
      */
-    async function topSpeed(keys) {
+    async function topSpeed(keys, aim) {
+      await pc.evaluate(aim);
       for (const key of keys) await pc.keyboard.down(key);
       let peak = 0;
-      for (let sample = 0; sample < 12; sample += 1) {
-        await sleep(60);
+      for (let sample = 0; sample < 10; sample += 1) {
+        await sleep(50);
         peak = Math.max(peak, await pc.evaluate(() => window.__keydate.speed()));
       }
       for (const key of keys.slice().reverse()) await pc.keyboard.up(key);
@@ -334,18 +337,33 @@ async function run() {
       return peak;
     }
 
-    // Ctrl sprints as well as Shift. Aimed at open floor rather than at a table,
-    // so neither run is capped by walking into something solid.
-    await pc.evaluate(() => window.__keydate?.aimAtNearestTable('wheel-of-fortune'));
-    const walkSpeed = await topSpeed(['KeyW']);
-    const ctrlSpeed = await topSpeed(['ControlLeft', 'KeyW']);
-    const shiftSpeed = await topSpeed(['ShiftLeft', 'KeyW']);
+    // Shuttled between two targets across the room, so no burst finishes up
+    // against the same table the last one stopped at.
+    const atTable = () => window.__keydate.aimAtNearestTable('wheel-of-fortune');
+    const atBar = () => window.__keydate.aimAtBar();
+
+    const walkSpeed = await topSpeed(['KeyW'], atBar);
+    const shiftSpeed = await topSpeed(['ShiftLeft', 'KeyW'], atTable);
 
     check(
-      'Ctrl sprints, like Shift',
-      ctrlSpeed > walkSpeed * 1.3 && shiftSpeed > walkSpeed * 1.3,
-      `walk ${walkSpeed.toFixed(2)} vs ctrl ${ctrlSpeed.toFixed(2)} vs shift ${shiftSpeed.toFixed(2)} m/s`,
+      'Shift sprints',
+      shiftSpeed > walkSpeed * 1.3,
+      `walk ${walkSpeed.toFixed(2)} vs sprint ${shiftSpeed.toFixed(2)} m/s`,
     );
+
+    // Ctrl is checked at the input controller rather than through movement,
+    // because Ctrl+W is the browser's own close-tab chord and synthesising it
+    // is asking for trouble that has nothing to do with the game. What "Ctrl
+    // sprints" means is that holding it sets the sprint button, and that is
+    // exactly what this reads.
+    await pc.keyboard.down('ControlLeft');
+    await sleep(150);
+    const ctrlSprints = await pc.evaluate(() => window.__keydate.sprinting());
+    await pc.keyboard.up('ControlLeft');
+    await sleep(150);
+    const releasedCtrl = await pc.evaluate(() => window.__keydate.sprinting());
+
+    check('Ctrl sets the sprint button, like Shift', ctrlSprints && !releasedCtrl);
     await pc.screenshot({ path: path.join(SHOT_DIR, 'desktop-third-person.png') });
 
     // ------------------------------------------------------------ mobile
