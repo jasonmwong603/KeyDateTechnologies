@@ -794,14 +794,27 @@ async function run() {
      * "is it my turn" and then reading the cards as two separate round trips
      * lets the fifteen-second decision clock expire in between, and the second
      * read comes back empty.
+     *
+     * "Resolved" is not only "a result is on screen". The result is shown for
+     * six seconds and then the table opens the next round and clears it, so a
+     * hand that ends without a decision — a dealer natural, which is one in
+     * twenty — can be over and forgotten before this is even called. That used
+     * to report `stuck`, because an on-demand table then sits in betting
+     * forever waiting to be asked, and nothing ever appears. The phase is the
+     * reliable signal: back in `betting` or `idle` after the cards were out
+     * means the round finished, whether or not its result is still up.
      */
     async function awaitTurnOrResult() {
       for (let attempt = 0; attempt < 60; attempt += 1) {
         const seen = await pc.evaluate(() => {
+          const phase = document.getElementById('table-phase').dataset.phase;
           const actions = [...document.querySelectorAll('#hand-actions .hand-action')].map(
             (button) => button.dataset.actionId,
           );
-          if (actions.length === 0) return null;
+          if (actions.length === 0) {
+            const shown = document.getElementById('table-result');
+            return { phase, over: !shown.hidden || phase === 'betting' || phase === 'idle' };
+          }
           return {
             actions,
             phase: document.getElementById('table-phase').textContent,
@@ -811,8 +824,8 @@ async function run() {
             myHands: document.querySelectorAll('#hand-seats .hand-row.mine').length,
           };
         });
-        if (seen !== null) return { kind: 'turn', live: seen };
-        if (await pc.isVisible('#table-result')) return { kind: 'resolved' };
+        if (seen.actions !== undefined) return { kind: 'turn', live: seen };
+        if (seen.over) return { kind: 'resolved' };
         await sleep(300);
       }
       return { kind: 'stuck' };
@@ -949,40 +962,43 @@ async function run() {
     }
     check('standing works through every box in play', handOver);
 
+    // The end of the round, read in one go the moment it lands.
+    //
+    // The hand ending is not the round ending: the table plays the dealer out
+    // for the camera first. And the round ending is not the end of the story
+    // either — six seconds later the next round opens and clears both the
+    // result and the fairness line. Reading them one after another can catch
+    // the first and miss the second, so all three of the checks below come out
+    // of a single snapshot taken while the payout is still on screen.
+    const settled = await waitFor(
+      pc,
+      () => {
+        const result = document.getElementById('table-result');
+        if (result.hidden) return null;
+        return {
+          result: result.textContent,
+          fairness: document.getElementById('fairness').textContent,
+          dealerShown: document.querySelectorAll('#hand-dealer .card').length,
+          dealerFacedown: document.querySelectorAll('#hand-dealer .card.facedown').length,
+        };
+      },
+      20_000,
+    );
+
+    check('the hand reports a result', settled !== null, settled?.result?.slice(0, 60));
+
     // The dealer's hole card is the one thing kept back all hand. It has to be
     // turned over where the player can see it, not folded into a summary line.
-    let revealed = false;
-    for (let attempt = 0; attempt < 40; attempt += 1) {
-      await sleep(400);
-      const dealer = await pc.evaluate(() => ({
-        shown: document.querySelectorAll('#hand-dealer .card').length,
-        facedown: document.querySelectorAll('#hand-dealer .card.facedown').length,
-      }));
-      if (dealer.facedown === 0 && dealer.shown >= 2) {
-        revealed = true;
-        break;
-      }
-    }
-    check('the dealer turns the hole card over on screen', revealed);
+    check(
+      'the dealer turns the hole card over on screen',
+      settled !== null && settled.dealerFacedown === 0 && settled.dealerShown >= 2,
+      settled === null ? '' : `${settled.dealerShown} up, ${settled.dealerFacedown} down`,
+    );
 
-    // The hand ending is not the round ending: the table still plays the dealer
-    // out for the camera before it pays. Wait for the result itself.
-    let bjResolved = false;
-    for (let attempt = 0; attempt < 40; attempt += 1) {
-      await sleep(500);
-      if (await pc.isVisible('#table-result')) {
-        bjResolved = true;
-        break;
-      }
-    }
-    const bjResult = await pc.textContent('#table-result');
-    check('the hand reports a result', bjResolved, bjResult?.slice(0, 60));
-
-    const bjFairness = await pc.textContent('#fairness');
     check(
       'the interactive round verifies against its commitment',
-      Boolean(bjFairness && bjFairness.includes('Verified')),
-      bjFairness?.slice(0, 70),
+      Boolean(settled?.fairness?.includes('Verified')),
+      settled?.fairness?.slice(0, 70),
     );
 
     // ------------------------------------------------------------ insurance
