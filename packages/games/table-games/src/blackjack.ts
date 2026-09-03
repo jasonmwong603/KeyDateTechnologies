@@ -27,7 +27,7 @@ import {
  *   - Split any two cards of equal value, up to three times per box.
  *   - Split aces get one card each and stand.
  *   - Late surrender: give up half the stake before taking a card.
- *   - No insurance.
+ *   - Insurance at 2 to 1 whenever the dealer shows an ace.
  *
  * **The shoe is a continuous shuffling machine.** Every round is dealt from a
  * freshly shuffled eight-deck shoe, which is exactly what a CSM does: cards go
@@ -72,6 +72,27 @@ export const MAX_SPLITS = 3;
 /** What a surrendered hand gets back, as a fraction of its stake. */
 export const SURRENDER_RETURN = 0.5;
 
+/**
+ * Insurance: a side bet, half the stake, paying 2 to 1 if the dealer has
+ * blackjack.
+ *
+ * It is a bad bet and it is meant to be. Roughly 4 cards in 13 give the dealer
+ * the ten they need, so 2 to 1 is paid on odds nearer 2.25 to 1 — which is
+ * exactly why a real pit offers it. It is here because a blackjack table
+ * without it is not a blackjack table, and because refusing it is a decision a
+ * player should get to make rather than one made for them.
+ *
+ * It is also the one bet on this floor outside the 93–100% band every other
+ * spot is held to, so it is worth stating rather than burying. With eight decks
+ * and an ace face up, 128 of the 415 unseen cards are tens, so the bet returns
+ * 3 × 128/415 ≈ 92.5% of what is staked on it. `insuranceReturn` computes that
+ * and a test holds it to the arithmetic; it is deliberately excluded from the
+ * paytable sweep, which measures the spots a player bets before the deal.
+ */
+export const INSURANCE_SPOT = 'insurance';
+export const INSURANCE_COST = 0.5;
+export const INSURANCE_PAYOUT = 2;
+
 export interface BlackjackHand {
   /**
    * Unique for the life of the round, and stable once assigned.
@@ -105,9 +126,27 @@ export interface BlackjackHand {
   splitAces: boolean;
   /** Given up before taking a card. Half the stake comes back. */
   surrendered: boolean;
+  /**
+   * Chips on the insurance side bet, or 0 for a hand that declined it.
+   *
+   * Kept apart from `stake` because it is a different bet against a different
+   * outcome: the hand can lose and the insurance still pay.
+   */
+  insurance: number;
   /** True once the hand can take no more cards, however that happened. */
   finished: boolean;
 }
+
+/**
+ * What the table is currently asking for.
+ *
+ * `'insurance'` runs only when the dealer's upcard is an ace, and it runs
+ * *before* the peek — every hand is asked, including hands that are about to be
+ * settled by a dealer blackjack. It has to be that way round: the whole bet is
+ * on the hole card, so a hand that already knew the answer would not be
+ * insuring anything.
+ */
+export type BlackjackStage = 'insurance' | 'play';
 
 export interface BlackjackState {
   /** Shuffled up front and never mutated; `cursor` is the only thing that moves. */
@@ -115,9 +154,18 @@ export interface BlackjackState {
   cursor: number;
   dealer: Card[];
   hands: BlackjackHand[];
+  /** Which question the table is asking. See `BlackjackStage`. */
+  stage: BlackjackStage;
   /** Index of the hand to act, or `hands.length` once every seat is done. */
   turn: number;
-  /** Set at the deal. Ends the hand immediately — nobody gets to decide. */
+  /**
+   * Set at the deal, but only *acted on* once the insurance round is over.
+   *
+   * The value is in the state from the start because the cards are already
+   * dealt — what is deferred is the peek, not the deal. `view` is what keeps it
+   * secret, and it must not publish the dealer's hand while `stage` is
+   * `'insurance'`.
+   */
   dealerBlackjack: boolean;
   /** Source of the next `handId`. Part of the state so a replay assigns the same ones. */
   nextHandId: number;
@@ -209,6 +257,24 @@ export function canSurrender(hand: BlackjackHand): boolean {
   return hand.cards.length === 2 && hand.splitDepth === 0 && !hand.doubled;
 }
 
+/** What insurance costs a hand: half its stake, floored to whole chips. */
+export function insuranceCost(stake: number): number {
+  return Math.floor(stake * INSURANCE_COST);
+}
+
+/**
+ * What the insurance bet returns per chip staked, against a fresh shoe.
+ *
+ * Stated as a function rather than a constant so the arithmetic is visible and
+ * a test can hold it to the shoe size: with the ace face up, the tens among the
+ * unseen cards are what the bet is really on.
+ */
+export function insuranceReturn(decks = SHOE_DECKS): number {
+  const unseen = decks * 52 - 1;
+  const tens = decks * 16;
+  return (INSURANCE_PAYOUT + 1) * (tens / unseen);
+}
+
 // ---------------------------------------------------------------------------
 // Decision phase
 // ---------------------------------------------------------------------------
@@ -228,8 +294,34 @@ export function boxLabel(spotId: string): string {
   return index < 0 ? 'Box' : `Box ${index + 1}`;
 }
 
-/** Moves the turn on to the next seat that still has a choice to make. */
+/**
+ * Turns the dealer's second card over and settles what that decides.
+ *
+ * This is the peek, and it is a separate step from the deal because insurance
+ * has to be bought before it happens. Once it does, a dealer blackjack ends
+ * every hand at once and a player's own natural stands itself.
+ */
+function peek(state: BlackjackState): BlackjackState {
+  const hands = state.hands.map((hand) =>
+    state.dealerBlackjack || isNatural(hand) ? { ...hand, finished: true } : hand,
+  );
+  return { ...state, stage: 'play', hands, turn: 0 };
+}
+
+/**
+ * Moves the turn on to the next hand that still has a choice to make.
+ *
+ * In the insurance round every hand is asked, finished or not — a hand about to
+ * be settled by a dealer blackjack is precisely the one with a reason to insure.
+ * Running off the end of that round is what triggers the peek, and the play
+ * round then starts from the top.
+ */
 function advance(state: BlackjackState): BlackjackState {
+  if (state.stage === 'insurance') {
+    if (state.turn < state.hands.length) return state;
+    return advance(peek(state));
+  }
+
   let turn = state.turn;
   while (turn < state.hands.length && (state.hands[turn] as BlackjackHand).finished) {
     turn += 1;
@@ -274,6 +366,7 @@ const interactive: InteractiveTableGame<BlackjackState> = {
       splitDepth: 0,
       splitAces: false,
       surrendered: false,
+      insurance: 0,
       finished: false,
     }));
 
@@ -286,21 +379,23 @@ const interactive: InteractiveTableGame<BlackjackState> = {
     const dealer = deal(shoe, cursor, 2);
     cursor += 2;
 
-    const dealerBlackjack = isBlackjack(dealer);
-    for (const hand of hands) {
-      // A natural stands itself, and nobody acts against a dealer natural.
-      if (dealerBlackjack || isBlackjack(hand.cards)) hand.finished = true;
-    }
-
-    return advance({
+    // An ace face up opens the insurance round, and the peek waits for it. Any
+    // other upcard peeks immediately, which is the ordinary case: a natural
+    // stands itself, and nobody acts against a dealer natural.
+    const dealt: BlackjackState = {
       shoe,
       cursor,
       dealer,
       hands,
+      stage: 'insurance',
       turn: 0,
-      dealerBlackjack,
+      dealerBlackjack: isBlackjack(dealer),
       nextHandId: hands.length + 1,
-    });
+    };
+
+    const upcard = dealer[0];
+    const offersInsurance = hands.length > 0 && upcard !== undefined && upcard.rank === 'A';
+    return advance(offersInsurance ? dealt : peek(dealt));
   },
 
   actor(state: BlackjackState): string | null {
@@ -310,6 +405,21 @@ const interactive: InteractiveTableGame<BlackjackState> = {
   actions(state: BlackjackState): TableAction[] {
     const hand = currentHand(state);
     if (hand === undefined) return [];
+
+    // The insurance round asks one question and takes either answer. `decline`
+    // exists because the turn has to move on somehow, and there is no other
+    // action to move it: the hand has not been offered its cards yet.
+    if (state.stage === 'insurance') {
+      const cost = insuranceCost(hand.stake);
+      return [
+        {
+          id: 'insure',
+          label: 'Insure',
+          hint: `${cost.toLocaleString()} against a dealer blackjack, pays 2 to 1`,
+        },
+        { id: 'decline', label: 'No insurance', hint: 'Play the hand as dealt' },
+      ];
+    }
 
     const { total, soft } = handValue(hand.cards);
     const options: TableAction[] = [
@@ -341,6 +451,10 @@ const interactive: InteractiveTableGame<BlackjackState> = {
   stakeDelta(state: BlackjackState, actionId: string): number {
     const hand = currentHand(state);
     if (hand === undefined) return 0;
+
+    if (state.stage === 'insurance') {
+      return actionId === 'insure' ? insuranceCost(hand.stake) : 0;
+    }
     // Both moves that cost chips cost exactly one more stake: doubling buys a
     // second bet on the same hand, splitting buys the same bet on a second one.
     if (actionId === 'double') return hand.cards.length === 2 ? hand.stake : 0;
@@ -349,18 +463,34 @@ const interactive: InteractiveTableGame<BlackjackState> = {
   },
 
   /**
-   * Which box the extra chips belong to.
+   * Which spot on the felt the extra chips belong to.
    *
    * A player holding three boxes has three wagers on the felt. Doubling the
    * middle one must not quietly add the chips to the first.
+   *
+   * Insurance goes on a spot of its own rather than onto the box, because it is
+   * a different bet against a different outcome — the box can lose while the
+   * insurance pays. Putting them on one pile would make the felt claim the hand
+   * was playing for more than it was.
    */
   activeSpot(state: BlackjackState): string | null {
+    if (state.stage === 'insurance') return INSURANCE_SPOT;
     return currentHand(state)?.spotId ?? null;
   },
 
   apply(state: BlackjackState, actionId: string): BlackjackState {
     const hand = currentHand(state);
     if (hand === undefined) return state;
+
+    // The insurance round. Either answer moves to the next hand, and running
+    // off the end of the list is what makes the dealer peek — see `advance`.
+    if (state.stage === 'insurance') {
+      const hands = [...state.hands];
+      if (actionId === 'insure') {
+        hands[state.turn] = { ...hand, insurance: insuranceCost(hand.stake) };
+      }
+      return advance({ ...state, hands, turn: state.turn + 1 });
+    }
 
     if (actionId === 'stand') {
       const hands = [...state.hands];
@@ -389,12 +519,13 @@ const interactive: InteractiveTableGame<BlackjackState> = {
       const aces = first.rank === 'A';
       const depth = hand.splitDepth + 1;
 
-      const half = (card: Card, drawn: Card, handId: string): BlackjackHand => {
+      const half = (card: Card, drawn: Card, handId: string, insurance: number): BlackjackHand => {
         const cards = [card, drawn];
         return {
           ...hand,
           handId,
           cards,
+          insurance,
           splitDepth: depth,
           splitAces: aces,
           // Split aces get exactly one card each. Without that rule a pair of
@@ -403,12 +534,20 @@ const interactive: InteractiveTableGame<BlackjackState> = {
         };
       };
 
+      // One insurance bet was bought, so one insurance bet is settled. It stays
+      // with the left half rather than being copied onto both.
+      //
+      // Unreachable today — insurance only ever pays on a dealer natural, and a
+      // dealer natural finishes every hand at the peek, so nobody insured is
+      // ever offered a split. That is exactly why it is worth being explicit:
+      // the alternative is a double payout resting on an invariant two rules
+      // away, which a change to the peek would break without a sound.
       const hands = [...state.hands];
       hands.splice(
         state.turn,
         1,
-        half(first, deal(state.shoe, state.cursor, 1)[0] as Card, hand.handId),
-        half(second, deal(state.shoe, state.cursor + 1, 1)[0] as Card, `h${state.nextHandId}`),
+        half(first, deal(state.shoe, state.cursor, 1)[0] as Card, hand.handId, hand.insurance),
+        half(second, deal(state.shoe, state.cursor + 1, 1)[0] as Card, `h${state.nextHandId}`, 0),
       );
       return advance({
         ...state,
@@ -452,10 +591,12 @@ const interactive: InteractiveTableGame<BlackjackState> = {
    * noticeably worse for the absent player, which is the wrong default when the
    * table is deciding on their behalf.
    *
-   * It never doubles, splits or surrenders. The first two would spend chips the
-   * player did not choose to spend; the third would give away half a stake they
-   * never agreed to give away. All three are the player's call and nobody
-   * else's, so the table declines to make it for them.
+   * It never doubles, splits, insures or surrenders. The first three would
+   * spend chips the player did not choose to spend; the last would give away
+   * half a stake they never agreed to give away. All four are the player's call
+   * and nobody else's, so the table declines to make it for them. Insurance is
+   * the clearest of the four: it is a losing bet on average, and buying one for
+   * somebody who has walked away from the table would be indefensible.
    *
    * This is also what keeps the paytable honest. `resolve` plays every hand
    * through here, and the 200,000-hand expected-return test measures that — so
@@ -465,6 +606,7 @@ const interactive: InteractiveTableGame<BlackjackState> = {
   autoAction(state: BlackjackState): string {
     const hand = currentHand(state);
     if (hand === undefined) return 'stand';
+    if (state.stage === 'insurance') return 'decline';
 
     const upcard = state.dealer[0];
     const { total, soft } = handValue(hand.cards);
@@ -482,14 +624,26 @@ const interactive: InteractiveTableGame<BlackjackState> = {
 
   view(state: BlackjackState): Record<string, unknown> {
     const upcard = state.dealer[0];
+
+    // The peek has not happened yet during the insurance round, and nothing
+    // about the hole card may leave the server until it has.
+    //
+    // This is the one place where a leak would be worth money rather than just
+    // untidy: insurance is a bet on precisely this card, so publishing
+    // `dealerBlackjack` a moment early would let a client buy a certainty. Both
+    // fields are gated on the stage, not on `dealerBlackjack` itself — a field
+    // that is only ever sent when true tells you as much by its absence.
+    const peeked = state.stage === 'play';
+
     return {
       // Only the upcard goes out. The hole card is in the shoe the seed
       // committed to, but publishing it mid-hand would hand every player the
       // dealer's hand — the one piece of information the game is built around
       // not having.
       dealerUpcard: upcard === undefined ? null : publicCard(upcard),
-      dealerCards: state.dealerBlackjack ? state.dealer.map(publicCard) : null,
-      dealerBlackjack: state.dealerBlackjack,
+      dealerCards: peeked && state.dealerBlackjack ? state.dealer.map(publicCard) : null,
+      dealerBlackjack: peeked && state.dealerBlackjack,
+      stage: state.stage,
       turnPlayerId: currentHand(state)?.playerId ?? null,
       hands: state.hands.map((hand) => ({
         handId: hand.handId,
@@ -505,6 +659,7 @@ const interactive: InteractiveTableGame<BlackjackState> = {
         doubled: hand.doubled,
         split: hand.splitDepth > 0,
         surrendered: hand.surrendered,
+        insurance: hand.insurance,
         finished: hand.finished,
       })),
     };
@@ -565,7 +720,20 @@ const interactive: InteractiveTableGame<BlackjackState> = {
         outcome = 'lose';
       }
 
-      if (payout > 0) credits.push({ playerId: hand.playerId, amount: payout });
+      // Insurance settles on its own, against the dealer's hand rather than
+      // against this one. A hand can lose and its insurance still pay — that is
+      // the entire point of it — so the two are added, never merged into one
+      // verdict.
+      //
+      // Insured, and the dealer turns over a natural: the hand loses its stake
+      // and the insurance returns three times half of it, which is the stake
+      // back. That break-even is what the bet is sold on, and it is also why it
+      // is a bad bet: it only breaks even on the third of hands where it wins.
+      const insuranceBack =
+        hand.insurance > 0 && dealerNatural ? hand.insurance * (INSURANCE_PAYOUT + 1) : 0;
+      const returned = payout + insuranceBack;
+
+      if (returned > 0) credits.push({ playerId: hand.playerId, amount: returned });
       outcomes.push({
         handId: hand.handId,
         playerId: hand.playerId,
@@ -576,8 +744,10 @@ const interactive: InteractiveTableGame<BlackjackState> = {
         stake: hand.stake,
         doubled: hand.doubled,
         split: hand.splitDepth > 0,
+        insurance: hand.insurance,
+        insurancePayout: insuranceBack,
         outcome,
-        payout,
+        payout: returned,
       });
     }
 
@@ -644,6 +814,17 @@ export const blackjack: TableGameDefinition = {
       label: 'Box 3',
       payout: 1,
       description: 'A third hand. Playing three means at least 30 on each of them.',
+    },
+    {
+      id: INSURANCE_SPOT,
+      label: 'Insurance',
+      payout: INSURANCE_PAYOUT,
+      description:
+        'Offered only when the dealer shows an ace. Half your stake, paying 2 to 1 ' +
+        'if the dealer has blackjack. It returns about 92 chips per 100 staked.',
+      // Not a bet you place — the table offers it against the upcard, and the
+      // runtime refuses it during the betting window.
+      derived: true,
     },
   ],
 

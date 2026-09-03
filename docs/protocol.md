@@ -14,20 +14,20 @@ look like a netcode bug.
 
 ## Client → Server
 
-| Message        | Purpose                                                                                       |
-| -------------- | --------------------------------------------------------------------------------------------- |
-| `hello`        | First message on a socket. Carries display name, optional session code, optional resume token |
-| `input`        | A batch of input frames. The only way to move                                                 |
-| `interact`     | Use whatever you are standing at — a table seat                                               |
-| `table:leave`  | Stand up                                                                                      |
-| `table:wager`  | Stake chips on a betting spot                                                                 |
-| `table:clear`  | Pull your chips back while betting is open                                                    |
-| `table:ready`  | Declare readiness so the table can resolve early                                              |
-| `table:deal`   | Tell the dealer to deal, at a table that waits to be asked                                    |
-| `table:action` | Take your turn at a table that has one — `hit`, `stand`, `double`, `split`, `surrender`       |
-| `chat`         | `local` (whole floor) or `table` (your table only)                                            |
-| `view-mode`    | Cosmetic; which camera you are using                                                          |
-| `ping`         | Latency and clock-offset probe                                                                |
+| Message        | Purpose                                                                                                      |
+| -------------- | ------------------------------------------------------------------------------------------------------------ |
+| `hello`        | First message on a socket. Carries display name, optional session code, optional resume token                |
+| `input`        | A batch of input frames. The only way to move                                                                |
+| `interact`     | Use whatever you are standing at — a table seat                                                              |
+| `table:leave`  | Stand up                                                                                                     |
+| `table:wager`  | Stake chips on a betting spot                                                                                |
+| `table:clear`  | Pull your chips back while betting is open                                                                   |
+| `table:ready`  | Declare readiness so the table can resolve early                                                             |
+| `table:deal`   | Tell the dealer to deal, at a table that waits to be asked                                                   |
+| `table:action` | Take your turn at a table that has one — `hit`, `stand`, `double`, `split`, `surrender`, `insure`, `decline` |
+| `chat`         | `local` (whole floor) or `table` (your table only)                                                           |
+| `view-mode`    | Cosmetic; which camera you are using                                                                         |
+| `ping`         | Latency and clock-offset probe                                                                               |
 
 ### Input frames
 
@@ -94,6 +94,12 @@ game it is: `displayName`, the full `spots` list, `minWager`, `maxWager`,
 `bettingWindowMs`, the seats, the wagers, the commitment, and the last result. Adding a
 game does not mean editing the client.
 
+A spot carrying `derived: true` is one the game puts chips on itself and no player may bet
+on directly — blackjack's insurance, offered mid-hand against the dealer's upcard. It is
+in `spots` because chips genuinely land there and the felt has to draw them; the client
+leaves it out of the betting buttons, and the server refuses a `table:wager` naming it,
+whatever a modified client sends.
+
 `dealOnDemand` says which kind of betting window this table runs. A `'timer'` table counts
 down `bettingWindowMs` and then deals whether you were ready or not. An on-demand table —
 blackjack — has no clock at all until a player with chips on the felt sends `table:deal`;
@@ -124,11 +130,20 @@ over.
 Nothing in `actions` is fixed by the protocol: the client builds the buttons from whatever
 the list holds, so a game gaining a move needs no wire change and no client change. What
 it must not do is let a client invent one — `takeAction` refuses any id the game did not
-just offer, which is checked with adversarial tests.
+just offer, which is checked with adversarial tests. `replayInteractiveRound` refuses one
+too: a published log containing a move the table never offered is not a record of the
+round that was played, and accepting it would weaken the thing being verified.
 
 Each hand in blackjack's `view` carries a `handId`. A split puts two hands on one betting
 spot, so neither the player id nor the spot identifies a hand any more, and anything that
-follows one across updates — the panel rows, the cards on the felt — keys off that id.
+follows one across updates — the bar's rows, the cards on the felt — keys off that id.
+
+`view` also carries a `stage`, which is `insurance` while the table is asking every seat
+whether it wants insurance and `play` afterwards. **The dealer's hole card must not leave
+the server during the insurance stage**, because insurance is a bet on that exact card:
+`dealerCards` stays null and `dealerBlackjack` stays false until the stage flips, whatever
+the dealer is actually holding. Both are gated on the stage rather than on the value,
+since a field only ever sent when true announces itself by its absence.
 
 `lastResult` carries the revealed seed **and the round's action log**. A one-shot round is
 reproducible from its seed alone; an interactive one is reproducible from (seed, actions),

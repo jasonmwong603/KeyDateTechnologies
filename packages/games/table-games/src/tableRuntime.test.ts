@@ -61,6 +61,29 @@ function openBetting(): void {
   table.update();
 }
 
+/**
+ * Plays a table's hand out with the least committal legal move each turn, and
+ * returns the log of what was played.
+ *
+ * Sending a bare `stand` every turn used to work and does not any more: a
+ * dealer ace opens with an insurance question, where `stand` is not on offer
+ * and the runtime rightly refuses it — which left these tests spinning on a
+ * turn that never moved. Reading what is actually offered is both the fix and
+ * the more honest test.
+ */
+function playOut(runtime: TableRuntime): string[] {
+  const log: string[] = [];
+  while (runtime.currentActor !== null) {
+    const offered = runtime.toPublicState().decision!.actions.map((action) => action.id);
+    const choice = ['stand', 'decline'].find((id) => offered.includes(id)) ?? offered[0];
+    if (choice === undefined) throw new Error('The table offered nothing at all.');
+    runtime.takeAction(runtime.currentActor, choice);
+    log.push(choice);
+    if (log.length > 128) throw new Error('The hand never ended.');
+  }
+  return log;
+}
+
 describe('TableRuntime seating', () => {
   it('starts idle and opens betting once enough players sit', () => {
     expect(table.currentPhase).toBe('idle');
@@ -539,7 +562,7 @@ describe('a table with a decision phase', () => {
     // Declaring it is free — the stake was already taken when the bet went down.
     expect(bjHost.balances.get('a')).toBe(staked);
 
-    while (bjTable.currentPhase !== 'payout') {
+    for (let tick = 0; tick < 64 && bjTable.currentPhase !== 'payout'; tick += 1) {
       bjHost.advance(1_000);
       bjTable.update();
     }
@@ -548,11 +571,15 @@ describe('a table with a decision phase', () => {
   });
 
   it('keeps every hand backed by chips that were actually taken', () => {
-    // The invariant splits and doubles can quietly break: a hand that appears
-    // without its stake being debited is free money, and a debit without a hand
-    // to show for it is money taken for nothing. Play greedily — split and
-    // double at every opportunity — across many shoes and check the two sides
-    // against each other every round.
+    // The invariant every chip-spending action can quietly break: a hand that
+    // appears without its stake being debited is free money, and a debit
+    // without a bet to show for it is money taken for nothing.
+    //
+    // Played greedily — insure, split and double at every opportunity — across
+    // many shoes, because that is what exercises all three paths. Insurance is
+    // the newest and the odd one out: it is the only bet that lands on a spot
+    // the player has nothing on yet, so it is the one that would go missing if
+    // the runtime only ever topped up existing wagers.
     for (let candidate = 1; candidate <= 60; candidate += 1) {
       bjHost = new FakeHost(100_000, ['a']);
       bjTable = new TableRuntime(2, blackjack, bjHost, () => candidate);
@@ -562,11 +589,8 @@ describe('a table with a decision phase', () => {
       let guard = 0;
       while (bjTable.currentActor === 'a') {
         const offered = bjTable.toPublicState().decision!.actions.map((action) => action.id);
-        const choice = offered.includes('split')
-          ? 'split'
-          : offered.includes('double')
-            ? 'double'
-            : 'stand';
+        const choice = ['insure', 'split', 'double', 'stand'].find((id) => offered.includes(id));
+        if (choice === undefined) throw new Error(`Nothing playable on offer: ${offered}`);
         bjTable.takeAction('a', choice);
         guard += 1;
         if (guard > 128) throw new Error('The hand never ended.');
@@ -576,19 +600,25 @@ describe('a table with a decision phase', () => {
       // exactly what the round cost.
       const spent = opening - bjHost.balances.get('a')!;
 
-      // The felt agrees with the ledger.
+      // The felt agrees with the ledger — boxes and the insurance spot alike.
       const staked = bjTable.toPublicState().wagers.reduce((sum, wager) => sum + wager.amount, 0);
       expect(staked).toBe(spent);
 
-      while (bjTable.currentPhase !== 'payout') {
+      for (let tick = 0; tick < 64 && bjTable.currentPhase !== 'payout'; tick += 1) {
         bjHost.advance(1_000);
         bjTable.update();
       }
+      expect(bjTable.currentPhase).toBe('payout');
 
       // And every hand that was settled agrees with it too — four hands off one
-      // box must add up to the four stakes that were taken for them.
-      const hands = bjTable.toPublicState().lastResult!.detail.hands as { stake: number }[];
-      expect(hands.reduce((sum, hand) => sum + hand.stake, 0)).toBe(spent);
+      // box must add up to the four stakes that were taken for them, plus
+      // whatever went on insurance.
+      const hands = bjTable.toPublicState().lastResult!.detail.hands as {
+        stake: number;
+        insurance: number;
+      }[];
+      const carried = hands.reduce((sum, hand) => sum + hand.stake + hand.insurance, 0);
+      expect(carried).toBe(spent);
     }
   });
 
@@ -655,14 +685,12 @@ describe('a table with a decision phase', () => {
     dealIn(['a']);
     const wagers = bjTable.toPublicState().wagers.map((wager) => ({ ...wager }));
 
-    while (bjTable.currentActor !== null) {
-      bjTable.takeAction(bjTable.currentActor, 'stand');
-    }
+    const played = playOut(bjTable);
     bjHost.advance(3_001);
     const resolution = bjTable.update()!;
 
     const result = bjTable.toPublicState().lastResult!;
-    expect(result.actions).toEqual(['stand']);
+    expect(result.actions).toEqual(played);
 
     // The whole point: seed plus log reproduces what the table just paid.
     const replayed = replayInteractiveRound(
@@ -678,7 +706,7 @@ describe('a table with a decision phase', () => {
     dealIn(['a']);
     const published = bjTable.toPublicState().commitment!;
 
-    while (bjTable.currentActor !== null) bjTable.takeAction(bjTable.currentActor, 'stand');
+    playOut(bjTable);
     bjHost.advance(3_001);
     bjTable.update();
 
@@ -688,7 +716,7 @@ describe('a table with a decision phase', () => {
 
   it('clears the decision state between rounds', () => {
     dealIn(['a']);
-    while (bjTable.currentActor !== null) bjTable.takeAction(bjTable.currentActor, 'stand');
+    playOut(bjTable);
     bjHost.advance(3_001);
     bjTable.update();
     expect(bjTable.toPublicState().decision).toBeNull();
@@ -888,7 +916,7 @@ describe('a table that waits to be asked', () => {
     bjHost.advance(blackjack.bettingWindowMs + 1);
     bjTable.update();
 
-    while (bjTable.currentActor !== null) bjTable.takeAction(bjTable.currentActor, 'stand');
+    playOut(bjTable);
     bjHost.advance(3_001);
     bjTable.update();
     bjHost.advance(6_001);
@@ -930,18 +958,27 @@ describe('a table that waits to be asked', () => {
     bjHost.advance(blackjack.bettingWindowMs + 1);
     bjTable.update();
 
-    // Walk to whichever box can double, then double it.
+    // Walk to whichever box can double, then double it. Only ever sending a
+    // move the table is currently offering: a dealer ace opens with the
+    // insurance question, where a bare `stand` is refused and the turn would
+    // never move on.
     let doubled: string | null = null;
+    let guard = 0;
     while (bjTable.currentActor === 'a' && doubled === null) {
       const decision = bjTable.toPublicState().decision!;
+      const offered = decision.actions.map((action) => action.id);
       const hands = decision.view.hands as { spotId: string; finished: boolean }[];
       const active = hands.find((hand) => !hand.finished);
-      if (decision.actions.some((action) => action.id === 'double')) {
+      if (offered.includes('double')) {
         bjTable.takeAction('a', 'double');
         doubled = active?.spotId ?? null;
       } else {
-        bjTable.takeAction('a', 'stand');
+        const choice = ['stand', 'decline'].find((id) => offered.includes(id));
+        if (choice === undefined) break;
+        bjTable.takeAction('a', choice);
       }
+      guard += 1;
+      if (guard > 128) throw new Error('The hand never ended.');
     }
 
     if (doubled !== null) {

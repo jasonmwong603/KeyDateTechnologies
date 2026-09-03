@@ -128,7 +128,7 @@ compiled `dist/` output the server imports, resolved through an import map in
 | `packages/sim`               | Deterministic world: vector math, AABB collision, movement, the casino floor                       |
 | `packages/games/table-games` | Wagering rules modules and the table phase machine                                                 |
 | `apps/server`                | Authoritative server: tick loop, replication, chip ledger, WebSocket gateway                       |
-| `apps/client`                | 3D client: Three.js renderer, both camera modes, prediction, HUD                                   |
+| `apps/client`                | 3D client: Three.js renderer, both camera modes, prediction, the table bar                         |
 
 Everything a rules module needs is pure: given the wagers on the table and a seeded
 RNG, it returns the outcome and who gets paid. It never touches sockets, clocks or
@@ -156,7 +156,7 @@ way to check — so every round runs as a commit–reveal:
 3. **After the round resolves**, the server reveals the seed. The client hashes it,
    checks it against the commitment, and replays the outcome.
 
-The client verifies this automatically and shows the result under the table panel. A
+The client verifies this automatically and shows the result along the table bar. A
 mismatch is reported in red.
 
 > **Before this handles anything a player would be upset to lose**, replace the digest
@@ -221,15 +221,26 @@ remembers wrongly, and worth half a stake on the most-split hand there is.
 unsplit hand. Allowing it after a hit would let a player draw a card and then take half
 their money back on seeing it, which is an escape hatch rather than a rule.
 
-Insurance is the one move still missing, and deliberately: it is a side bet on the
-dealer's hole card at 2 to 1 when the true odds are worse than that, so it exists in a
-real pit to be sold to people who do not know that. Nothing here needs it.
+**Insurance** is offered whenever the dealer's upcard is an ace: half your stake, paying
+2 to 1 if the hole card makes blackjack. It is a bad bet and it is meant to be — with
+eight decks, 128 of the 415 cards the ace leaves unseen are tens, so it returns about
+92.5% of what is staked on it. That number is computed by `insuranceReturn` and held to
+the arithmetic by a test, and it is the one bet on the floor outside the 93–100% band
+every other spot is kept inside. It is offered anyway, because refusing it is a decision
+a player should get to make rather than one made for them.
 
-Auto-play never doubles, splits or surrenders on an absent player's behalf. The first two
-would spend chips they did not choose to spend and the third would give away half a stake
-they never agreed to give away — and since `resolve` plays every hand that way, the
-paytable is measured on a table nobody is helping, which is the conservative direction to
-be wrong in.
+Insurance changed the shape of a round. The dealer's peek — turning the hole card over to
+see whether the hand is already finished — used to happen at the deal; it now waits until
+every seat has answered, because the bet is on precisely that card. `view()` therefore
+gates both the dealer's cards and the `dealerBlackjack` flag on the stage rather than on
+the value, since a field only ever sent when true says as much by its absence. It is the
+one place in this codebase where a leak would be worth money.
+
+Auto-play never doubles, splits, insures or surrenders on an absent player's behalf. The
+first three would spend chips they did not choose to spend and the last would give away
+half a stake they never agreed to give away — and since `resolve` plays every hand that
+way, the paytable is measured on a table nobody is helping, which is the conservative
+direction to be wrong in.
 
 Blackjack is why the table phase machine has a `decisions` phase at all — see
 [Fairness with a decision in it](#fairness-with-a-decision-in-it) below. Splitting is the
@@ -318,9 +329,11 @@ The suite concentrates on the things that are expensive to get wrong:
 - **The client actually working** — headless logic tests cannot see a camera pointed at
   a wall, a HUD panel swallowing every touch, or a render loop throwing each frame. All
   three were real bugs here, and all three are what the browser test now covers. It also
-  measures how much of the screen the table panel covers and fails if it grows past a
-  quarter of it: the panel is what you play through, and it must not become what you look
-  at instead of the table.
+  measures the table bar and holds it to a shape, not just an area: it must span the
+  width, take under a fifth of the height, and sit against the foot of the screen. Area
+  alone was not enough — a control that wraps or a row of hands that grows adds height
+  without ever coming near a quarter of the screen, and height is exactly what covers the
+  table.
 
 ---
 

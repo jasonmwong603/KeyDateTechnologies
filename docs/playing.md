@@ -89,7 +89,7 @@ world together.
 | Action                           | Key                                                                            |
 | -------------------------------- | ------------------------------------------------------------------------------ |
 | Move                             | `W` `A` `S` `D`                                                                |
-| Hit / stand / double             | Click the buttons in the table panel                                           |
+| Hit, stand, double, split, …     | Click the buttons in the table bar                                             |
 | Look                             | Move the mouse (click the game once to capture the pointer; `Esc` releases it) |
 | Sprint                           | `Shift` or `Ctrl`                                                              |
 | Jump                             | `Space`                                                                        |
@@ -101,7 +101,7 @@ world together.
 
 **Hold the phone sideways.** Beer Bets is landscape-only: turn a phone upright and the
 game covers itself with a note asking you to turn it back. Portrait leaves a letterbox
-barely wider than the table panel, which is no way to look at a room. Turn it and the
+barely taller than the table bar, which is no way to look at a room. Turn it and the
 note is gone — nothing to dismiss.
 
 | Action                           | Gesture                                          |
@@ -110,7 +110,7 @@ note is gone — nothing to dismiss.
 | Look                             | Drag anywhere on the **right half**              |
 | Jump                             | **Jump** button                                  |
 | Sit at a table, order at the bar | **Use** button                                   |
-| Stand back up                    | **Stand up**, in the table panel                 |
+| Stand back up                    | **Stand up**, at the end of the table bar        |
 | Chat                             | Tap the chat box                                 |
 | Switch camera                    | **Third person** button, top right               |
 
@@ -118,10 +118,10 @@ There is no on-screen joystick to hit precisely — anywhere on the left half wo
 virtual stick from wherever your thumb lands.
 
 **Jump and Use disappear while you are sitting at a table.** Neither does anything at a
-table — you cannot jump off a stool, and Use would only stand you up, which the panel's
-own **Stand up** button already does. What they were doing instead was sitting on top of
-the felt: two large targets in exactly the corner your cards and the table panel occupy.
-Stand up and they come straight back.
+table — you cannot jump off a stool, and Use would only stand you up, which the bar's own
+**Stand up** button already does. What they were doing instead was sitting on top of the
+felt: two large targets in exactly the corner your cards occupy. Stand up and they come
+straight back.
 
 ---
 
@@ -166,7 +166,7 @@ chips that pay for the next round.
 6. **Play your hand**, if the game has one. Blackjack deals and then waits on you; the
    panel shows the cards and your buttons, and you get 15 seconds. Run out of time and
    the table plays a sensible hand for you rather than standing on 12.
-7. **Check the fairness line** under the table panel. Before betting opens the server
+7. **Check the fairness line** at the right-hand end of the table bar. Before betting opens the server
    publishes a commitment; after the round it reveals the seed, and your browser
    verifies the two match. A mismatch shows in red.
 
@@ -181,7 +181,7 @@ This is not splitting. A split reacts to a pair you have already been dealt; box
 chosen and paid for before a single card comes out. You can do both — split a box and
 still be holding two more.
 
-### Splitting, and giving one up
+### Splitting, insuring, and giving one up
 
 Two cards of the same value get a **Split** button: it costs another bet the same size as
 the one already down, and you play the two halves one after the other. Equal _value_, not
@@ -195,6 +195,19 @@ Two things about splits that people get wrong at real tables as well:
 - **Twenty-one after a split is not blackjack.** It pays even money, not 3 to 2. A natural
   is twenty-one on the two cards you were dealt.
 
+### When the dealer shows an ace
+
+Before anyone plays, the table stops and offers **insurance**: half your stake, paying 2
+to 1 if the dealer's face-down card makes blackjack. Insure and you break even on the hand
+when it does; decline and the hand plays out as normal. Every seat is asked before the
+dealer looks, which is the only order that makes sense — the whole bet is on that card.
+
+**It is a bad bet**, and it is worth saying so plainly. Roughly four cards in thirteen give
+the dealer the ten they need, so 2 to 1 is being paid on odds nearer 2.25 to 1: about 92
+chips back per 100 staked, against 93 to 100 everywhere else on this floor. Take it if you
+want it — it is your call, not the table's — but the maths is not on your side, and the
+table will never take it for you if your clock runs out.
+
 **Surrender** is the other way out: give the hand up before you take a card and half your
 stake comes back. It is only offered on your very first decision, on a hand you have not
 split — once you have seen a third card, the moment has passed. Sixteen against a dealer's
@@ -202,13 +215,13 @@ ten is the hand it is for.
 
 ### The games
 
-| Game                 | Where                                 | What it is                                                                                                                                                                                                                                                                                                                      |
-| -------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Blackjack**        | Two tables, north-west and south-east | Eight decks on a continuous shuffler, dealer stands on all 17, blackjack pays 3 to 2. Hit, stand, double, split equal cards, or surrender for half. Play up to three boxes at once, each costing its own bet. Bet anything from 10 up to your whole stack, no table maximum, and the round starts when somebody calls the deal. |
-| **Roulette**         | North-east                            | European single zero — one green pocket, not two. Red/black, odd/even, halves, dozens, and the zero straight up at 35 to 1.                                                                                                                                                                                                     |
-| **Baccarat**         | South-west                            | Punto banco. Back the player, the banker, or a tie; the drawing rules do the rest. Banker pays 0.95 to 1 after commission, a tie pays 9 to 1 and pushes the other two.                                                                                                                                                          |
-| **Wheel of Fortune** | West wall                             | The house game. The `9x` spot is priced at exactly true odds — the one bet on the floor with no house edge at all.                                                                                                                                                                                                              |
-| **High Card Duel**   | East wall                             | No house cut whatsoever. Everyone antes, highest card takes the pot. Needs two players.                                                                                                                                                                                                                                         |
+| Game                 | Where                                 | What it is                                                                                                                                                                                                                                                                                                                                                   |
+| -------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Blackjack**        | Two tables, north-west and south-east | Eight decks on a continuous shuffler, dealer stands on all 17, blackjack pays 3 to 2. Hit, stand, double, split equal cards, surrender for half, or insure against a dealer ace. Play up to three boxes at once, each costing its own bet. Bet anything from 10 up to your whole stack, no table maximum, and the round starts when somebody calls the deal. |
+| **Roulette**         | North-east                            | European single zero — one green pocket, not two. Red/black, odd/even, halves, dozens, and the zero straight up at 35 to 1.                                                                                                                                                                                                                                  |
+| **Baccarat**         | South-west                            | Punto banco. Back the player, the banker, or a tie; the drawing rules do the rest. Banker pays 0.95 to 1 after commission, a tie pays 9 to 1 and pushes the other two.                                                                                                                                                                                       |
+| **Wheel of Fortune** | West wall                             | The house game. The `9x` spot is priced at exactly true odds — the one bet on the floor with no house edge at all.                                                                                                                                                                                                                                           |
+| **High Card Duel**   | East wall                             | No house cut whatsoever. Everyone antes, highest card takes the pot. Needs two players.                                                                                                                                                                                                                                                                      |
 
 Every spot on every felt returns between 93% and 100% of what is staked on it, and there
 is a test that fails if one ever climbs above 100% or drops below 93%. Roulette is
@@ -271,7 +284,7 @@ Fast, self-contained things to try first:
 | Betting window length                   | `bettingWindowMs` in each game definition              |
 | Lighting, colours, camera distance      | `apps/client/src/renderer.js`                          |
 | Carpet, wall and ceiling textures       | `apps/client/src/textures.js`                          |
-| HUD and table panel                     | `apps/client/src/hud.js`, `apps/client/src/style.css`  |
+| HUD and the table bar                   | `apps/client/src/hud.js`, `apps/client/src/style.css`  |
 
 Adding a whole new table game is four files — see
 [adding-a-table-game.md](adding-a-table-game.md).

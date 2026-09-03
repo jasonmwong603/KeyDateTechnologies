@@ -242,15 +242,33 @@ export class TableRuntime {
     // Do not leave a table of six waiting fifteen seconds on somebody who has
     // already walked out of the room. One action is not always enough to end a
     // hand — an auto-hit that draws a five leaves them still to act — so play
-    // it out until the turn genuinely moves on.
+    // it out until the turn reaches somebody who is actually sitting there.
     //
-    // The bound is generous rather than tight: a blackjack player holding three
-    // boxes and splitting each of them to the limit is twelve hands, every one
-    // of which may draw several cards. It exists to turn a rules bug that never
-    // advances the turn into a thrown error instead of a hung server tick, and
-    // a bound that a legal hand can reach would do the opposite.
+    // The condition is "nobody is in that seat" rather than "it is the player
+    // who just left", because a player's turns are not necessarily contiguous:
+    // blackjack asks the whole table about insurance first and only then deals
+    // with the play, so somebody who walks out during the insurance round still
+    // has a turn waiting for them afterwards.
+    this.playOutAbsentTurns();
+  }
+
+  /**
+   * Plays for whoever is on the clock while that seat is empty.
+   *
+   * A no-op whenever a real player is to act, which is the normal case.
+   *
+   * The bound is generous rather than tight: a blackjack player holding three
+   * boxes and splitting each of them to the limit is twelve hands, every one of
+   * which may draw several cards, and each was asked about insurance first. It
+   * exists to turn a rules bug that never advances the turn into a thrown error
+   * instead of a hung server tick, and a bound a legal hand could reach would do
+   * exactly the opposite.
+   */
+  private playOutAbsentTurns(): void {
     let guard = 0;
-    while (this.phase === 'decisions' && this.currentActor === playerId) {
+    while (this.phase === 'decisions') {
+      const actor = this.currentActor;
+      if (actor === null || this.isSeated(actor)) return;
       this.applyAutoAction();
       guard += 1;
       if (guard > 512) {
@@ -279,8 +297,19 @@ export class TableRuntime {
     if (!this.isSeated(playerId)) {
       return { ok: false, code: 'invalid_action', message: 'You are not seated at this table.' };
     }
-    if (findSpot(this.definition, spotId) === undefined) {
+    const spot = findSpot(this.definition, spotId);
+    if (spot === undefined) {
       return { ok: false, code: 'invalid_action', message: `Unknown betting spot "${spotId}".` };
+    }
+    // A derived spot belongs to the game, not to the betting window. Blackjack's
+    // insurance is one: it is offered mid-hand against the dealer's upcard, so
+    // buying it up front would be betting on a card nobody has seen.
+    if (spot.derived === true) {
+      return {
+        ok: false,
+        code: 'invalid_action',
+        message: `${spot.label} is not a bet you place — the table offers it.`,
+      };
     }
     if (!Number.isInteger(amount) || amount < this.definition.minWager) {
       return {
@@ -402,23 +431,33 @@ export class TableRuntime {
       return { ok: false, code: 'invalid_action', message: `You cannot ${actionId} right now.` };
     }
 
-    // Doubling down costs chips. Take them first: applying the action and then
-    // discovering the player cannot pay would leave a hand staked with money
-    // that was never debited.
+    // Doubling, splitting and insuring all cost chips. Take them first:
+    // applying the action and then discovering the player cannot pay would
+    // leave a hand staked with money that was never debited.
     const extra = game.stakeDelta(this.decisionState, actionId);
     if (extra > 0) {
       // Read before applying: once the action lands, the turn has moved on and
       // the spot it belonged to is no longer the current one.
       const spot = game.activeSpot?.(this.decisionState) ?? null;
       if (!this.host.debit(playerId, extra, 'wager')) {
-        return { ok: false, code: 'insufficient_chips', message: 'Not enough chips to double.' };
+        return {
+          ok: false,
+          code: 'insufficient_chips',
+          message: `Not enough chips to ${actionId}.`,
+        };
       }
       const wager = this.wagers.find(
         (entry) => entry.playerId === playerId && (spot === null || entry.spotId === spot),
       );
       // Keeps the felt honest: the wager list is what the table shows as staked,
-      // and it must match what the hand is actually playing for.
-      if (wager !== undefined) wager.amount += extra;
+      // and it must match what the hand is actually playing for. A named spot
+      // the player has nothing on yet gets a wager of its own rather than being
+      // dropped — that is how a mid-hand side bet lands on the felt at all.
+      if (wager !== undefined) {
+        wager.amount += extra;
+      } else if (spot !== null) {
+        this.wagers.push({ playerId, spotId: spot, amount: extra });
+      }
     }
 
     this.commitAction(game, actionId);
@@ -493,6 +532,12 @@ export class TableRuntime {
       }
 
       case 'decisions': {
+        // An empty seat is never worth waiting on. `stand` already drains the
+        // turns of whoever just left, but a player can also leave while it is
+        // somebody else's turn and come back round to an empty chair.
+        this.playOutAbsentTurns();
+        if (this.phase !== 'decisions') return null;
+
         // One player's clock, not the table's: each seat gets the full window
         // when its turn arrives, and a slow player upstream cannot eat it.
         if (now >= this.phaseEndsAt) this.applyAutoAction();

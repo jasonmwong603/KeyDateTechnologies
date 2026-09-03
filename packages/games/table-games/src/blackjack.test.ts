@@ -6,6 +6,7 @@ import {
   handValue,
   isBlackjack,
   isBust,
+  insuranceReturn,
   MAX_BOXES,
   type BlackjackState,
 } from './blackjack.js';
@@ -60,6 +61,7 @@ function stacked(ranks: readonly Rank[], wagers: readonly Wager[]): BlackjackSta
     splitDepth: 0,
     splitAces: false,
     surrendered: false,
+    insurance: 0,
     finished: false,
   }));
   let cursor = 0;
@@ -71,20 +73,29 @@ function stacked(ranks: readonly Rank[], wagers: readonly Wager[]): BlackjackSta
   }
   const dealer = [shoe[cursor] as Card, shoe[cursor + 1] as Card];
   cursor += 2;
-
   const dealerBlackjack = isBlackjack(dealer);
-  for (const hand of hands) {
-    if (dealerBlackjack || isBlackjack(hand.cards)) hand.finished = true;
+
+  // An ace face up holds the peek back for the insurance round, exactly as
+  // `begin` does. Stack a dealer ace and the state you get is one waiting on
+  // an insurance answer, not one waiting on a hit.
+  const insuring = hands.length > 0 && dealer[0]?.rank === 'A';
+  if (!insuring) {
+    for (const hand of hands) {
+      if (dealerBlackjack || isBlackjack(hand.cards)) hand.finished = true;
+    }
   }
 
   let turn = 0;
-  while (turn < hands.length && (hands[turn] as { finished: boolean }).finished) turn += 1;
+  if (!insuring) {
+    while (turn < hands.length && (hands[turn] as { finished: boolean }).finished) turn += 1;
+  }
   return {
     ...state,
     dealer,
     hands,
     cursor,
     turn,
+    stage: insuring ? ('insurance' as const) : ('play' as const),
     dealerBlackjack,
     nextHandId: hands.length + 1,
   };
@@ -174,7 +185,9 @@ describe('the decision phase', () => {
   });
 
   it('gives nobody a turn when the dealer shows blackjack', () => {
-    const state = stacked(['9', '7', 'A', 'K'], [ante('p1')]);
+    // Ten up, ace in the hole: no insurance round, so the peek happens at the
+    // deal and settles the table before anybody is asked anything.
+    const state = stacked(['9', '7', 'K', 'A'], [ante('p1')]);
     expect(state.dealerBlackjack).toBe(true);
     expect(game.actor(state)).toBeNull();
   });
@@ -208,7 +221,7 @@ describe('the decision phase', () => {
   });
 
   it('shows the whole dealer hand once it is a blackjack, because the hand is over', () => {
-    const view = game.view(stacked(['9', '7', 'A', 'K'], [ante('p1')]));
+    const view = game.view(stacked(['9', '7', 'K', 'A'], [ante('p1')]));
     expect(view.dealerCards).toHaveLength(2);
   });
 });
@@ -427,6 +440,159 @@ describe('splitting', () => {
   });
 });
 
+describe('insurance', () => {
+  /** A hand facing a dealer ace, which is the only time it is offered. */
+  const aceUp = (extra: readonly Rank[] = [], wagers = [ante('p1', 100)]) =>
+    stacked(['9', '7', 'A', '9', ...extra], wagers);
+
+  it('is offered when the dealer shows an ace, before anything else', () => {
+    const state = aceUp();
+    expect(state.stage).toBe('insurance');
+    expect(game.actions(state).map((action) => action.id)).toEqual(['insure', 'decline']);
+  });
+
+  it('is not offered on any other upcard', () => {
+    const state = stacked(['9', '7', 'K', '9'], [ante('p1')]);
+    expect(state.stage).toBe('play');
+    expect(game.actions(state).map((action) => action.id)).not.toContain('insure');
+  });
+
+  it('costs half the stake, floored', () => {
+    expect(game.stakeDelta(aceUp([], [ante('p1', 100)]), 'insure')).toBe(50);
+    expect(game.stakeDelta(aceUp([], [ante('p1', 25)]), 'insure')).toBe(12);
+    expect(game.stakeDelta(aceUp(), 'decline')).toBe(0);
+  });
+
+  it('puts the chips on a spot of their own, not on the box', () => {
+    // The box can lose while the insurance pays, so one pile could not honestly
+    // represent both.
+    expect(game.activeSpot?.(aceUp())).toBe('insurance');
+  });
+
+  it('is a spot nobody can bet on before the deal', () => {
+    const spot = blackjack.spots.find((entry) => entry.id === 'insurance');
+    expect(spot?.derived).toBe(true);
+  });
+
+  it('keeps the hole card secret while the offer is open', () => {
+    // The whole bet is on this card. A view that leaked it — or leaked
+    // `dealerBlackjack`, which is the same thing — would let a client buy a
+    // certainty at 2 to 1.
+    const state = stacked(['9', '7', 'A', 'K'], [ante('p1')]);
+    expect(state.dealerBlackjack).toBe(true);
+
+    const view = game.view(state);
+    expect(view.stage).toBe('insurance');
+    expect(view.dealerCards).toBeNull();
+    expect(view.dealerBlackjack).toBe(false);
+  });
+
+  it('turns the hole card over the moment the last answer is in', () => {
+    const state = game.apply(stacked(['9', '7', 'A', 'K'], [ante('p1')]), 'decline');
+    const view = game.view(state);
+    expect(view.stage).toBe('play');
+    expect(view.dealerBlackjack).toBe(true);
+    expect(view.dealerCards).toHaveLength(2);
+  });
+
+  it('asks every hand before the dealer peeks', () => {
+    const state = stacked(['9', '5', '7', '6', 'A', 'K'], [ante('p1'), ante('p2')]);
+    expect(game.actor(state)).toBe('p1');
+
+    const afterFirst = game.apply(state, 'decline');
+    // Still hidden: one seat has not answered yet.
+    expect(afterFirst.stage).toBe('insurance');
+    expect(game.actor(afterFirst)).toBe('p2');
+    expect(game.view(afterFirst).dealerBlackjack).toBe(false);
+
+    const afterBoth = game.apply(afterFirst, 'decline');
+    expect(afterBoth.stage).toBe('play');
+    expect(game.view(afterBoth).dealerBlackjack).toBe(true);
+  });
+
+  it('pays 2 to 1 when the dealer has blackjack, leaving the player even', () => {
+    // The bet's entire sales pitch: lose 100 on the hand, get 150 back on a 50
+    // insurance, and walk away level.
+    const insured = game.apply(stacked(['9', '7', 'A', 'K'], [ante('p1', 100)]), 'insure');
+    const resolution = game.settle(insured);
+
+    expect(resolution.credits).toEqual([{ playerId: 'p1', amount: 150 }]);
+    const hand = (resolution.detail.hands as Record<string, unknown>[])[0]!;
+    expect(hand.outcome).toBe('lose');
+    expect(hand.insurance).toBe(50);
+    expect(hand.insurancePayout).toBe(150);
+  });
+
+  it('loses the side bet when the dealer has no blackjack', () => {
+    // Dealer shows an ace and holds a nine: 20, so the hand loses too.
+    const insured = game.apply(stacked(['9', '7', 'A', '9'], [ante('p1', 100)]), 'insure');
+    const resolution = game.settle(game.apply(insured, 'stand'));
+    expect(resolution.credits).toEqual([]);
+  });
+
+  it('pays the insurance even when the hand itself wins', () => {
+    // A player natural against a dealer natural pushes, and the insurance still
+    // pays — the two bets are settled against different things.
+    const insured = game.apply(stacked(['A', 'K', 'A', 'Q'], [ante('p1', 100)]), 'insure');
+    const resolution = game.settle(insured);
+
+    const hand = (resolution.detail.hands as Record<string, unknown>[])[0]!;
+    expect(hand.outcome).toBe('push');
+    // 100 back on the push, plus 150 on a 50 insurance.
+    expect(resolution.credits).toEqual([{ playerId: 'p1', amount: 250 }]);
+  });
+
+  it('declining costs nothing and settles exactly as before', () => {
+    const declined = game.apply(stacked(['9', '7', 'A', 'K'], [ante('p1', 100)]), 'decline');
+    expect(game.settle(declined).credits).toEqual([]);
+  });
+
+  it('never insures on the player’s behalf', () => {
+    // It is a losing bet on average. Buying one for somebody who has walked
+    // away from the table would be indefensible.
+    expect(game.autoAction(aceUp())).toBe('decline');
+  });
+
+  it('returns about 92 chips per 100 staked, which is why it is a bad bet', () => {
+    // 128 tens among the 415 cards the ace leaves unseen, paid at 2 to 1.
+    expect(insuranceReturn(8)).toBeCloseTo((3 * 128) / 415, 10);
+    expect(insuranceReturn(8)).toBeGreaterThan(0.92);
+    expect(insuranceReturn(8)).toBeLessThan(0.93);
+  });
+
+  it('settles one insurance bet per bet bought, however the hand splits', () => {
+    // Reachable only by forcing it: insurance pays on a dealer natural, and a
+    // dealer natural finishes every hand at the peek, so no insured hand is
+    // ever offered a split in a real round. The guard is here because the
+    // alternative — both halves carrying the stake and both being paid — is a
+    // double payout resting on an invariant two rules away.
+    const insured = game.apply(stacked(['8', '8', 'A', '9'], [ante('p1', 100)]), 'insure');
+    expect(insured.hands[0]?.insurance).toBe(50);
+
+    const split = game.apply(
+      { ...insured, shoe: [...insured.shoe, card('3'), card('9')] },
+      'split',
+    );
+    expect(split.hands.map((hand) => hand.insurance)).toEqual([50, 0]);
+  });
+
+  it('replays a round that took insurance', () => {
+    const wagers = [ante('p1', 100)];
+    const rng = () => createRng(4242);
+
+    let live = game.begin(wagers, rng());
+    const actions: string[] = [];
+    while (game.actor(live) !== null && actions.length < 64) {
+      const offered = game.actions(live).map((action) => action.id);
+      const choice = offered.includes('insure') ? 'insure' : game.autoAction(live);
+      actions.push(choice);
+      live = game.apply(live, choice);
+    }
+
+    expect(replayInteractiveRound(blackjack, wagers, rng(), actions)).toEqual(game.settle(live));
+  });
+});
+
 describe('surrender', () => {
   it('gives back half the stake and ends the hand', () => {
     const state = game.apply(stacked(['K', '6', '9', '7'], [ante('p1', 100)]), 'surrender');
@@ -485,7 +651,10 @@ describe('surrender', () => {
 
 describe('playing more than one box', () => {
   it('offers three boxes, each a spot of its own', () => {
-    expect(blackjack.spots.map((spot) => spot.id)).toEqual(['box-1', 'box-2', 'box-3']);
+    // Insurance is a spot too, but not one anybody bets on before the deal, so
+    // it is the derived flag that separates the two — not a hardcoded count.
+    const bettable = blackjack.spots.filter((spot) => spot.derived !== true);
+    expect(bettable.map((spot) => spot.id)).toEqual(['box-1', 'box-2', 'box-3']);
   });
 
   /**
@@ -496,8 +665,9 @@ describe('playing more than one box', () => {
    * that has to meet the table minimum on its own.
    */
   it('prices each extra hand at another table minimum', () => {
-    expect(blackjack.spots).toHaveLength(MAX_BOXES);
-    for (const spot of blackjack.spots) {
+    const bettable = blackjack.spots.filter((spot) => spot.derived !== true);
+    expect(bettable).toHaveLength(MAX_BOXES);
+    for (const spot of bettable) {
       expect(spot.payout).toBe(1);
     }
     expect(blackjack.minWager * 2).toBe(20);
@@ -771,14 +941,29 @@ describe('reproducibility', () => {
     expect(() => replayInteractiveRound(blackjack, wagers, createRng(4242), [])).toThrow(
       /ends mid-hand/,
     );
+
+    // A complete log, then one action too many.
+    let state = game.begin(wagers, createRng(4242));
+    const log: string[] = [];
+    while (game.actor(state) !== null && log.length < 64) {
+      const choice = game.autoAction(state);
+      log.push(choice);
+      state = game.apply(state, choice);
+    }
     expect(() =>
-      replayInteractiveRound(blackjack, wagers, createRng(4242), [
-        'stand',
-        'stand',
-        'stand',
-        'stand',
-      ]),
+      replayInteractiveRound(blackjack, wagers, createRng(4242), [...log, 'stand']),
     ).toThrow(/longer than the hand/);
+  });
+
+  it('refuses a log containing a move the table never offered', () => {
+    // The verifier is stricter than the table on purpose. `apply` treats an
+    // unknown action as a hit so a bug cannot wedge a live table, but a log
+    // full of moves that were never on offer is not a record of the round that
+    // was played, and accepting one would weaken the proof.
+    const wagers = [ante('p1', 100)];
+    expect(() =>
+      replayInteractiveRound(blackjack, wagers, createRng(4242), ['pocket-the-chips']),
+    ).toThrow(/not on offer/);
   });
 
   it('has no decision phase to replay on a one-shot game', () => {

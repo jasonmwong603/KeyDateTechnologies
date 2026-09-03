@@ -65,7 +65,7 @@ than in the game.
 
 ## Fairness is a feature, not a claim
 
-The commit–reveal transcript is shown in the table panel and verified in the client. A
+The commit–reveal transcript is shown on the table bar and verified in the client. A
 player who does not trust the server can check every round themselves, and a mismatch is
 reported in red rather than swallowed.
 

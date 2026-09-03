@@ -303,68 +303,91 @@ kbd {
   font-size: 0.8rem;
 }
 
-/* --- Table panel --------------------------------------------------------- */
+/* --- Table bar ------------------------------------------------------------ */
 
 /*
- * Anchored to the right, not the middle.
+ * The table bar.
  *
- * The felt is dead centre and slightly below the horizon when you are standing
- * at a table looking at it — which is exactly where a centred panel sits. The
- * cards are now dealt onto that felt, so the panel has to get out of the way of
- * the thing it is describing. On a narrow screen it goes full width at the
- * bottom, where there is no competing view anyway.
+ * A slim strip along the foot of the screen: everything the player needs while
+ * a hand is live, laid out in one row, leaving the felt and the other players
+ * in view.
+ *
+ * It replaced a 330px column down the right-hand side that could run to 62vh.
+ * That was readable, and it covered the thing it was describing — the felt sits
+ * dead centre and slightly below the horizon from a seat, and the cards are
+ * dealt onto it. A column can only move left or right; the view it was in the
+ * way of runs the full width. The foot of the screen is the one edge with
+ * nothing behind it.
+ *
+ * The rules that keep it slim, in order of how easily they are broken:
+ *
+ *  1. One row. Anything that would stack goes side by side instead, and the
+ *     status line under it is a single line of small text.
+ *  2. Fixed height, and the middle scrolls sideways rather than growing. Six
+ *     seats' worth of hands cannot be allowed to push the bar up the screen.
+ *  3. Nothing in it is wider than it has to be — labels over descriptions,
+ *     numbers over sentences.
  */
 #table-panel {
   position: absolute;
-  right: max(0.75rem, env(safe-area-inset-right));
-  bottom: max(0.75rem, env(safe-area-inset-bottom));
-  width: min(330px, calc(100vw - 1.5rem));
-  /* Never more than half the height. The table is the thing being played; a
-     panel that grows down the screen ends up describing a view it is covering. */
-  max-height: 62vh;
-  overflow-y: auto;
-  background: var(--panel);
-  border: 1px solid var(--edge);
-  border-radius: 12px;
-  padding: 0.6rem 0.7rem 0.7rem;
+  left: max(0.6rem, env(safe-area-inset-left));
+  right: max(0.6rem, env(safe-area-inset-right));
+  bottom: max(0.6rem, env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
-  gap: 0.45rem;
-  font-size: 0.86rem;
+  border: 1px solid var(--edge);
+  border-radius: 14px;
+  /* Clips the timer hairline to the rounded top corners. */
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(16, 22, 44, 0.9), rgba(9, 13, 28, 0.94));
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow:
+    0 10px 34px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  font-size: 0.82rem;
 }
 
-/* Landscape on a phone is short, not narrow: the panel has to give up height
-   rather than width. */
-@media (max-height: 480px) {
-  #table-panel {
-    max-height: calc(100vh - 1.5rem);
-    width: min(300px, 44vw);
-    gap: 0.35rem;
-    font-size: 0.8rem;
-  }
-}
-
-#table-panel header {
+/* The main row: identity, the hand, then the controls pushed to the far end. */
+.bar-main {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.6rem;
+  padding: 0.4rem 0.6rem;
+  min-height: 2.7rem;
+}
+
+/* Which table, and what it is waiting for. Fixed width so the hand beside it
+   does not shift about as the phase text changes length. */
+.bar-id {
+  flex: 0 0 auto;
+  width: 9.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  line-height: 1.2;
+  border-right: 1px solid var(--edge);
+  padding-right: 0.6rem;
 }
 
 #table-panel h2 {
   margin: 0;
-  font-size: 0.92rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
   color: var(--gold);
-  flex: 1;
-}
-
-#table-panel header button {
-  padding: 0.35rem 0.55rem;
-  font-size: 0.78rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .phase {
-  font-size: 0.8rem;
+  font-size: 0.7rem;
   color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
 }
 
 .phase[data-phase='betting'] {
@@ -375,11 +398,20 @@ kbd {
   color: var(--accent);
 }
 
+/* Whoever is on the clock is the one thing worth an accent colour. */
+.phase.mine {
+  color: var(--gold);
+  font-weight: 700;
+}
+
+/*
+ * A hairline along the top edge rather than a bar taking up a row of its own.
+ * It is glanceable out of the corner of the eye, which is the only thing a
+ * countdown has to be.
+ */
 #table-timer {
-  height: 4px;
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: 2px;
-  overflow: hidden;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.07);
 }
 
 #table-timer-bar {
@@ -389,22 +421,43 @@ kbd {
   transition: width 0.2s linear;
 }
 
+/* Controls sit at the far end, and never shrink — these are the targets. */
+.bar-controls {
+  margin-left: auto;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/*
+ * Betting spots, inline. They were a wrapping grid of tiles when the panel was
+ * a column; in a bar they are a row of small buttons that scrolls if a felt as
+ * busy as roulette's needs it to.
+ */
 #table-spots {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
-  gap: 0.35rem;
+  display: flex;
+  gap: 0.3rem;
+  max-width: 44vw;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+#table-spots::-webkit-scrollbar {
+  display: none;
 }
 
 .spot {
+  flex: 0 0 auto;
   display: flex;
-  flex-direction: column;
-  gap: 0.1rem;
-  padding: 0.4rem 0.45rem;
-  text-align: left;
+  align-items: baseline;
+  gap: 0.3rem;
+  padding: 0.32rem 0.5rem;
+  white-space: nowrap;
 }
 
 .spot-label {
-  font-size: 0.9rem;
+  font-size: 0.78rem;
   font-weight: 700;
   color: var(--gold);
 }
@@ -421,10 +474,10 @@ kbd {
 }
 
 .spot-stake:not(:empty) {
-  margin-top: 0.25rem;
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   color: var(--good);
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 
 .spot.staked {
@@ -432,56 +485,69 @@ kbd {
 }
 
 /*
- * Roulette puts ten spots on the felt where the wheel puts four. Left on the
- * default track size they wrap into a column that pushes the stake row off a
- * phone screen, so a crowded felt gets narrower tiles rather than more rows.
+ * Roulette puts ten spots on the felt where the wheel puts four. In a bar they
+ * are already a scrolling row, so a crowded felt only needs tighter buttons —
+ * "Red" and "1st 12" do not need the same width as "Box 1".
  */
-#table-spots.dense {
-  grid-template-columns: repeat(auto-fit, minmax(78px, 1fr));
+#table-spots.dense .spot {
+  padding: 0.32rem 0.38rem;
 }
 
 #table-spots.dense .spot-label {
-  font-size: 0.92rem;
-}
-
-#table-spots.dense .spot-hint {
-  /* The full description is still there for a pointer; it just cannot have the
-     vertical space on a felt this busy. */
-  display: none;
+  font-size: 0.72rem;
 }
 
 /* ---------------------------------------------------------------------------
    The live hand — blackjack, and anything else that grows a decision phase
    --------------------------------------------------------------------------- */
 
+/*
+ * The hand, laid along the bar: dealer first, then a pill per seat.
+ *
+ * It is the one part that can grow without limit — six seats, three boxes each,
+ * every one of them split — so it is the part that scrolls. Growing instead
+ * would push the bar up the screen and undo the whole point of it.
+ */
 #table-hand {
+  flex: 1 1 auto;
+  min-width: 0;
   display: flex;
-  flex-direction: column;
-  gap: 0.28rem;
-  padding: 0.4rem;
-  border: 1px solid var(--edge);
-  border-radius: var(--radius);
-  background: rgba(9, 14, 30, 0.55);
+  align-items: center;
+  gap: 0.4rem;
+  overflow-x: auto;
+  scrollbar-width: none;
   /* Cards flip about their own vertical axis as they land, which needs a
      perspective on the container or the rotation reads as a flat squash. */
   perspective: 900px;
 }
 
+#table-hand::-webkit-scrollbar {
+  display: none;
+}
+
 #hand-seats {
   display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
+  align-items: center;
+  gap: 0.35rem;
 }
 
 .hand-row {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 0.3rem;
-  flex-wrap: wrap;
-  font-size: 0.72rem;
-  padding: 0.15rem 0.3rem;
-  border-radius: 6px;
-  border: 1px solid transparent;
+  white-space: nowrap;
+  font-size: 0.7rem;
+  padding: 0.2rem 0.4rem;
+  border-radius: 8px;
+  border: 1px solid var(--edge);
+  background: rgba(9, 14, 30, 0.5);
+}
+
+/* The dealer is the reference everyone reads their own hand against, so it is
+   pinned to the left of the row rather than sorted in with the seats. */
+#hand-dealer {
+  border-color: rgba(255, 255, 255, 0.16);
 }
 
 /* Whoever is on the clock, highlighted — at a table of six it is the only way
@@ -496,15 +562,18 @@ kbd {
 }
 
 .hand-who {
-  min-width: 4.6rem;
   color: var(--muted);
   font-weight: 600;
+  /* Long enough for "Seat 3 · Box 2 · split · 1,000" to be readable and short
+     enough that six of them still fit; the rest is one scroll away. */
+  max-width: 11rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .hand-cards {
   display: flex;
   gap: 0.2rem;
-  flex-wrap: wrap;
 }
 
 .card {
@@ -629,14 +698,15 @@ kbd {
 }
 
 /*
- * Up to five buttons — hit, stand, double, split, surrender — on a panel that
- * is deliberately small. Auto-fit rather than a fixed three columns: with three
- * on offer they take a row each way, and with five they wrap to two rows
- * instead of squeezing "Surrender" into a third of a narrow panel.
+ * Up to five buttons — hit, stand, double, split, surrender — or the two of the
+ * insurance round. A row, because the bar is a row.
+ *
+ * These are the only things in the bar under any time pressure, so they are the
+ * only things given a colour of their own and a target size worth aiming at on
+ * a phone.
  */
 #hand-actions {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(5.5rem, 1fr));
+  display: flex;
   gap: 0.3rem;
 }
 
@@ -645,42 +715,42 @@ kbd {
 }
 
 .hand-action {
-  display: flex;
-  flex-direction: column;
-  gap: 0.05rem;
-  padding: 0.4rem 0.4rem;
-  text-align: left;
+  flex: 0 0 auto;
+  padding: 0.4rem 0.6rem;
   border-color: var(--gold);
+  white-space: nowrap;
 }
 
-/* The hint is what the button does, which its label already says. Dropped on
-   a short screen, where the buttons are what matter. */
-@media (max-height: 480px) {
-  .action-hint {
-    display: none;
-  }
+/*
+ * The hint says what the button does, which its label already said.
+ *
+ * It earned its place in a column panel with room to spare. In a bar it is the
+ * difference between five buttons fitting and five buttons scrolling, so the
+ * text moves to the button's own tooltip and the label carries it.
+ */
+.action-hint {
+  display: none;
 }
 
 .action-label {
   font-weight: 700;
+  font-size: 0.78rem;
   color: var(--gold);
 }
 
-.action-hint {
-  font-size: 0.65rem;
-  color: var(--muted);
-}
-
+/* The dealer's actual cards: the least urgent of the three, so it is the one
+   that gives way first when the bar runs out of room. */
 .result-cards {
-  margin-top: 0.2rem;
-  font-size: 0.72rem;
+  flex: 0 1 auto;
+  min-width: 0;
   color: var(--muted);
   font-weight: 400;
+  opacity: 0.8;
 }
 
+.result-summary,
 .result-mine {
-  margin-top: 0.2rem;
-  font-size: 0.78rem;
+  flex: 0 0 auto;
 }
 
 .result-win,
@@ -701,8 +771,37 @@ kbd {
 #stake-row {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
+  gap: 0.35rem;
+  flex: 0 0 auto;
+}
+
+#stake-row .label {
+  font-size: 0.62rem;
+}
+
+#stake-row button {
+  padding: 0.32rem 0.5rem;
+  font-size: 0.72rem;
+}
+
+/*
+ * The bet range, shown only when it is bad news.
+ *
+ * "10 – 2,450" is already on the input as its min and max, and a bar has no
+ * room for text restating what the field enforces. "You need 10 to bet" is a
+ * different matter: it is the reason the table is refusing you, and nothing
+ * else on screen says it.
+ */
+.stake-limits {
+  display: none;
+  font-size: 0.68rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.stake-limits.bad {
+  display: inline;
+  color: var(--bad);
+  font-weight: 600;
 }
 
 /*
@@ -729,26 +828,20 @@ kbd {
   outline-offset: 1px;
 }
 
-.stake-limits {
-  font-size: 0.68rem;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.stake-limits.bad {
-  color: var(--bad);
-}
-
 /*
  * The deal call.
  *
- * Full width and unmissable, because on this table nothing at all happens
- * until it is pressed — there is no clock quietly running out behind it.
+ * The one solid gold thing in the bar, because on this table nothing at all
+ * happens until it is pressed — there is no clock quietly running out behind
+ * it. It was full width in the old column panel; in a bar its prominence has to
+ * come from colour instead.
  */
 #deal-button {
-  width: 100%;
-  padding: 0.45rem;
+  flex: 0 0 auto;
+  padding: 0.4rem 0.75rem;
   font-weight: 700;
+  font-size: 0.78rem;
+  white-space: nowrap;
   color: #10131f;
   background: var(--gold);
   border: 1px solid var(--gold);
@@ -769,32 +862,61 @@ kbd {
   font-variant-numeric: tabular-nums;
 }
 
-#stake-buttons {
-  display: flex;
-  gap: 0.3rem;
-}
-
-#stake-buttons button {
+#leave-table {
+  flex: 0 0 auto;
   padding: 0.35rem 0.55rem;
-  font-size: 0.78rem;
+  font-size: 0.72rem;
+  white-space: nowrap;
 }
 
-#stake-value {
-  font-weight: 700;
-  color: var(--gold);
-  min-width: 3ch;
+/*
+ * One line of running commentary, under the controls.
+ *
+ * Everything here is secondary — what is on the felt, what the last hand did,
+ * the fairness transcript — so it gets one line between them, and each piece
+ * takes only the width it needs. Nothing in it may wrap: a second line here is
+ * a second line on the whole bar.
+ */
+.bar-status {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.25rem 0.7rem 0.35rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  font-size: 0.68rem;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
 }
 
-#clear-bets {
-  margin-left: auto;
-  font-size: 0.78rem;
-  padding: 0.35rem 0.6rem;
+.bar-status > * {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 #table-wagers,
 #table-result {
-  font-size: 0.76rem;
+  font-size: 0.68rem;
   color: var(--muted);
+  flex: 0 0 auto;
+}
+
+/*
+ * The result is three separate facts — what the dealer did, what was dealt,
+ * and what it cost you — and in a column panel they were three lines. Here
+ * they run along one, because a second line in the status strip is a second
+ * line on the whole bar.
+ */
+#table-result {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+#table-result > * {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /*
@@ -805,11 +927,11 @@ kbd {
  * the number you need".
  */
 #table-notice {
-  font-size: 0.76rem;
+  flex: 0 1 auto;
   font-weight: 600;
   color: var(--bad);
   border-left: 2px solid var(--bad);
-  padding-left: 0.45rem;
+  padding-left: 0.4rem;
 }
 
 #table-result {
@@ -817,15 +939,27 @@ kbd {
   font-weight: 600;
 }
 
+/*
+ * The fairness transcript.
+ *
+ * The full digest is sixty-odd monospace characters, which is most of a bar on
+ * its own, so it takes whatever is left over and truncates. Nothing is lost:
+ * the element's text is intact for anyone reading it, and a mismatch stops
+ * being a quiet line of grey and goes red at full width ahead of everything
+ * else, which is the only case where the exact characters matter.
+ */
 .fairness {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: right;
   font-family: ui-monospace, monospace;
-  font-size: 0.65rem;
+  font-size: 0.62rem;
   color: var(--muted);
-  opacity: 0.8;
-  word-break: break-all;
+  opacity: 0.65;
 }
 
 .fairness.bad {
+  flex: 1 0 auto;
   color: var(--bad);
   opacity: 1;
   font-weight: 700;
@@ -841,6 +975,22 @@ kbd {
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
+  transition: bottom 0.18s ease;
+}
+
+/*
+ * Sitting down puts a bar across the foot of the screen, so chat steps up over
+ * it rather than being buried under it.
+ *
+ * Driven by a class the HUD sets when the table panel opens, not by a media
+ * query: whether the bar is there is a question about game state, and the
+ * offset has to come back the moment the player stands up. The distance comes
+ * from `--bar-height`, which the HUD measures off the bar itself — guessing at
+ * it in CSS meant chat overlapping the bar the first time a result line made
+ * it a few pixels taller.
+ */
+#hud.seated #chat {
+  bottom: calc(max(1rem, env(safe-area-inset-bottom)) + var(--bar-height, 4.4rem) + 0.5rem);
 }
 
 #chat-log {
@@ -925,10 +1075,51 @@ kbd {
   #chat-log {
     max-height: 16vh;
   }
+}
 
+/*
+ * A phone held sideways is short, not narrow.
+ *
+ * The bar is already the right shape for it — it is the vertical space that has
+ * to give. The table identity goes down to the phase alone (the title is on the
+ * sign hanging over the felt anyway), and the fairness transcript goes, because
+ * on a 393px-tall screen it is the least useful line on the bar and the only
+ * one nothing depends on seeing.
+ */
+@media (max-height: 520px) {
   #table-panel {
-    width: calc(100vw - 1rem);
-    bottom: max(0.5rem, env(safe-area-inset-bottom));
+    font-size: 0.76rem;
+    left: max(0.4rem, env(safe-area-inset-left));
+    right: max(0.4rem, env(safe-area-inset-right));
+    bottom: max(0.4rem, env(safe-area-inset-bottom));
+  }
+
+  .bar-main {
+    min-height: 2.3rem;
+    padding: 0.3rem 0.45rem;
+    gap: 0.4rem;
+  }
+
+  .bar-id {
+    width: 6rem;
+    padding-right: 0.45rem;
+  }
+
+  #table-panel h2 {
+    font-size: 0.72rem;
+  }
+
+  .bar-status {
+    padding: 0.2rem 0.5rem 0.25rem;
+    font-size: 0.62rem;
+  }
+
+  .fairness {
+    display: none;
+  }
+
+  #hud.seated #chat {
+    bottom: calc(max(0.4rem, env(safe-area-inset-bottom)) + var(--bar-height, 3.6rem) + 0.4rem);
   }
 }
 

@@ -90,7 +90,7 @@ somebody edited one and not the other, so the table's public state now carries i
 `displayName`, `spots`, `minWager`, `maxWager` and `bettingWindowMs`, and the HUD builds
 the felt from those.
 
-Write the definition, register it, put a table on the floor. The panel labels itself.
+Write the definition, register it, put a table on the floor. The bar labels itself.
 
 ## 5. Test it
 
@@ -142,10 +142,17 @@ anything that depends on the _rest_ of a player's bets, implement the optional
 with that string as the reason, `null` to allow it. It runs before a single chip moves, so
 a refusal costs the player nothing.
 
-Blackjack uses it for the one rule that cannot be expressed spot by spot — a second box
-needs twice the minimum on _each_ box, a third needs three times — because whether a bet
-on box 2 is legal depends entirely on what is sitting on box 1. Keep the returned message
-worth reading; it is shown to the player verbatim.
+Blackjack uses `checkWager` for the one rule that cannot be expressed spot by spot — a
+second box needs twice the minimum on _each_ box, a third needs three times — because
+whether a bet on box 2 is legal depends entirely on what is sitting on box 1. Keep the
+returned message worth reading; it is shown to the player verbatim.
+
+A spot marked `derived: true` is one the _game_ puts chips on and a player never bets on
+directly. Blackjack's insurance is the case: it is a real bet with its own odds and its
+own pile on the felt, but it is offered mid-hand against the dealer's upcard, so buying it
+during the betting window would be betting on a card nobody has seen. The runtime refuses
+a wager on one and the client leaves it out of the betting buttons — but it stays in
+`spots`, because it is a spot, and the chips that land on it have to have somewhere to be.
 
 ## Games where the player actually plays
 
@@ -199,13 +206,33 @@ the same ids, and anything outside the state is not covered by the seed.
 extra stake _before_ applying, and refuses the action if the player cannot cover it, so a
 hand can never end up playing for chips that were never taken. `activeSpot` is what puts
 those chips on the right pile: a split belongs to the box it came from, and without it the
-chips land on whichever box the player bet on first.
+chips land on whichever box the player bet on first. Name a spot the player has nothing on
+yet and the runtime opens a wager there — which is how insurance reaches the felt at all.
+
+**Keep anything secret secret for exactly as long as it has to be.** Blackjack's dealer
+peek used to happen at the deal. Insurance is a bet on that very card, so the peek now
+waits until every seat has answered, and `view()` gates both the dealer's cards and the
+`dealerBlackjack` flag on the stage rather than on the value — a field only ever sent when
+true announces itself by its absence. If a game of yours has a moment where knowing one
+fact early is worth money, that is the moment to write a test against.
 
 **Do not let `autoAction` choose it.** Anything that costs chips, or gives them away, is
 the player's decision. The table plays for somebody who has walked away, and it must not
 spend their money doing it. This also keeps the paytable honest — `resolve` plays every
 hand through `autoAction`, so the measured expected return is the return of a table where
 nobody is helping.
+
+**A stage is cheaper than a phase.** Insurance is a whole extra round of questions asked
+before the hand is played, and it needed no change to `TablePhase` at all: the game keeps
+a `stage` in its own state, `actions` returns a different pair while it runs, and running
+off the end of the hand list is what moves it on. The runtime only ever asks "who acts
+next, and what may they do" — everything else is the game's business, which is the reason
+`decisions` has stayed one phase rather than growing one per game.
+
+One consequence worth knowing about: a player's turns are no longer contiguous. Somebody
+who leaves during the insurance round still has a turn waiting in the play round, so the
+runtime now plays for whoever is on the clock whenever that seat is empty, rather than
+only draining the turns of the player who just stood up.
 
 If you are extending a game, check whether the shape you want fits the phase machine
 before assuming it does. Blackjack's turn order is an index into an array of hands, which

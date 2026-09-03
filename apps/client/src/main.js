@@ -465,6 +465,16 @@ window.__keydate = {
     return { id: bar.id, distance: Math.hypot(bar.x - localState.x, bar.z - localState.z) };
   },
   seatedAt: () => localState.seatedAt,
+  /**
+   * Sends a raw client message, bypassing the UI. Test hook.
+   *
+   * There is nothing here a modified client could not send anyway — the server
+   * validates every message regardless of which button produced it — and it is
+   * the only way to check that a refusal the UI never offers is still refused.
+   */
+  send: (message) => connection.send(message),
+  /** Every spot the open table publishes, derived ones included. Test hook. */
+  tableSpots: () => hud.currentSpots ?? [],
   /** The table the player is sitting at, or null. Test hook. */
   seatedTable: () => world?.interactables.find((entry) => entry.id === localState.seatedAt) ?? null,
   /** Cards physically on the felt, and whether any are still in flight. */

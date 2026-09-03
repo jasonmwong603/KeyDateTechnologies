@@ -65,6 +65,23 @@ function check(label, condition, detail = '') {
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
+ * Polls a page until `probe` returns something truthy, or the budget runs out.
+ *
+ * For anything whose answer comes back from the server. A fixed sleep is the
+ * wrong tool there: it is either longer than it needs to be on every run, or
+ * too short on the one run where the machine is busy — and both of those were
+ * real flakes here before this existed.
+ */
+async function waitFor(page, probe, budgetMs = 8000, stepMs = 200) {
+  for (let waited = 0; waited <= budgetMs; waited += stepMs) {
+    const value = await page.evaluate(probe);
+    if (value) return value;
+    await sleep(stepMs);
+  }
+  return null;
+}
+
+/**
  * Walks the player toward something, steering around whatever is in the way.
  *
  * `aim` points the camera at the target and returns its distance. Holding W at
@@ -567,17 +584,37 @@ async function run() {
     const anteVisible = await pc.isVisible('.spot[data-spot-id="box-1"]');
     check('blackjack offers its bet spot', anteVisible);
 
-    // The panel has to leave the table visible. Anything over about a quarter
-    // of the screen and it is covering the thing it describes.
-    const panelShare = await pc.evaluate(() => {
+    // The panel is a bar along the foot of the screen, and has to stay one.
+    //
+    // Asserted as a shape rather than only as an area, because the ways it goes
+    // wrong are shape problems: a control that wraps, or a row of six hands that
+    // grows instead of scrolling, adds height without ever coming near a
+    // quarter of the screen — and height is exactly what covers the table.
+    const bar = await pc.evaluate(() => {
       const panel = document.getElementById('table-panel').getBoundingClientRect();
-      return (panel.width * panel.height) / (window.innerWidth * window.innerHeight);
+      return {
+        widthShare: panel.width / window.innerWidth,
+        heightShare: panel.height / window.innerHeight,
+        share: (panel.width * panel.height) / (window.innerWidth * window.innerHeight),
+        bottomGap: window.innerHeight - panel.bottom,
+      };
     });
     check(
-      'the table panel leaves most of the view clear',
-      panelShare > 0 && panelShare < 0.25,
-      `${(panelShare * 100).toFixed(0)}% of the screen`,
+      'the table panel is a bar, not a column — it spans the width',
+      bar.widthShare > 0.9,
+      `${(bar.widthShare * 100).toFixed(0)}% of the width`,
     );
+    check(
+      'and it is slim — a strip of the height, not a slab of it',
+      bar.heightShare > 0 && bar.heightShare < 0.15,
+      `${(bar.heightShare * 100).toFixed(0)}% of the height`,
+    );
+    check(
+      'the table panel leaves most of the view clear',
+      bar.share > 0 && bar.share < 0.15,
+      `${(bar.share * 100).toFixed(0)}% of the screen`,
+    );
+    check('it sits against the foot of the screen', bar.bottomGap < 40, `${bar.bottomGap}px clear`);
 
     // The bet box: any integer from the table minimum to the whole stack.
     const limits = await pc.evaluate(() => {
@@ -767,6 +804,7 @@ async function run() {
           if (actions.length === 0) return null;
           return {
             actions,
+            phase: document.getElementById('table-phase').textContent,
             dealerCards: document.querySelectorAll('#hand-dealer .card').length,
             facedown: document.querySelectorAll('#hand-dealer .card.facedown').length,
             mine: document.querySelectorAll('#hand-seats .hand-row.mine .card').length,
@@ -947,6 +985,59 @@ async function run() {
       bjFairness?.slice(0, 70),
     );
 
+    // ------------------------------------------------------------ insurance
+    //
+    // Insurance is a spot with real chips on the felt, but not one anybody bets
+    // on before the deal: the table offers it against the dealer's upcard once
+    // the cards are out. Both halves of that are deterministic and checked
+    // here — no button, and no way round the missing button either.
+    //
+    // The live offer needs a dealer ace, which is one hand in thirteen. Waiting
+    // for one would add ten minutes to this suite for a worse test than the
+    // deterministic ones in `blackjack.test.ts`, so what happens below is
+    // opportunistic: if an ace turns up while hunting for a pair, the whole
+    // path gets exercised, and if it does not, nothing is claimed.
+    const spotButtons = await pc.evaluate(() =>
+      [...document.querySelectorAll('#table-spots .spot')].map((button) => button.dataset.spotId),
+    );
+    const spotsOffered = await pc.evaluate(() => window.__keydate?.tableSpots?.() ?? []);
+    check(
+      'the table publishes insurance as a spot',
+      spotsOffered.includes('insurance'),
+      spotsOffered.join(','),
+    );
+    check(
+      'but never as a bet you can place',
+      !spotButtons.includes('insurance'),
+      spotButtons.join(','),
+    );
+
+    // And the missing button is not the only thing stopping you: a modified
+    // client that sends the wager anyway is refused by the server.
+    const chipsBeforeCheat = await pc.evaluate(() =>
+      Number(document.getElementById('chips-value').textContent.replace(/[^0-9]/g, '')),
+    );
+    await pc.evaluate(() =>
+      window.__keydate.send({ type: 'table:wager', spotId: 'insurance', amount: 50 }),
+    );
+    const refusal = await waitFor(pc, () => {
+      const notice = document.getElementById('table-notice');
+      return notice.hidden ? null : notice.textContent;
+    });
+    const chipsAfterCheat = await pc.evaluate(() =>
+      Number(document.getElementById('chips-value').textContent.replace(/[^0-9]/g, '')),
+    );
+    check(
+      'the server refuses an insurance bet sent straight at it',
+      refusal !== null,
+      refusal ?? 'no refusal came back',
+    );
+    check(
+      'and takes nothing for it',
+      chipsAfterCheat === chipsBeforeCheat,
+      `${chipsBeforeCheat} -> ${chipsAfterCheat}`,
+    );
+
     // ------------------------------------------------- splitting and folding
     //
     // Neither move comes up on demand: a split needs a pair, and surrender is
@@ -961,7 +1052,7 @@ async function run() {
     // Three boxes rather than two, purely to find a pair sooner: about one hand
     // in seven is splittable, so three of them is the difference between this
     // section usually taking three deals and usually taking seven.
-    const played = { split: null, surrender: null };
+    const played = { insure: null, split: null, surrender: null };
     for (let hand = 0; hand < 12; hand += 1) {
       if (played.split !== null && played.surrender !== null) break;
       if (!(await betAndDeal(50, ['box-1', 'box-2', 'box-3']))) break;
@@ -969,9 +1060,10 @@ async function run() {
       const turn = await awaitTurnOrResult();
       if (turn.kind !== 'turn') continue;
 
-      // Take whichever is still wanted; a split is the rarer of the two, so it
-      // wins when both are on the table.
-      const wanted = ['split', 'surrender'].find(
+      // Take whichever is still wanted. Insurance first, because it is the
+      // rarest and the only one that has to be answered before anything else
+      // can be; a split is the rarer of the remaining two.
+      const wanted = ['insure', 'split', 'surrender'].find(
         (id) => played[id] === null && turn.live.actions.includes(id),
       );
 
@@ -991,6 +1083,8 @@ async function run() {
             chipsBefore: before,
             rows: document.querySelectorAll('#hand-seats .hand-row.mine').length,
             felt: window.__keydate?.feltCards()?.count ?? 0,
+            chipStacks: window.__keydate?.feltChips() ?? 0,
+            phase: document.getElementById('table-phase').textContent,
             notice: document.getElementById('table-notice').hidden
               ? ''
               : document.getElementById('table-notice').textContent,
@@ -998,19 +1092,47 @@ async function run() {
           chipsBefore,
         );
         played[wanted].handsBefore = handsBefore;
+        played[wanted].phaseBefore = turn.live.phase;
       }
 
       // Whatever happened, play the hand out so the table opens for betting.
+      // `decline` is there for an insurance round that nobody answered — a
+      // bare `stand` is not on offer until every seat has.
       for (let attempt = 0; attempt < 40; attempt += 1) {
-        const standing = await pc.$('.hand-action[data-action-id="stand"]');
-        if (standing === null) break;
-        await standing.click().catch(() => {});
+        const button =
+          (await pc.$('.hand-action[data-action-id="decline"]')) ??
+          (await pc.$('.hand-action[data-action-id="stand"]'));
+        if (button === null) break;
+        await button.click().catch(() => {});
         await sleep(350);
       }
       for (let attempt = 0; attempt < 30; attempt += 1) {
         if (await pc.isVisible('#table-result')) break;
         await sleep(400);
       }
+    }
+
+    // Opportunistic, for the reasons given above: a dealer ace is one hand in
+    // thirteen, so this reports what it saw rather than demanding one.
+    if (played.insure === null) {
+      console.log('  --   no dealer ace came up; insurance play not exercised this run');
+    } else {
+      check(
+        'the insurance round names itself in the panel',
+        played.insure.phaseBefore.startsWith('Insurance?'),
+        played.insure.phaseBefore,
+      );
+      check('the table accepts the insurance', played.insure.notice === '', played.insure.notice);
+      check(
+        'insurance costs half the stake',
+        played.insure.chips === played.insure.chipsBefore - 25,
+        `${played.insure.chipsBefore} -> ${played.insure.chips}`,
+      );
+      check(
+        'the insurance chips go onto the felt',
+        played.insure.chipStacks > 0,
+        `${played.insure.chipStacks} stacks`,
+      );
     }
 
     check(
@@ -1061,9 +1183,13 @@ async function run() {
     const barDistance = await walkTowards(pc, () => window.__keydate?.aimAtBar(), 2.0);
     check('player can walk to the bar', barDistance < 2.0, `distance ${barDistance.toFixed(2)}m`);
 
+    // Pressing E is a round trip: the server checks the range against its own
+    // copy of the position and sends the menu back. Waited for rather than
+    // slept through, because on a loaded machine 800ms is not always enough and
+    // the failure looks exactly like a broken bar.
     await pc.keyboard.press('KeyE');
-    await sleep(800);
-    check('the bar menu opens', await pc.isVisible('#bar-panel'));
+    const menuOpened = await waitFor(pc, () => !document.getElementById('bar-panel').hidden);
+    check('the bar menu opens', menuOpened === true);
 
     const chipsBeforeDrink = await pc.textContent('#chips-value');
     const soberBlur = await pc.evaluate(

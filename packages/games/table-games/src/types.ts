@@ -26,6 +26,16 @@ export interface BettingSpot {
    */
   payout: number;
   description: string;
+  /**
+   * A spot the *game* puts chips on, never the player directly.
+   *
+   * Blackjack's insurance is the case: it is a real bet with its own stake and
+   * its own odds, so it needs a spot of its own on the felt — but it is offered
+   * mid-hand, in response to the dealer's upcard, and cannot be bet before the
+   * deal. The runtime refuses a wager on one, and the client leaves it out of
+   * the betting buttons.
+   */
+  derived?: boolean;
 }
 
 /** Chips returned to a player. `amount` is gross — stake included. */
@@ -90,9 +100,11 @@ export interface InteractiveTableGame<S = unknown> {
    * Which betting spot the current hand is playing, when a player can hold
    * more than one at a time.
    *
-   * The runtime adds a `stakeDelta` to the wager on this spot. Without it, a
-   * player holding three boxes who doubles the second would have the chips
-   * quietly added to the first. Omit it on games where a player has one hand.
+   * The runtime adds a `stakeDelta` to the wager on this spot, creating it if
+   * the player has nothing there yet — which is how a mid-hand side bet like
+   * insurance reaches the felt. Without it, a player holding three boxes who
+   * doubles the second would have the chips quietly added to the first. Omit it
+   * on games where a player has one hand.
    */
   activeSpot?(state: S): string | null;
   /** Applies a legal action. Pure in (state, actionId). */
@@ -215,6 +227,17 @@ export function replayInteractiveRound(
   for (const actionId of actions) {
     if (interactive.actor(state) === null) {
       throw new Error(`Action log for "${definition.id}" is longer than the hand.`);
+    }
+    // Every logged action has to be one the table actually offered at that
+    // point. `apply` is deliberately lenient — a bad id must never be able to
+    // wedge a live table in a phase nobody can leave — but a *verifier* has no
+    // such duty, and leniency here would weaken the thing being verified: a log
+    // full of moves the table would have refused is not a record of the round
+    // that was played.
+    if (!interactive.actions(state).some((action) => action.id === actionId)) {
+      throw new Error(
+        `Action log for "${definition.id}" contains "${actionId}", which was not on offer.`,
+      );
     }
     state = interactive.apply(state, actionId);
   }

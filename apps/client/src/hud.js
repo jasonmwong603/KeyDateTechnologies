@@ -36,6 +36,7 @@ export class Hud {
       tableTimerBar: document.getElementById('table-timer-bar'),
       tableSpots: document.getElementById('table-spots'),
       dealButton: document.getElementById('deal-button'),
+      stakeRow: document.getElementById('stake-row'),
       stakeInput: document.getElementById('stake-input'),
       stakeLimits: document.getElementById('stake-limits'),
       tableHand: document.getElementById('table-hand'),
@@ -72,6 +73,8 @@ export class Hud {
     this._limits = { min: MIN_STAKE_FLOOR, max: MIN_STAKE_FLOOR };
     /** Clears the refusal notice after a few seconds. */
     this._noticeTimer = 0;
+    /** Last published bar height, so the CSS variable is written only on change. */
+    this._barHeight = 0;
 
     this._bindActions();
   }
@@ -262,13 +265,24 @@ export class Hud {
     this.currentTableId = state.tableId;
     const panel = this.elements.tablePanel;
     panel.hidden = false;
+    // The bar runs along the foot of the screen, which is where chat lives.
+    // Chat steps up over it while it is there and drops back when it goes.
+    this.elements.hud.classList.add('seated');
 
     // Everything about the felt travels with the state — the name, the spots,
     // the limits, the window. Adding a game to the registry used to mean
     // editing a lookup table here too, and the two drifted the first time.
+    //
+    // Kept whole here, derived spots included; the buttons below are a filtered
+    // view of it, and a test needs to be able to see both.
+    this.currentSpots = (state.spots ?? []).map((spot) => spot.id);
+
     this.elements.tableTitle.textContent = state.displayName ?? state.gameId;
     this.elements.tablePhase.textContent = this._phaseLabel(state);
     this.elements.tablePhase.dataset.phase = state.phase;
+    // Being on the clock is the one thing worth colouring, on a bar that is
+    // read out of the corner of the eye.
+    this.elements.tablePhase.classList.toggle('mine', this._isMyTurn(state));
 
     // The betting window drives a shrinking bar rather than a number, because a
     // bar is readable out of the corner of your eye while you are looking around.
@@ -282,6 +296,23 @@ export class Hud {
     this._renderHand(state);
     this._renderWagers(state);
     this._renderResult(state);
+    this._measureBar();
+  }
+
+  /**
+   * Publishes the bar's height so chat can sit clear of it.
+   *
+   * Measured rather than assumed. The bar is one row plus a status line, but
+   * the status line's content changes through a round, and a hardcoded offset
+   * put the chat input a few pixels underneath the bar the moment a result
+   * appeared. Rounded to whole pixels so a sub-pixel wobble does not animate
+   * chat up and down five times a second.
+   */
+  _measureBar() {
+    const height = Math.round(this.elements.tablePanel.getBoundingClientRect().height);
+    if (height === this._barHeight) return;
+    this._barHeight = height;
+    this.elements.hud.style.setProperty('--bar-height', `${height}px`);
   }
 
   /**
@@ -329,20 +360,34 @@ export class Hud {
     return 0;
   }
 
+  /**
+   * The one line under the table's name saying what it is waiting for.
+   *
+   * Kept short on purpose — this sits in a fixed-width slot on a bar, and the
+   * slot is fixed so that the hand beside it does not shuffle sideways every
+   * time the wording changes. Anything much past fifteen characters truncates.
+   */
   _phaseLabel(state) {
     switch (state.phase) {
       case 'idle':
-        return 'Waiting for players';
+        return 'Waiting…';
       case 'betting':
         if (state.dealOnDemand) {
           return state.dealCalled
             ? `Last call — ${Math.ceil(state.bettingMsRemaining / 1000)}s`
-            : 'Place your bet, then deal';
+            : 'Bet, then deal';
         }
-        return `Place your bets — ${Math.ceil(state.bettingMsRemaining / 1000)}s`;
+        return `Place bets — ${Math.ceil(state.bettingMsRemaining / 1000)}s`;
       case 'decisions': {
         const seconds = Math.ceil((state.decision?.msRemaining ?? 0) / 1000);
-        return this._isMyTurn(state) ? `Your move — ${seconds}s` : 'Waiting on another player';
+        // The insurance round is a different question from "how do you want to
+        // play this hand", and naming it is most of what tells a player what
+        // the two unfamiliar buttons are for.
+        const insuring = state.decision?.view?.stage === 'insurance';
+        if (this._isMyTurn(state)) {
+          return insuring ? `Insurance? — ${seconds}s` : `Your move — ${seconds}s`;
+        }
+        return insuring ? 'Insurance round' : 'Another player';
       }
       case 'resolving':
         return 'No more bets';
@@ -358,7 +403,12 @@ export class Hud {
   }
 
   _renderSpots(state) {
-    const spots = state.spots ?? [];
+    // A derived spot is one the game puts chips on itself — blackjack's
+    // insurance, offered against the dealer's upcard once the cards are out.
+    // It is a real spot with real chips on the felt, but never a button here:
+    // the server refuses a bet on one, so offering it would be offering a
+    // refusal.
+    const spots = (state.spots ?? []).filter((spot) => spot.derived !== true);
     const container = this.elements.tableSpots;
 
     // Rebuild only when the table changes, so clicking a spot does not destroy
@@ -399,6 +449,14 @@ export class Hud {
     }
 
     const open = state.phase === 'betting';
+
+    // The betting controls only exist while there is betting to do, and taking
+    // them away is what gives the hand room to be read. A row of disabled
+    // buttons is worse than no buttons: it occupies the width a dealt hand
+    // needs, and it does it precisely when nobody can use it.
+    container.hidden = !open;
+    this.elements.stakeRow.hidden = !open;
+
     for (const button of container.querySelectorAll('.spot')) {
       button.disabled = !open;
       const mine = state.wagers.find(
@@ -510,10 +568,7 @@ export class Hud {
           spotId: entry.spotId ?? 'box-1',
           label: this._handLabel(state, entry, detail.hands ?? []),
           cards: entry.cards,
-          note:
-            entry.outcome === 'surrender'
-              ? 'surrendered'
-              : `${entry.total}${entry.doubled ? ' · doubled' : ''}`,
+          note: this._settledNote(entry),
           outcome: entry.outcome,
           mine: entry.playerId === this.connection.playerId,
           acting: false,
@@ -553,18 +608,47 @@ export class Hud {
         spotId: entry.spotId ?? 'box-1',
         label: this._handLabel(state, entry, hands),
         cards: entry.cards,
-        note: entry.surrendered
-          ? 'surrendered'
-          : entry.bust
-            ? 'bust'
-            : entry.blackjack
-              ? 'blackjack'
-              : `${entry.soft ? 'soft ' : ''}${entry.total}${entry.doubled ? ' · doubled' : ''}`,
+        note: this._handNote(entry),
         outcome: '',
         mine: entry.playerId === this.connection.playerId,
         acting: entry === activeHand,
       })),
     };
+  }
+
+  /**
+   * The same note once the hand is over.
+   *
+   * Insurance is called out by whether it *paid*, not by what it cost — once
+   * the dealer's cards are face up, "the insurance came in" is the only part
+   * still worth knowing.
+   */
+  _settledNote(entry) {
+    const insurance =
+      entry.insurancePayout > 0
+        ? ` · ins +${entry.insurancePayout}`
+        : entry.insurance > 0
+          ? ` · ins −${entry.insurance}`
+          : '';
+    if (entry.outcome === 'surrender') return `surrendered${insurance}`;
+    return `${entry.total}${entry.doubled ? ' · doubled' : ''}${insurance}`;
+  }
+
+  /**
+   * The short note beside a live hand: what it is worth, and what was done to it.
+   *
+   * Kept to a few characters. On a bar this sits at the end of a row of six
+   * hands, and "soft 17 · doubled · ins 50" is already at the edge of what
+   * belongs there — anything longer pushes another seat out of view.
+   */
+  _handNote(entry) {
+    const insured = entry.insurance > 0 ? ` · ins ${entry.insurance}` : '';
+    if (entry.surrendered) return `surrendered${insured}`;
+    if (entry.bust) return `bust${insured}`;
+    if (entry.blackjack) return `blackjack${insured}`;
+    const soft = entry.soft ? 'soft ' : '';
+    const doubled = entry.doubled ? ' · doubled' : '';
+    return `${soft}${entry.total}${doubled}${insured}`;
   }
 
   /**
@@ -728,6 +812,9 @@ export class Hud {
       const hint = document.createElement('span');
       hint.className = 'action-hint';
       hint.textContent = action.hint;
+      // The hint has no room on the bar, so it also rides on the button itself
+      // — which is where "how much does insurance cost me" has to be reachable.
+      button.title = `${action.label} — ${action.hint}`;
 
       button.append(label, hint);
       button.addEventListener('click', () => {
@@ -806,18 +893,25 @@ export class Hud {
       (hand) => hand.playerId === this.connection.playerId,
     );
 
+    // What one hand cost, insurance included — a side bet is money down too, and
+    // a net figure that ignored it would flatter every insured round.
+    const cost = (hand) => (hand.stake ?? 0) + (hand.insurance ?? 0);
+
     if (mine.length === 1) {
       const only = mine[0];
       const line = document.createElement('div');
       line.className = `result-mine result-${only.outcome}`;
       const verb = only.outcome === 'push' ? 'push' : only.outcome;
+      // "You lose on 16 — 150 back" reads as nonsense without saying where the
+      // 150 came from.
+      const insured = only.insurancePayout > 0 ? ', insurance paid' : '';
       line.textContent =
         only.payout > 0
-          ? `You ${verb} on ${only.total} — ${only.payout} back`
+          ? `You ${verb} on ${only.total}${insured} — ${only.payout} back`
           : `You ${verb} on ${only.total}`;
       box.append(line);
     } else if (mine.length > 1) {
-      const staked = mine.reduce((sum, hand) => sum + (hand.stake ?? 0), 0);
+      const staked = mine.reduce((sum, hand) => sum + cost(hand), 0);
       const back = mine.reduce((sum, hand) => sum + (hand.payout ?? 0), 0);
       const net = back - staked;
 
@@ -863,6 +957,7 @@ export class Hud {
 
   hideTable() {
     this.elements.tablePanel.hidden = true;
+    this.elements.hud.classList.remove('seated');
     this.elements.tableHand.hidden = true;
     this.elements.dealButton.hidden = true;
     this.elements.tableSpots.dataset.gameId = '';
