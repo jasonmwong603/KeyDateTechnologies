@@ -464,6 +464,8 @@ window.__keydate = {
     input.yaw = Math.atan2(bar.z - localState.z, bar.x - localState.x);
     return { id: bar.id, distance: Math.hypot(bar.x - localState.x, bar.z - localState.z) };
   },
+  /** Current horizontal speed in metres per second. Test hook. */
+  speed: () => Math.hypot(localState.vx, localState.vz),
   seatedAt: () => localState.seatedAt,
   /**
    * Sends a raw client message, bypassing the UI. Test hook.

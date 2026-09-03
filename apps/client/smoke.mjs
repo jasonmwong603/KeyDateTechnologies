@@ -311,32 +311,40 @@ async function run() {
     const cameraMode = await pc.evaluate(() => window.__keydate?.viewMode());
     check('camera toggles to third person', cameraMode === 'third-person', `mode=${cameraMode}`);
 
-    // Ctrl sprints as well as Shift. Compared against a plain walk over the same
-    // number of frames, so it measures the actual button rather than the key.
-    await pc.evaluate(() => window.__keydate?.aimAtNearestTable('wheel-of-fortune'));
-    const walkFrom = await pc.evaluate(() => window.__keydate.position());
-    await pc.keyboard.down('KeyW');
-    await sleep(700);
-    await pc.keyboard.up('KeyW');
-    await sleep(150);
-    const walkTo = await pc.evaluate(() => window.__keydate.position());
-    const walked = Math.hypot(walkTo.x - walkFrom.x, walkTo.z - walkFrom.z);
+    /**
+     * Top speed reached while a key combination is held.
+     *
+     * Speed rather than distance travelled, which is what this used to measure
+     * and what made it flaky. Distance over a fixed wall-clock window is
+     * really a measurement of how many simulation ticks the machine found time
+     * for, and it also silently becomes a measurement of the furniture the
+     * moment a run walks into a table. Peak speed is neither: the simulation
+     * caps it at the constant for the movement mode, so it is the same number
+     * on a busy machine as on an idle one.
+     */
+    async function topSpeed(keys) {
+      for (const key of keys) await pc.keyboard.down(key);
+      let peak = 0;
+      for (let sample = 0; sample < 12; sample += 1) {
+        await sleep(60);
+        peak = Math.max(peak, await pc.evaluate(() => window.__keydate.speed()));
+      }
+      for (const key of keys.slice().reverse()) await pc.keyboard.up(key);
+      await sleep(200);
+      return peak;
+    }
 
-    await pc.evaluate(() => window.__keydate?.aimAtNearestTable('high-card-duel'));
-    const sprintFrom = await pc.evaluate(() => window.__keydate.position());
-    await pc.keyboard.down('ControlLeft');
-    await pc.keyboard.down('KeyW');
-    await sleep(700);
-    await pc.keyboard.up('KeyW');
-    await pc.keyboard.up('ControlLeft');
-    await sleep(150);
-    const sprintTo = await pc.evaluate(() => window.__keydate.position());
-    const sprinted = Math.hypot(sprintTo.x - sprintFrom.x, sprintTo.z - sprintFrom.z);
+    // Ctrl sprints as well as Shift. Aimed at open floor rather than at a table,
+    // so neither run is capped by walking into something solid.
+    await pc.evaluate(() => window.__keydate?.aimAtNearestTable('wheel-of-fortune'));
+    const walkSpeed = await topSpeed(['KeyW']);
+    const ctrlSpeed = await topSpeed(['ControlLeft', 'KeyW']);
+    const shiftSpeed = await topSpeed(['ShiftLeft', 'KeyW']);
 
     check(
       'Ctrl sprints, like Shift',
-      sprinted > walked * 1.2,
-      `walk ${walked.toFixed(2)}m vs sprint ${sprinted.toFixed(2)}m`,
+      ctrlSpeed > walkSpeed * 1.3 && shiftSpeed > walkSpeed * 1.3,
+      `walk ${walkSpeed.toFixed(2)} vs ctrl ${ctrlSpeed.toFixed(2)} vs shift ${shiftSpeed.toFixed(2)} m/s`,
     );
     await pc.screenshot({ path: path.join(SHOT_DIR, 'desktop-third-person.png') });
 
