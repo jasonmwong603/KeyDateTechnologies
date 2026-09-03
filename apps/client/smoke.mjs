@@ -1049,63 +1049,72 @@ async function run() {
     // server offers is a button the player can press and that the table accepts
     // it. A rule can be right in `blackjack.ts` and still be unreachable.
     //
-    // Three boxes rather than two, purely to find a pair sooner: about one hand
-    // in seven is splittable, so three of them is the difference between this
-    // section usually taking three deals and usually taking seven.
+    // Three boxes rather than one, and **every** decision inspected rather than
+    // only the first. That second part is the whole reliability of this loop:
+    // about one hand in seven is splittable, so three boxes should be three
+    // chances a deal — but looking only at the opening decision means only box
+    // one is ever examined, and the other two are stood on unseen. That is a
+    // 15% chance of finding no pair in twelve deals, and it duly found none.
     const played = { insure: null, split: null, surrender: null };
+    let handsDealt = 0;
+    let decisions = 0;
+
     for (let hand = 0; hand < 12; hand += 1) {
       if (played.split !== null && played.surrender !== null) break;
       if (!(await betAndDeal(50, ['box-1', 'box-2', 'box-3']))) break;
+      handsDealt += 1;
 
-      const turn = await awaitTurnOrResult();
-      if (turn.kind !== 'turn') continue;
+      // Walk the hand decision by decision to the end of the round.
+      for (let step = 0; step < 40; step += 1) {
+        const turn = await awaitTurnOrResult();
+        if (turn.kind !== 'turn') break;
+        decisions += 1;
 
-      // Take whichever is still wanted. Insurance first, because it is the
-      // rarest and the only one that has to be answered before anything else
-      // can be; a split is the rarer of the remaining two.
-      const wanted = ['insure', 'split', 'surrender'].find(
-        (id) => played[id] === null && turn.live.actions.includes(id),
-      );
-
-      if (wanted !== undefined) {
-        const chipsBefore = await pc.evaluate(() =>
-          Number(document.getElementById('chips-value').textContent.replace(/[^0-9]/g, '')),
+        // Take whichever is still wanted. Insurance first, because it is the
+        // rarest and has to be answered before anything else can be; a split is
+        // the rarer of the remaining two.
+        const wanted = ['insure', 'split', 'surrender'].find(
+          (id) => played[id] === null && turn.live.actions.includes(id),
         );
-        const handsBefore = turn.live.myHands;
-        await pc.click(`.hand-action[data-action-id="${wanted}"]`).catch(() => {});
-        await sleep(900);
 
-        played[wanted] = await pc.evaluate(
-          (before) => ({
-            chips: Number(
-              document.getElementById('chips-value').textContent.replace(/[^0-9]/g, ''),
-            ),
-            chipsBefore: before,
-            rows: document.querySelectorAll('#hand-seats .hand-row.mine').length,
-            felt: window.__keydate?.feltCards()?.count ?? 0,
-            chipStacks: window.__keydate?.feltChips() ?? 0,
-            phase: document.getElementById('table-phase').textContent,
-            notice: document.getElementById('table-notice').hidden
-              ? ''
-              : document.getElementById('table-notice').textContent,
-          }),
-          chipsBefore,
-        );
-        played[wanted].handsBefore = handsBefore;
-        played[wanted].phaseBefore = turn.live.phase;
-      }
+        if (wanted !== undefined) {
+          const chipsBefore = await pc.evaluate(() =>
+            Number(document.getElementById('chips-value').textContent.replace(/[^0-9]/g, '')),
+          );
+          const handsBefore = turn.live.myHands;
+          await pc.click(`.hand-action[data-action-id="${wanted}"]`).catch(() => {});
+          await sleep(900);
 
-      // Whatever happened, play the hand out so the table opens for betting.
-      // `decline` is there for an insurance round that nobody answered — a
-      // bare `stand` is not on offer until every seat has.
-      for (let attempt = 0; attempt < 40; attempt += 1) {
-        const button =
-          (await pc.$('.hand-action[data-action-id="decline"]')) ??
-          (await pc.$('.hand-action[data-action-id="stand"]'));
-        if (button === null) break;
-        await button.click().catch(() => {});
+          played[wanted] = await pc.evaluate(
+            (before) => ({
+              chips: Number(
+                document.getElementById('chips-value').textContent.replace(/[^0-9]/g, ''),
+              ),
+              chipsBefore: before,
+              rows: document.querySelectorAll('#hand-seats .hand-row.mine').length,
+              felt: window.__keydate?.feltCards()?.count ?? 0,
+              chipStacks: window.__keydate?.feltChips() ?? 0,
+              notice: document.getElementById('table-notice').hidden
+                ? ''
+                : document.getElementById('table-notice').textContent,
+            }),
+            chipsBefore,
+          );
+          played[wanted].handsBefore = handsBefore;
+          played[wanted].phaseBefore = turn.live.phase;
+          continue;
+        }
+
+        // Nothing wanted here: take the least committal legal move and move on.
+        // `decline` is for the insurance round, where a bare `stand` is not on
+        // offer until every seat has answered.
+        const fallback =
+          ['stand', 'decline'].find((id) => turn.live.actions.includes(id)) ?? turn.live.actions[0];
+        if (fallback === undefined) break;
+        await pc.click(`.hand-action[data-action-id="${fallback}"]`).catch(() => {});
         await sleep(350);
       }
+
       for (let attempt = 0; attempt < 30; attempt += 1) {
         if (await pc.isVisible('#table-result')) break;
         await sleep(400);
@@ -1138,7 +1147,9 @@ async function run() {
     check(
       'a splittable pair comes up and the split is offered',
       played.split !== null,
-      played.split === null ? 'no pair in 14 hands' : `${played.split.handsBefore} hand(s) before`,
+      played.split === null
+        ? `no pair across ${handsDealt} deals and ${decisions} decisions`
+        : `${played.split.handsBefore} hand(s) before`,
     );
     if (played.split !== null) {
       check('the table accepts the split', played.split.notice === '', played.split.notice);
