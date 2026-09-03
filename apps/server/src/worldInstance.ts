@@ -3,8 +3,7 @@ import {
   ENTITY_FLAG_GROUNDED,
   ENTITY_FLAG_SEATED,
   ENTITY_FLAG_SPRINTING,
-  INPUT_BUTTON_JUMP,
-  INPUT_BUTTON_SPRINT,
+  buttonsToMoveInput,
   type EntitySnapshot,
   type InputFrame,
   type ServerEvent,
@@ -522,8 +521,9 @@ export class WorldInstance {
             moveZ: frame.moveZ,
             yaw: frame.yaw,
             pitch: frame.pitch,
-            jump: (frame.buttons & INPUT_BUTTON_JUMP) !== 0,
-            sprint: (frame.buttons & INPUT_BUTTON_SPRINT) !== 0,
+            // Shared with the client, which has to unpack these identically or
+            // its prediction is of a different hand entirely.
+            ...buttonsToMoveInput(frame.buttons),
           }
         : {
             // No input this tick (packet loss, or an idle player): carry the

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { PLAYER_RADIUS, TICK_DT, WALK_SPEED } from './constants.js';
 import { createPlayerState, stepPlayer, type MoveInput } from './movement.js';
 import { buildCasinoFloor, type World } from './world.js';
+import { buttonsToMoveInput, INPUT_BUTTON_SPRINT } from '@keydate/protocol';
 
 const world: World = buildCasinoFloor();
 
@@ -209,5 +210,51 @@ describe('stepPlayer', () => {
     expect(after.vz).toBe(0);
     expect(after.yaw).toBe(2);
     expect(after.pitch).toBe(0.4);
+  });
+});
+
+describe('the wire frame the simulation is actually fed', () => {
+  /**
+   * The client and the server both run `stepPlayer`, which is the whole point
+   * of sharing `packages/sim` — but sharing the simulation is worth nothing if
+   * the two disagree about what they feed it.
+   *
+   * They did. The wire carries the buttons as a bitmask; `stepPlayer` wants
+   * `jump` and `sprint` as booleans. The server unpacked them and the client
+   * handed the raw frame straight over, so `input.sprint` was `undefined` in
+   * every predicted step. The client predicted a walk while the server ran a
+   * sprint, and every tick of holding the key was a correction — rubber-banding
+   * that nothing reported, because the corrections still landed the player
+   * roughly where they belonged.
+   */
+  it('runs at walking pace when the flags are missing rather than sprinting', () => {
+    const raw = { moveX: 0, moveZ: 1, yaw: 0, pitch: 0 } as unknown as MoveInput;
+    const stepped = run(createPlayerState(0, 0, 10, 0), raw, 20);
+    const speed = Math.hypot(stepped.vx, stepped.vz);
+
+    // Not a bug in `stepPlayer`: given no sprint it is right to walk. It is the
+    // reason the omission was invisible — the wrong answer looks like a
+    // perfectly ordinary one.
+    expect(speed).toBeCloseTo(WALK_SPEED, 5);
+  });
+
+  it('sprints when the flag is there, which is what the client must reproduce', () => {
+    const walking = run(createPlayerState(0, 0, 10, 0), input({ moveZ: 1 }), 20);
+    const sprinting = run(createPlayerState(0, 0, 10, 0), input({ moveZ: 1, sprint: true }), 20);
+
+    expect(Math.hypot(sprinting.vx, sprinting.vz)).toBeGreaterThan(
+      Math.hypot(walking.vx, walking.vz) * 1.3,
+    );
+  });
+
+  it('agrees with itself whichever side unpacked the buttons', () => {
+    // Both sides now go through `buttonsToMoveInput`. This is what that buys:
+    // identical input in, identical state out, tick for tick.
+    const held = INPUT_BUTTON_SPRINT;
+    const shared = { moveX: 0, moveZ: 1, yaw: 0.4, pitch: 0, ...buttonsToMoveInput(held) };
+
+    const asServer = run(createPlayerState(0, 0, 10, 0), shared, 30);
+    const asClient = run(createPlayerState(0, 0, 10, 0), { ...shared }, 30);
+    expect(asClient).toEqual(asServer);
   });
 });

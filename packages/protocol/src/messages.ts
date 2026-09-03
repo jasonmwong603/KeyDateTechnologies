@@ -267,6 +267,29 @@ export const INPUT_BUTTON_SPRINT = 1 << 1;
 export const INPUT_BUTTON_INTERACT = 1 << 2;
 export const INPUT_BUTTON_CROUCH = 1 << 3;
 
+/**
+ * Unpacks an input frame's button bitmask into the shape the simulation reads.
+ *
+ * This exists because both sides have to do it and only one of them was.
+ * `stepPlayer` takes `jump` and `sprint` as booleans; the wire carries them as
+ * bits. The server unpacked them and the client passed the raw frame straight
+ * through, so `input.sprint` was `undefined` in every predicted step: the
+ * client predicted a walk while the server ran a sprint, and every tick of
+ * holding the key was a correction. Sprinting rubber-banded, and nothing said
+ * so — the position still ended up roughly right, because the corrections won.
+ *
+ * The lesson is the reason `packages/sim` is shared in the first place: it is
+ * not enough for both sides to run the same simulation if they disagree about
+ * what they are feeding it. Anything that translates the wire into a
+ * `MoveInput` belongs here, once.
+ */
+export function buttonsToMoveInput(buttons: number): { jump: boolean; sprint: boolean } {
+  return {
+    jump: (buttons & INPUT_BUTTON_JUMP) !== 0,
+    sprint: (buttons & INPUT_BUTTON_SPRINT) !== 0,
+  };
+}
+
 export const ENTITY_FLAG_GROUNDED = 1 << 0;
 export const ENTITY_FLAG_SPRINTING = 1 << 1;
 export const ENTITY_FLAG_SEATED = 1 << 2;

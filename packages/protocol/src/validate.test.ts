@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { PROTOCOL_VERSION } from './messages.js';
+import {
+  buttonsToMoveInput,
+  INPUT_BUTTON_CROUCH,
+  INPUT_BUTTON_INTERACT,
+  INPUT_BUTTON_JUMP,
+  INPUT_BUTTON_SPRINT,
+  PROTOCOL_VERSION,
+} from './messages.js';
 import {
   MAX_INPUT_FRAMES_PER_MESSAGE,
   parseClientMessage,
@@ -238,5 +245,36 @@ describe('wrapAngle', () => {
     const wrapped = wrapAngle(1000);
     expect(wrapped).toBeGreaterThanOrEqual(-Math.PI);
     expect(wrapped).toBeLessThanOrEqual(Math.PI);
+  });
+});
+
+describe('buttonsToMoveInput', () => {
+  it('unpacks each button independently', () => {
+    expect(buttonsToMoveInput(0)).toEqual({ jump: false, sprint: false });
+    expect(buttonsToMoveInput(INPUT_BUTTON_JUMP)).toEqual({ jump: true, sprint: false });
+    expect(buttonsToMoveInput(INPUT_BUTTON_SPRINT)).toEqual({ jump: false, sprint: true });
+    expect(buttonsToMoveInput(INPUT_BUTTON_JUMP | INPUT_BUTTON_SPRINT)).toEqual({
+      jump: true,
+      sprint: true,
+    });
+  });
+
+  it('ignores bits that are not movement', () => {
+    // Interact and crouch ride in the same mask and must not read as a sprint.
+    expect(buttonsToMoveInput(INPUT_BUTTON_INTERACT | INPUT_BUTTON_CROUCH)).toEqual({
+      jump: false,
+      sprint: false,
+    });
+  });
+
+  it('never returns undefined for a flag, whatever it is handed', () => {
+    // The bug this guards is not a wrong answer but a missing one: an
+    // `undefined` sprint reads as false in `stepPlayer` and predicts a walk,
+    // which is exactly what the client did while the server sprinted.
+    for (const buttons of [0, 1, 2, 3, 15, 255, -1]) {
+      const unpacked = buttonsToMoveInput(buttons);
+      expect(typeof unpacked.jump).toBe('boolean');
+      expect(typeof unpacked.sprint).toBe('boolean');
+    }
   });
 });

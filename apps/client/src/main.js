@@ -5,6 +5,7 @@ import {
   needsCorrection,
 } from '@keydate/netcode';
 import {
+  buttonsToMoveInput,
   ENTITY_FLAG_SEATED,
   INPUT_BUTTON_INTERACT,
   INPUT_BUTTON_SPRINT,
@@ -241,7 +242,9 @@ function applyLocalCorrection(entity, ackedInput) {
   const corrected = prediction.reconcile({
     authoritative,
     ackedSeq: ackedInput,
-    step: (state, frame) => stepPlayer(state, frame, world, TICK_DT),
+    // The same unpacking as the live step, or replaying an acknowledged sprint
+    // would walk it back at half speed and fight the correction it is applying.
+    step: (state, frame) => stepPlayer(state, toMoveInput(frame), world, TICK_DT),
   });
 
   // Seating is a server decision that prediction cannot anticipate, so it is
@@ -366,6 +369,19 @@ document
 // Main loop
 // ---------------------------------------------------------------------------
 
+/**
+ * Turns one wire frame into what the simulation actually reads.
+ *
+ * The frame carries the buttons as a bitmask, and `stepPlayer` wants booleans.
+ * Skipping this step is how prediction silently stopped sprinting or jumping:
+ * `input.sprint` came through as `undefined`, so the client predicted a walk
+ * while the server ran a sprint and corrected it every single tick. Shared with
+ * the server so the two cannot drift apart again.
+ */
+function toMoveInput(frame) {
+  return { ...frame, ...buttonsToMoveInput(frame.buttons) };
+}
+
 function simulateTick() {
   const frame = input.sample();
   const interacting = (frame.buttons & INPUT_BUTTON_INTERACT) !== 0;
@@ -374,7 +390,7 @@ function simulateTick() {
   connection.queueInput({ seq, ...frame });
 
   previousState = { ...localState };
-  localState = stepPlayer(localState, frame, world, TICK_DT);
+  localState = stepPlayer(localState, toMoveInput(frame), world, TICK_DT);
 
   if (interacting && input.consumeInteract()) {
     if (localState.seatedAt !== null) {
