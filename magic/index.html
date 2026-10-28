@@ -544,7 +544,7 @@
         being a judgement call about what the screen looks like. Bump it with any
         change worth shipping, alongside CACHE in sw.js.
       -->
-      <p id="build">Build 2 · 28 Oct</p>
+      <p id="build">Build 3 · 28 Oct</p>
     </div>
 
     <script>
@@ -748,10 +748,33 @@
       // Blind taps
       // ---------------------------------------------------------------------
 
-      function arm(sum) {
+      function arm() {
+        // The tap that started this hold has already pushed the `×`, so
+        // everything before it is the sum — whatever shape it is in.
+        if (tokens[tokens.length - 1] !== '×') return;
+
+        /*
+         * Settle the sum first, rather than trusting what is on the display.
+         *
+         * This used to read the entry, which is right only if `=` was pressed
+         * after the addition. Forget it — and it is one keystroke in the middle
+         * of talking to a room — and the phone was arming against the *second*
+         * spectator's number alone. Everything downstream still looked correct:
+         * the key went white, she tapped, the sum appeared, and the total was
+         * simply not the time. Nothing on screen said so.
+         *
+         * Collapsing it here means both routes end up identical. `A + B ×`
+         * becomes `S ×`, which is the number you were going to say aloud
+         * anyway, and the expression on screen is exactly what gets evaluated.
+         */
+        const sum = evaluate(tokens.slice(0, -1));
         const target = stamp();
         const answer = solve(sum, target);
         if (answer === null) return;
+
+        tokens = [sum, '×'];
+        entry = String(sum);
+        settled = true;
 
         // Her taps spell out C, then the app lays in the `+` itself, then D.
         // She taps straight through; you never have to reach in and press
@@ -765,11 +788,32 @@
         render();
       }
 
+      /** Abandons her number unfinished. Only AC does this. */
       function disarm() {
         blindDigits = [];
         armed = false;
         blindEl.hidden = true;
         render();
+      }
+
+      /*
+       * Takes the phone back, finishing her number for her.
+       *
+       * She is told to tap as many times as she likes, and the one thing that
+       * phrase has to mean is that too few is as safe as too many. It was not:
+       * extra taps were swallowed, but stopping short left the rest of the
+       * digits unentered and the total quietly wrong — no error, no warning,
+       * just a number that is not the time. You cannot count her taps while the
+       * phone is face down and you are talking, so the app finishes what is
+       * left the moment you take it back.
+       */
+      function release() {
+        while (blindDigits.length > 0) {
+          const next = blindDigits.shift();
+          if (next === '+') operator('+');
+          else digit(next);
+        }
+        disarm();
       }
 
       /*
@@ -780,18 +824,22 @@
        * times as she likes — she cannot overrun it and she cannot wreck the
        * display. It ends on a press and hold, which is a thing you do when you
        * pick the phone back up and she will not do by accident.
+       *
+       * The hold is armed on *every* tap, finished number or not. It used to
+       * start only once the digits ran out, so stopping her early left no way
+       * out at all: a press and hold just entered another digit, and the only
+       * exit was to keep tapping until the number happened to complete. The one
+       * gesture you reach for when you take the phone back has to work whenever
+       * you reach for it.
        */
       let blindHold = 0;
 
       blindEl.addEventListener('pointerdown', (event) => {
         event.preventDefault();
+        blindHold = window.setTimeout(release, 600);
 
         const next = blindDigits.shift();
-        if (next === undefined) {
-          // Out of digits: absorb the tap, and start the clock on a hold.
-          blindHold = window.setTimeout(disarm, 600);
-          return;
-        }
+        if (next === undefined) return; // Out of digits: the tap is absorbed.
 
         if (next === '+') {
           // The operator between her two numbers costs no tap of its own: it is
@@ -829,7 +877,7 @@
          * confirmation before the phone goes over.
          */
         if (key === '×') {
-          armTimer = window.setTimeout(() => arm(Number(entry)), 500);
+          armTimer = window.setTimeout(arm, 500);
         }
 
         if (/^[0-9.]$/.test(key)) return digit(key);

@@ -24,7 +24,7 @@
 // Bumping this name is what makes a phone throw away the previous copy. Change
 // it whenever anything in FILES changes; it is also the one byte in this file
 // that guarantees the browser notices there is a new worker at all.
-const CACHE = 'calc-v2';
+const CACHE = 'calc-v3';
 
 const FILES = ['./', './index.html', './manifest.webmanifest', './icon-180.png', './icon-512.png'];
 

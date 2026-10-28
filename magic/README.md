@@ -57,7 +57,14 @@ with `CALCULATOR_SLUG` on the host; set it empty to stop serving it.
    confirmation, and the only thing you have to remember. A normal tap of `×`
    multiplies as usual and arms nothing.
 4. **Turn the phone face down.** Third spectator taps the screen. _"As many times
-   as you like"_ — nine is the most it ever needs, and extra taps are swallowed.
+   as you like"_ — and mean it. Too many are swallowed; too few are finished for
+   her the moment you take the phone back. You never have to count.
+
+   What she is typing is two numbers, not one, so partway through her taps the
+   screen lays in a `+` by itself and carries straight on. That is meant to
+   happen, and it costs her no tap of its own. Rehearse once and you will stop
+   noticing it; during the performance the phone is face down anyway.
+
 5. **Take the phone back and press and hold anywhere** for half a second to
    release the keypad. Then `=`.
 6. **Turn the phone sideways** for the reveal, if you want it. The keypad
@@ -146,6 +153,18 @@ pinning down an eight-digit target, and eight digits have to come from somewhere
 - **Arming on every `×`.** An early version did, so an innocent `12 + 3 × 4` put
   the invisible overlay up and left the calculator dead. It has to survive being
   picked up and used.
+- **Trusting the display instead of the sum.** `arm` read whatever number was on
+  screen, which is the sum only if you pressed `=` after the addition. Forget
+  that one keystroke — in the middle of talking to a room — and it armed against
+  the second spectator's number alone. Everything downstream still looked
+  right: the key went white, she tapped, the sum appeared, and the total was out
+  by the first spectator's number exactly. Nothing on screen said so. It now
+  settles the sum itself, so both routes end identically.
+- **Stopping her early.** Extra taps were swallowed, but _too few_ left the rest
+  of the digits unentered and the total quietly wrong — and worse, the press and
+  hold only worked once her digits ran out, so stopping her short left no way
+  out at all: the hold just entered another digit and every key stayed behind
+  the overlay. "Tap as many times as you like" now means it in both directions.
 - **Clipping the answer from the left.** The readouts were laid out
   right-to-left, which looks identical until a number outgrows the screen — and
   then eats the _most significant_ digits. `10,280,533` showing as `280,533` is

@@ -77,6 +77,23 @@ const type = async (text) => {
 };
 const shown = () => page.textContent('#entry');
 
+/**
+ * The clock as the prop reads it.
+ *
+ * The target is fixed at the instant the hold arms it, so a run that reads the
+ * time once at the top and compares at the end disagrees by one whenever the
+ * minute happens to turn in between — a failure that means nothing and shows up
+ * about once in twelve runs. Every comparison brackets the arming instead.
+ */
+const clock = () =>
+  page.evaluate(() => {
+    const pad = (value) => String(value).padStart(2, '0');
+    const now = new Date();
+    return Number(
+      `${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}`,
+    );
+  });
+
 // Ordinary arithmetic, including the precedence that decides whether the
 // audience's own calculators agree with the phone.
 await type('12');
@@ -105,14 +122,6 @@ check('groups thousands like the real one', (await shown()) === '1,234,567', awa
 // --- The trick ------------------------------------------------------------
 await page.click('.key:text-is("AC")');
 
-const expected = await page.evaluate(() => {
-  const pad = (value) => String(value).padStart(2, '0');
-  const now = new Date();
-  return Number(
-    `${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}`,
-  );
-});
-
 await type('4827');
 await tap('+');
 await type('3915');
@@ -121,11 +130,13 @@ check('the two spectators total correctly', (await shown()) === '8,742', await s
 
 // Hold the multiply. That is the whole secret move — and the hold performs the
 // multiply itself, so it is the only press the expression ever sees.
+const armedAfter = await clock();
 const multiply = await page.locator('.key:text-is("×")').boundingBox();
 await page.mouse.move(multiply.x + multiply.width / 2, multiply.y + multiply.height / 2);
 await page.mouse.down();
 await page.waitForTimeout(700);
 await page.mouse.up();
+const armedBefore = await clock();
 
 const armedAfterHold = await page.evaluate(
   () => document.querySelector('.key.operator.armed')?.dataset.key ?? null,
@@ -190,8 +201,8 @@ const result = Number((await shown()).replace(/,/g, ''));
 
 check(
   'the total is the date and the time on the clock',
-  result === expected,
-  `${result} vs ${expected}`,
+  result === armedAfter || result === armedBefore,
+  `${result} vs ${armedAfter}`,
 );
 check(
   'and the sum is on screen for the room to copy',
@@ -284,6 +295,88 @@ for (const [name, width, height] of [
     `bottom row ends at ${fit.lowest.toFixed(0)} of ${height}, keys ${fit.shortest.toFixed(0)}pt, ${fit.over}px hidden`,
   );
 }
+
+await page.setViewportSize({ width: 844, height: 390 });
+await page.waitForTimeout(100);
+
+/*
+ * The two ways the routine used to fail without saying so.
+ *
+ * Both end with a number that is not the time, and nothing on screen admits it
+ * — which is the worst shape a bug can take in a prop, because the first person
+ * to notice is in the audience.
+ */
+const perform = async ({ settle = true, taps = 20 } = {}) => {
+  await page.click('.key:text-is("AC")');
+  await page.setViewportSize(devices['iPhone 13 Pro'].viewport);
+  await page.waitForTimeout(80);
+
+  await type('4827');
+  await tap('+');
+  await type('3915');
+  if (settle) await tap('=');
+
+  // The target is fixed the instant the hold arms it, and the minute can turn
+  // while the test is still clicking — so bracket it rather than guess.
+  const before = await clock();
+  const key = await page.locator('.key:text-is("×")').boundingBox();
+  await page.mouse.move(key.x + key.width / 2, key.y + key.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(700);
+  await page.mouse.up();
+  const after = await clock();
+
+  const size = page.viewportSize();
+  for (let i = 0; i < taps; i += 1) {
+    await page.mouse.click(size.width * 0.5, size.height * 0.4);
+    await page.waitForTimeout(15);
+  }
+
+  // You take the phone back.
+  await page.mouse.move(size.width * 0.5, size.height * 0.45);
+  await page.mouse.down();
+  await page.waitForTimeout(800);
+  await page.mouse.up();
+
+  const sum = (await page.textContent('#expression')).trim();
+
+  // If the overlay is still up the prop is dead in the hand — every key is
+  // behind it. Say so here rather than letting the click on `=` hang for
+  // thirty seconds and report a timeout instead of a diagnosis.
+  if (!(await page.evaluate(() => document.getElementById('blind').hidden))) {
+    return { total: 0, sum, ok: false, want: before, stuck: true };
+  }
+
+  await tap('=');
+  const total = Number((await shown()).replace(/,/g, ''));
+  return { total, sum, ok: total === before || total === after, want: before };
+};
+
+// She stops tapping long before the number is finished. "As many times as you
+// like" has to mean too few as well as too many — you cannot count her taps
+// while the phone is face down and you are talking to the room.
+const short = await perform({ taps: 3 });
+check(
+  'stopping her early still lands on the clock',
+  short.ok,
+  short.stuck
+    ? 'the keypad never came back — every key is behind the overlay'
+    : `${short.total} vs ${short.want} — ${short.sum}`,
+);
+
+// The `=` after the addition is forgotten. One keystroke, in the middle of
+// talking, and it used to arm against the second spectator's number alone.
+const unsettled = await perform({ settle: false });
+check(
+  'forgetting the = after the addition still lands on the clock',
+  unsettled.ok,
+  `${unsettled.total} vs ${unsettled.want} — ${unsettled.sum}`,
+);
+check(
+  'and the sum on screen is the one that was evaluated',
+  unsettled.sum.startsWith('8,742 ×'),
+  unsettled.sum,
+);
 
 await page.setViewportSize({ width: 844, height: 390 });
 await page.waitForTimeout(100);
