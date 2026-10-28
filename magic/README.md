@@ -43,9 +43,35 @@ with `CALCULATOR_SLUG` on the host; set it empty to stop serving it.
    as you like"_ — nine is the most it ever needs, and extra taps are swallowed.
 5. **Take the phone back and press and hold anywhere** for half a second to
    release the keypad. Then `=`.
+6. **Turn the phone sideways** for the reveal. The keypad rearranges the way the
+   system one does and the answer goes up to full size, with the whole sum above
+   it — big enough for the back row to copy down.
 
 The screen reads the date and time, and the whole sum is above it for anyone who
 wants to check.
+
+Rotating is safe at any point in the routine. Nothing about the arithmetic or the
+blind taps depends on which way up the phone is, so you can turn it before you
+start, hand it over sideways, or leave it upright throughout.
+
+### Reading it across a room
+
+The answer is eight digits and three commas and does not fit a phone held
+upright at full size. It shrinks until it does, exactly as the system calculator
+does — it is never cut off, in either orientation.
+
+Landscape is a third again as wide, so there the number does not have to shrink
+at all: on a 13 Pro it comes out at 78px against 61px upright. That is the whole
+reason to turn it over, and the reason the routine ends with a rotation.
+
+### The crib, on the phone
+
+Press and hold the **keypad icon, top right** for most of a second: the handling
+appears as a card. Tap anywhere to dismiss it.
+
+It is behind a hold for the same reason the rehearsal readout is — nothing that
+can appear on this screen by accident is worth having. Use it in the green room,
+not on stage.
 
 ### Rehearsing
 
@@ -98,6 +124,15 @@ pinning down an eight-digit target, and eight digits have to come from somewhere
 - **Arming on every `×`.** An early version did, so an innocent `12 + 3 × 4` put
   the invisible overlay up and left the calculator dead. It has to survive being
   picked up and used.
+- **Clipping the answer from the left.** The readouts were laid out
+  right-to-left, which looks identical until a number outgrows the screen — and
+  then eats the _most significant_ digits. `10,280,533` showing as `280,533` is
+  worse than an error, because nothing on screen says anything is missing and
+  the room checks a number that was never there. They are right-aligned and
+  shrink to fit instead.
+- **Locking the installed app to portrait.** The manifest said
+  `"orientation": "portrait"`, which an installed home-screen app obeys — the
+  phone would simply never have turned over, however the page was styled.
 
 ### Why not more multiplications
 

@@ -50,3 +50,4 @@ dist-client/
 
 # Browser-test output from magic/smoke.mjs
 magic/preview.png
+magic/preview-landscape.png

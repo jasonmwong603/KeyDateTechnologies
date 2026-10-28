@@ -31,6 +31,11 @@
         --grey-light: #6b6b6b;
         --grey-dark: #2e2e2e;
         --chrome: #1c1c1e;
+
+        /* The size the readout starts at. Script shrinks from here when a long
+           number would not fit, so these are a ceiling and not a promise. */
+        --entry-size: clamp(3.2rem, 20vw, 5.5rem);
+        --expression-size: clamp(1rem, 5vw, 1.6rem);
       }
 
       * {
@@ -98,24 +103,36 @@
        * sum back off the screen at the end instead of taking it on trust.
        */
       #expression {
-        font-size: clamp(1rem, 5vw, 1.6rem);
+        font-size: var(--expression-size);
         color: #8e8e93;
         font-weight: 300;
-        white-space: nowrap;
-        overflow: hidden;
-        direction: rtl;
-        max-width: 100%;
         min-height: 1.6em;
       }
 
       #entry {
-        font-size: clamp(3.2rem, 20vw, 5.5rem);
+        font-size: var(--entry-size);
         font-weight: 300;
         line-height: 1.05;
+      }
+
+      /*
+       * Both readouts are full-width and right-aligned rather than laid out
+       * right-to-left.
+       *
+       * They used to be `direction: rtl`, which looked identical until a number
+       * outgrew the screen — and then clipped it from the *left*, quietly eating
+       * the most significant digits. An eight-digit answer showing its last six
+       * is worse than useless in front of an audience: it is wrong, and nobody
+       * can tell. Full width also gives the script something to measure against,
+       * since a shrink-to-fit box can never overflow and so never reports that
+       * it needs to shrink.
+       */
+      #expression,
+      #entry {
+        width: 100%;
+        text-align: right;
         white-space: nowrap;
         overflow: hidden;
-        direction: rtl;
-        max-width: 100%;
       }
 
       /* --- Keypad ----------------------------------------------------------- */
@@ -154,6 +171,12 @@
         font-size: clamp(1.9rem, 9.5vw, 2.7rem);
       }
 
+      /* Scales the drawn glyphs (±) with the typed ones in either orientation. */
+      .key svg {
+        width: auto;
+        height: 1.15em;
+      }
+
       /*
        * The armed operator stays lit, as the real one does. It matters more here
        * than it looks: it is the only thing on screen telling you the multiply
@@ -183,6 +206,141 @@
         display: none;
       }
 
+      /* --- Landscape --------------------------------------------------------
+       *
+       * Turn the phone and the keypad genuinely rearranges, as the system one
+       * does: five columns instead of four, round keys become pills, the
+       * function keys move to column four and the operators to column five.
+       *
+       * The point of it here is the readout. Landscape is a third again as wide
+       * and the keypad needs less of the height, so the full eight-digit answer
+       * and the whole sum above it sit on screen at a size the back row can
+       * read. Portrait shrinks to fit; landscape is where it does not have to.
+       *
+       * Placement is spelled out per key rather than relying on source order,
+       * because the order on screen is not the order in the document any more.
+       */
+      @media (orientation: landscape) {
+        :root {
+          --entry-size: min(20vh, 5rem);
+          --expression-size: min(7vh, 1.5rem);
+        }
+
+        #app {
+          padding: max(0.4rem, env(safe-area-inset-top)) max(0.9rem, env(safe-area-inset-right))
+            max(0.5rem, env(safe-area-inset-bottom)) max(0.9rem, env(safe-area-inset-left));
+        }
+
+        #chrome-row {
+          padding: 0.1rem 0.2rem 0;
+        }
+
+        .chrome-button {
+          width: 34px;
+          height: 34px;
+        }
+
+        .chrome-button svg {
+          width: 18px;
+          height: 18px;
+        }
+
+        /* The readout takes what it needs; the keypad takes the rest. */
+        #display {
+          flex: 0 0 auto;
+          /* Enough clearance that a comma's tail does not sit on the top row. */
+          padding: 0 0.4rem 0.55rem;
+        }
+
+        #keys {
+          flex: 1;
+          min-height: 0;
+          grid-template-columns: repeat(5, 1fr);
+          grid-template-rows: repeat(4, minmax(0, 1fr));
+          gap: min(2.2vh, 11px);
+          padding: 0 0.2rem;
+        }
+
+        .key {
+          /* Pills, not circles — the cell is wider than it is tall. */
+          aspect-ratio: auto;
+          border-radius: 999px;
+          font-size: min(6vh, 1.7rem);
+        }
+
+        .key.function {
+          font-size: min(5vh, 1.4rem);
+        }
+
+        .key.operator {
+          font-size: min(6.8vh, 1.9rem);
+        }
+
+        [data-key='7'] {
+          grid-area: 1 / 1;
+        }
+        [data-key='8'] {
+          grid-area: 1 / 2;
+        }
+        [data-key='9'] {
+          grid-area: 1 / 3;
+        }
+        [data-key='back'] {
+          grid-area: 1 / 4;
+        }
+        [data-key='÷'] {
+          grid-area: 1 / 5;
+        }
+
+        [data-key='4'] {
+          grid-area: 2 / 1;
+        }
+        [data-key='5'] {
+          grid-area: 2 / 2;
+        }
+        [data-key='6'] {
+          grid-area: 2 / 3;
+        }
+        [data-key='ac'] {
+          grid-area: 2 / 4;
+        }
+        [data-key='×'] {
+          grid-area: 2 / 5;
+        }
+
+        [data-key='1'] {
+          grid-area: 3 / 1;
+        }
+        [data-key='2'] {
+          grid-area: 3 / 2;
+        }
+        [data-key='3'] {
+          grid-area: 3 / 3;
+        }
+        [data-key='percent'] {
+          grid-area: 3 / 4;
+        }
+        [data-key='−'] {
+          grid-area: 3 / 5;
+        }
+
+        [data-key='sign'] {
+          grid-area: 4 / 1;
+        }
+        [data-key='0'] {
+          grid-area: 4 / 2;
+        }
+        [data-key='.'] {
+          grid-area: 4 / 3;
+        }
+        [data-key='='] {
+          grid-area: 4 / 4;
+        }
+        [data-key='+'] {
+          grid-area: 4 / 5;
+        }
+      }
+
       /* Rehearsal readout. Hidden unless you ask for it. */
       #rehearsal {
         position: fixed;
@@ -200,6 +358,57 @@
 
       #rehearsal[hidden] {
         display: none;
+      }
+
+      /*
+       * The crib: the handling, on the prop itself.
+       *
+       * Behind a deliberate hold on the keypad icon, for the same reason the
+       * rehearsal readout is — anything that can appear on this screen by
+       * accident is a liability. Worth having on the phone rather than only in a
+       * file on a laptop, because the one moment you want reminding of the moves
+       * is five minutes before you do it.
+       */
+      #crib {
+        position: fixed;
+        inset: 0;
+        z-index: 70;
+        background: rgba(0, 0, 0, 0.94);
+        padding: max(1rem, env(safe-area-inset-top)) 1.2rem max(1rem, env(safe-area-inset-bottom));
+        overflow-y: auto;
+        font-size: 0.82rem;
+        line-height: 1.5;
+      }
+
+      #crib[hidden] {
+        display: none;
+      }
+
+      #crib h2 {
+        font-size: 0.72rem;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--orange);
+        margin: 0 0 0.6rem;
+      }
+
+      #crib ol {
+        margin: 0;
+        padding-left: 1.2rem;
+      }
+
+      #crib li {
+        margin-bottom: 0.5rem;
+      }
+
+      #crib b {
+        font-weight: 600;
+      }
+
+      #crib p {
+        color: #8e8e93;
+        font-size: 0.74rem;
+        margin: 0.9rem 0 0;
       }
     </style>
   </head>
@@ -295,6 +504,30 @@
 
     <div id="blind" hidden></div>
     <div id="rehearsal" hidden></div>
+
+    <div id="crib" hidden>
+      <h2>Handling</h2>
+      <ol>
+        <li>First spectator calls a 3- or 4-digit number. Type it, press <b>+</b>.</li>
+        <li>Second spectator calls another. Type it, press <b>=</b>. Say the sum aloud.</li>
+        <li>
+          <b>Press and hold ×</b> for half a second. The key turns white — that is the only thing to
+          remember. A normal tap of × just multiplies.
+        </li>
+        <li>
+          Phone face down. Third spectator taps, <i>as many times as she likes</i>. Nine is the most
+          it ever needs; extras are ignored.
+        </li>
+        <li>
+          Take the phone back, <b>press and hold anywhere</b> to release the keypad, then <b>=</b>.
+        </li>
+      </ol>
+      <p>
+        Turn the phone sideways for the reveal — the full number and the whole sum sit at readable
+        size in landscape. Rotating changes nothing about the arithmetic and is safe at any point.
+      </p>
+      <p>Hold the clock icon, top left, for the rehearsal readout. Tap anywhere to close this.</p>
+    </div>
 
     <script>
       // ---------------------------------------------------------------------
@@ -397,12 +630,37 @@
         return fraction === undefined ? grouped : `${grouped}.${fraction}`;
       };
 
+      /**
+       * Shrinks a readout until the whole of it is on screen.
+       *
+       * The answer is eight digits and the sum above it is longer still, so on a
+       * phone in portrait neither fits at full size. The system calculator
+       * handles this by shrinking the text, and so does this: clearing the
+       * inline size first re-reads the ceiling from CSS, so each render starts
+       * from full size and only comes down as far as it has to. Nothing is ever
+       * cut off, in either orientation — which is the point, since a number the
+       * audience cannot read in full is a number they cannot check.
+       */
+      function fit(element) {
+        element.style.fontSize = '';
+        const room = element.clientWidth;
+        if (room === 0) return;
+        const needed = element.scrollWidth;
+        if (needed <= room) return;
+        const ceiling = parseFloat(getComputedStyle(element).fontSize);
+        // The shade under 1 keeps a rounded-up fraction of a pixel from
+        // reintroducing the clipping this exists to remove.
+        element.style.fontSize = `${Math.max((ceiling * room * 0.99) / needed, 11)}px`;
+      }
+
       function render() {
         entryEl.textContent = entry === '' ? '0' : format(Number(entry)) || entry;
         if (entry.endsWith('.')) entryEl.textContent += '.';
         expressionEl.textContent = tokens
           .map((token) => (typeof token === 'number' ? format(token) : token))
           .join(' ');
+        fit(entryEl);
+        fit(expressionEl);
 
         for (const button of document.querySelectorAll('.key.operator')) {
           button.classList.toggle('armed', armed && button.dataset.key === '×');
@@ -593,6 +851,36 @@
       });
       for (const done of ['pointerup', 'pointerleave', 'pointercancel']) {
         history.addEventListener(done, () => window.clearTimeout(holdTimer));
+      }
+
+      // The crib: hold the keypad icon. Same reasoning as the rehearsal readout
+      // — reachable in the green room, impossible to summon by accident.
+      let cribTimer = 0;
+      const cribEl = document.getElementById('crib');
+      const mode = document.getElementById('mode');
+      mode.addEventListener('pointerdown', () => {
+        cribTimer = window.setTimeout(() => {
+          cribEl.hidden = false;
+        }, 800);
+      });
+      for (const done of ['pointerup', 'pointerleave', 'pointercancel']) {
+        mode.addEventListener(done, () => window.clearTimeout(cribTimer));
+      }
+
+      // A tap anywhere closes it. It cannot be the same hold that opened it: the
+      // card covers the whole screen, icon included, so a second hold never
+      // reaches the button underneath — which left the only way out being to
+      // kill the app, in the exact five minutes before a show when you would
+      // least like to.
+      cribEl.addEventListener('click', () => {
+        cribEl.hidden = true;
+      });
+
+      // Rotating changes how much room the readout has, so it has to be measured
+      // again. `orientationchange` fires before the new size is readable on some
+      // builds, hence the resize as well — both are cheap and idempotent.
+      for (const event of ['resize', 'orientationchange']) {
+        window.addEventListener(event, () => window.requestAnimationFrame(render));
       }
 
       render();

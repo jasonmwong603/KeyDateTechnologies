@@ -156,6 +156,35 @@ check(
 );
 
 const expressionBefore = await page.textContent('#expression');
+
+/**
+ * What a readout is actually showing, versus what it holds.
+ *
+ * `over` is the part hanging outside the box — the number the audience cannot
+ * see. Anything above zero is the bug this measures: it used to clip from the
+ * left, so the digits lost were the ones that mattered and nothing on screen
+ * admitted it. `inline` says whether the script had to shrink the text to get
+ * there, which is the difference between a readout that fits and one that fits
+ * comfortably.
+ */
+const readout = (selector) =>
+  page.evaluate((sel) => {
+    const element = document.querySelector(sel);
+    return {
+      over: element.scrollWidth - element.clientWidth,
+      size: parseFloat(getComputedStyle(element).fontSize),
+      inline: element.style.fontSize !== '',
+      text: element.textContent,
+    };
+  }, selector);
+
+const sumShown = await readout('#expression');
+check(
+  'the whole sum is visible, not clipped',
+  sumShown.over <= 1,
+  `${sumShown.over}px hidden of "${sumShown.text}"`,
+);
+
 await tap('=');
 const result = Number((await shown()).replace(/,/g, ''));
 
@@ -169,6 +198,88 @@ check(
   /8,742 × [\d,]+ \+/.test(expressionBefore),
   expressionBefore,
 );
+
+// --- Every digit on screen, in both orientations --------------------------
+//
+// The reveal is eight digits and three commas and does not fit a phone held
+// upright at full size. Portrait has to shrink it; landscape has to not need
+// to. Either way nothing may be cut off — a number the room cannot read in
+// full is a number it cannot check, which is the whole proof.
+const portrait = await readout('#entry');
+check(
+  'the full eight-digit answer fits in portrait',
+  portrait.over <= 1,
+  `${portrait.over}px hidden of "${portrait.text}"`,
+);
+check('portrait gets there by shrinking', portrait.inline, `${portrait.size.toFixed(1)}px`);
+
+await page.setViewportSize({ width: 844, height: 390 });
+await page.waitForTimeout(120);
+
+const landscape = await page.evaluate(() => {
+  const keys = [...document.querySelectorAll('.key')].map((key) => {
+    const box = key.getBoundingClientRect();
+    return { key: key.dataset.key, x: box.x, y: box.y, w: box.width, h: box.height };
+  });
+  // Reading order on screen, which is no longer the order in the document.
+  keys.sort((a, b) => (Math.abs(a.y - b.y) > 4 ? a.y - b.y : a.x - b.x));
+  return {
+    order: keys.map((key) => key.key).join(' '),
+    columns: new Set(keys.map((key) => Math.round(key.x))).size,
+    pills: keys.every((key) => key.w > key.h + 2),
+    smallest: Math.min(...keys.map((key) => key.h)),
+  };
+});
+
+check(
+  'landscape rearranges the keypad as the system one does',
+  landscape.order === '7 8 9 back ÷ 4 5 6 ac × 1 2 3 percent − sign 0 . = +',
+  landscape.order,
+);
+check('five columns of them', landscape.columns === 5, `${landscape.columns} columns`);
+check('and the keys are pills, not circles', landscape.pills);
+check(
+  'still big enough to hit',
+  landscape.smallest >= 42,
+  `shortest key ${landscape.smallest.toFixed(0)}px`,
+);
+
+const wide = await readout('#entry');
+check(
+  'the full answer fits in landscape too',
+  wide.over <= 1,
+  `${wide.over}px hidden of "${wide.text}"`,
+);
+check(
+  'and landscape does not have to shrink it',
+  !wide.inline && wide.size > portrait.size,
+  `${wide.size.toFixed(1)}px landscape vs ${portrait.size.toFixed(1)}px portrait`,
+);
+
+await page.screenshot({ path: path.join(here, 'preview-landscape.png') });
+
+// The crib is on the prop, behind a hold — and must never show up on its own.
+check('the crib stays shut', await page.evaluate(() => document.getElementById('crib').hidden));
+const icon = await page.locator('#mode').boundingBox();
+await page.mouse.move(icon.x + icon.width / 2, icon.y + icon.height / 2);
+await page.mouse.down();
+await page.waitForTimeout(1000);
+await page.mouse.up();
+check(
+  'holding the keypad icon opens it',
+  await page.evaluate(() => !document.getElementById('crib').hidden),
+);
+// A tap closes it — it has to be a tap and not the same hold, because the card
+// covers the icon that opened it.
+await page.mouse.click(422, 320);
+check(
+  'and a tap anywhere closes it again',
+  await page.evaluate(() => document.getElementById('crib').hidden),
+);
+
+await page.setViewportSize(devices['iPhone 13 Pro'].viewport);
+await page.waitForTimeout(120);
+
 check('no page errors', errors.length === 0, errors[0]);
 
 await page.click('.key:text-is("AC")');
