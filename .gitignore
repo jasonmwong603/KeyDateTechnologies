@@ -47,3 +47,6 @@ DerivedDataCache/
 
 # Packaged client payload
 dist-client/
+
+# Browser-test output from magic/smoke.mjs
+magic/preview.png
