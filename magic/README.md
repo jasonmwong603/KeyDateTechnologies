@@ -79,6 +79,34 @@ with `CALCULATOR_SLUG` on the host; set it empty to stop serving it.
 The screen reads the date and time, and the closing sum is above it for anyone
 who wants to check.
 
+### The failsafe
+
+She is tapping a screen she cannot see, so she cannot avoid the keys. While she
+taps she never reaches them: the overlay takes every touch, and taps past the
+ones her number needs are swallowed.
+
+The exposed moment is the release. It is meant to be you taking the phone back,
+but a spectator who rests a finger for half a second has performed the identical
+gesture and has no way of knowing it. Before this was dealt with, her next taps
+landed on a live keypad — one test run turned `8,742 × 1,175` into `7 ÷ 0` and
+the routine into `5.58`.
+
+So after any release every key is inert, and stays inert for as long as the
+screen keeps being touched. Each stray tap is swallowed and pushes the unlock
+further out; the seal lifts only once the screen has been left alone for most of
+a second, which happens when the phone is in your hand and not before. Whatever
+she does, the display stays on the force number and the pending operator.
+
+Two smaller guards go with it. A hold that travels more than a thumb's width is
+a drag, not a hold, and releases nothing — a hand sliding over a face-down phone
+cannot end force mode. And extra fingers count as one gesture rather than one
+tap each.
+
+**What this costs you:** for about a second after you release, the keypad does
+nothing. Take the phone, turn it over, show the number — you are well past a
+second by then. If you stab at `=` the instant you release and nothing happens,
+that is the failsafe doing its job; press it again.
+
 ### Why the second half is `+` and not another `×`
 
 Because a second multiply cannot work and no amount of code will make it. After

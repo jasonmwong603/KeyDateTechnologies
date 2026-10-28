@@ -151,13 +151,23 @@ const tapBlind = async (times) => {
   }
 };
 
-/** You take the phone back: press and hold anywhere. */
+/**
+ * You take the phone back: press and hold anywhere.
+ *
+ * The wait afterwards is the failsafe, not padding. Every key is inert until
+ * the screen has been left alone for most of a second, so that a spectator who
+ * released the overlay by accident — by resting a finger, which is the same
+ * gesture — cannot then reach the keypad. In the hand that second is already
+ * gone by the time you have turned the phone over.
+ */
 const takeBack = async () => {
   await page.mouse.move(box.width * 0.5, box.height * 0.45);
   await page.mouse.down();
   await page.waitForTimeout(800);
   await page.mouse.up();
-  return page.evaluate(() => document.getElementById('blind').hidden);
+  const free = await page.evaluate(() => document.getElementById('blind').hidden);
+  await page.waitForTimeout(1100);
+  return free;
 };
 
 // --- First half: hold the multiply, she taps the multiplier ---------------
@@ -166,7 +176,47 @@ check('holding the multiply arms the first taps', (await holdKey('×')) === '×'
 await tapBlind(20);
 const overrun = await shown();
 check('extra taps cannot overrun the number', !overrun.includes('Error'), overrun);
-check('a press and hold releases the keypad', await takeBack());
+
+/*
+ * The failsafe, where it matters most.
+ *
+ * She cannot see the screen, so she cannot avoid the keys — and resting a
+ * finger for half a second is the very gesture that drops the overlay. This
+ * reproduces that: release it as she would, by accident, and then let her go on
+ * tapping the most destructive keys on the pad. The force number and the
+ * pending operator have to be exactly where they were.
+ */
+const releasedEarly = await page.evaluate(() => document.getElementById('blind').hidden);
+await page.mouse.move(box.width * 0.5, box.height * 0.4);
+await page.mouse.down();
+await page.waitForTimeout(700);
+await page.mouse.up();
+check(
+  'a rested finger does release the overlay, as it always did',
+  !releasedEarly && (await page.evaluate(() => document.getElementById('blind').hidden)),
+);
+
+const guarded = { entry: await shown(), expression: await page.textContent('#expression') };
+for (const key of ['AC', '7', '=', '÷', '%', '⌫']) {
+  await page.click(`.key:text-is("${key}")`, { force: true });
+  await page.waitForTimeout(40);
+}
+check(
+  'her stray taps cannot touch the number — AC, digits, =, ÷, %, backspace',
+  (await shown()) === guarded.entry &&
+    (await page.textContent('#expression')) === guarded.expression,
+  `${await page.textContent('#expression')} ${await shown()} — was ${guarded.expression} ${guarded.entry}`,
+);
+
+// And it lifts on its own once the screen is left alone, which is what happens
+// the moment the phone is in your hand.
+await page.waitForTimeout(1100);
+await page.click('.key:text-is("⌫")');
+check('the seal lifts once the tapping stops', (await shown()) !== guarded.entry, await shown());
+
+// Put the digit back and carry on; the routine is unharmed by all of that.
+await tap(guarded.entry.slice(-1));
+check('and the force number is intact', (await shown()) === guarded.entry, await shown());
 
 // The middle reveal: a real product, on screen, for the room to look at. Her
 // number is in the readout and the sum is still above it, so both are showing
@@ -362,7 +412,11 @@ const perform = async ({ settle = true, taps = 20 } = {}) => {
     // If the overlay is still up the prop is dead in the hand — every key is
     // behind it. Say so here rather than letting the click on `=` hang for
     // thirty seconds and report a timeout instead of a diagnosis.
-    return page.evaluate(() => document.getElementById('blind').hidden);
+    const free = await page.evaluate(() => document.getElementById('blind').hidden);
+    // The seal: keys stay inert until the screen has been quiet. Real handling
+    // spends far longer than this turning the phone over.
+    await page.waitForTimeout(1100);
+    return free;
   };
 
   if (!(await half('×', taps))) {
@@ -413,6 +467,7 @@ await page.setViewportSize({ width: 844, height: 390 });
 await page.waitForTimeout(100);
 
 // The crib is on the prop, behind a hold — and must never show up on its own.
+await page.waitForTimeout(1100); // out from under the seal left by the last release
 check('the crib stays shut', await page.evaluate(() => document.getElementById('crib').hidden));
 const icon = await page.locator('#mode').boundingBox();
 await page.mouse.move(icon.x + icon.width / 2, icon.y + icon.height / 2);

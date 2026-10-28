@@ -200,6 +200,9 @@
         inset: 0;
         z-index: 50;
         background: transparent;
+        /* Hands every gesture to the script, scrolls and pinches included, so a
+           dragged thumb cannot do anything the browser would do by default. */
+        touch-action: none;
       }
 
       #blind[hidden] {
@@ -528,7 +531,10 @@
           Phone face down. Third spectator taps, <i>as many times as she likes</i>. Take it back,
           <b>press and hold anywhere</b> to release the keypad.
         </li>
-        <li>Show her number. Press <b>=</b>. The room sees a real product — let it land.</li>
+        <li>
+          Show her number, then press <b>=</b>. The room sees a real product — let it land. (Keys
+          are dead for a second after a release. That is the failsafe, not a fault.)
+        </li>
         <li>
           <b>Press and hold +</b> for half a second; it turns white the same way. Phone face down,
           <i>fourth spectator</i> taps.
@@ -550,7 +556,7 @@
         being a judgement call about what the screen looks like. Bump it with any
         change worth shipping, alongside CACHE in sw.js.
       -->
-      <p id="build">Build 4 · 28 Oct</p>
+      <p id="build">Build 5 · 28 Oct</p>
     </div>
 
     <script>
@@ -877,7 +883,55 @@
       function release() {
         while (blindDigits.length > 0) digit(blindDigits.shift());
         disarm();
+        seal();
       }
+
+      /*
+       * The failsafe: the number cannot be touched until the tapping stops.
+       *
+       * Dropping the overlay is the one moment the prop is exposed. It is meant
+       * to happen when you take the phone back, but a spectator who rests a
+       * finger for half a second performs exactly the same gesture — she is
+       * tapping a screen she cannot see, so she does not know she has done it.
+       * The old behaviour then put her remaining taps on a live keypad, where
+       * they appended digits to the force number, or pressed `=` early, or hit
+       * AC. Any of those ends the routine and none of them look like anything
+       * from the front.
+       *
+       * So after a release every key is inert, and stays inert for as long as
+       * the screen keeps being touched: each stray tap is swallowed and pushes
+       * the unlock further out. The seal lifts only after the screen has been
+       * left alone for most of a second, which is a thing that happens when the
+       * phone is in your hand and not before. Whatever she does, the display
+       * stays on the force number and the pending operator.
+       *
+       * It costs the handling nothing. By the time you have taken the phone,
+       * turned it over and shown her number, the second is long gone.
+       */
+      const QUIET = 900;
+      let sealed = false;
+      let sealTimer = 0;
+
+      function seal() {
+        sealed = true;
+        window.clearTimeout(sealTimer);
+        sealTimer = window.setTimeout(() => {
+          sealed = false;
+        }, QUIET);
+      }
+
+      // Capture phase, so this runs before the keypad's own handler and can stop
+      // the event reaching it at all. Nothing below gets a say while sealed.
+      document.addEventListener(
+        'pointerdown',
+        (event) => {
+          if (!sealed) return;
+          event.preventDefault();
+          event.stopPropagation();
+          seal();
+        },
+        true,
+      );
 
       /*
        * Every tap she makes, until you end it.
@@ -896,9 +950,16 @@
        * you reach for it.
        */
       let blindHold = 0;
+      let holdFrom = null;
 
       blindEl.addEventListener('pointerdown', (event) => {
         event.preventDefault();
+        // Extra fingers are part of the same gesture, not more taps. Without
+        // this a two-fingered press spends two digits and leaves two hold
+        // timers racing, one of which the first lifted finger cancels.
+        if (!event.isPrimary) return;
+
+        holdFrom = { x: event.clientX, y: event.clientY };
         blindHold = window.setTimeout(release, 600);
 
         const next = blindDigits.shift();
@@ -906,8 +967,20 @@
         digit(next);
       });
 
+      // A hold that travels is a drag, not a hold. Taking the phone back is a
+      // thumb put down and kept still; a hand sliding over a face-down screen
+      // is not, and should not end anything.
+      blindEl.addEventListener('pointermove', (event) => {
+        if (holdFrom === null) return;
+        const moved = Math.hypot(event.clientX - holdFrom.x, event.clientY - holdFrom.y);
+        if (moved > 24) window.clearTimeout(blindHold);
+      });
+
       for (const done of ['pointerup', 'pointercancel', 'pointerleave']) {
-        blindEl.addEventListener(done, () => window.clearTimeout(blindHold));
+        blindEl.addEventListener(done, () => {
+          window.clearTimeout(blindHold);
+          holdFrom = null;
+        });
       }
 
       // ---------------------------------------------------------------------
