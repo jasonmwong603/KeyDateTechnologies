@@ -222,8 +222,18 @@
        */
       @media (orientation: landscape) {
         :root {
-          --entry-size: min(20vh, 5rem);
-          --expression-size: min(7vh, 1.5rem);
+          /*
+           * Height-bound, and deliberately modest.
+           *
+           * Landscape has width to spare and almost none to spare vertically:
+           * the readout and four rows of keys share what used to be the phone's
+           * width. 16.5vh is the largest the number can be while every key stays
+           * at least 44pt tall on the shortest phone that runs this — go past it
+           * and the keypad is cramped on a 13 mini before it is generous on
+           * anything.
+           */
+          --entry-size: min(16.5vh, 4.4rem);
+          --expression-size: min(6.5vh, 1.5rem);
         }
 
         #app {
@@ -527,6 +537,14 @@
         size in landscape. Rotating changes nothing about the arithmetic and is safe at any point.
       </p>
       <p>Hold the clock icon, top left, for the rehearsal readout. Tap anywhere to close this.</p>
+      <!--
+        Which build is actually on the phone.
+
+        The point of a number here is that the answer "did my change land?" stops
+        being a judgement call about what the screen looks like. Bump it with any
+        change worth shipping, alongside CACHE in sw.js.
+      -->
+      <p id="build">Build 2 · 28 Oct</p>
     </div>
 
     <script>
@@ -896,6 +914,28 @@
             // somewhere it can register. Nothing about the routine depends on it
             // having succeeded, so there is nothing worth saying here.
           });
+        });
+
+        /*
+         * When a new worker takes over, reload once so the page running is the
+         * page that was just installed.
+         *
+         * Without this an update lands a launch late: the new worker is in
+         * charge but the open page is still the old HTML, which is how a fixed
+         * bug can stay on screen for days and have you doubting the fix rather
+         * than the delivery.
+         *
+         * Only when there was a controller to begin with. The same event fires
+         * on a first install, when a worker claims a page that had none — and
+         * reloading on that is an endless refresh the first time anyone opens
+         * the address.
+         */
+        const hadController = navigator.serviceWorker.controller !== null;
+        let reloading = false;
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          if (!hadController || reloading) return;
+          reloading = true;
+          window.location.reload();
         });
       }
     </script>

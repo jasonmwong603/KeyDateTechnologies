@@ -26,6 +26,23 @@ bookmark, not the page; without the worker, tapping it in a basement with no
 bars gets you an error in front of an audience. Check it before you rely on it:
 put the phone in aeroplane mode and open the app. If it loads, you are done.
 
+### Updating it
+
+Open the app with signal and it fetches the current page; if the network is
+slow or absent it uses the copy on the phone, so it still opens instantly in a
+basement. When a new version does arrive it reloads itself once, there and then.
+
+To confirm which build is on the phone, hold the keypad icon: the build number
+is at the foot of the crib card. If it is behind what you expect, delete the
+home-screen icon, reopen the address in Safari and add it again.
+
+An earlier version fetched the page from the phone first and the network second,
+and the consequence was not abstract: a release went out, the phone kept running
+the copy it already had, and the screenshots coming back were of code that had
+been replaced days earlier. The page is fetched fresh now. Everything else — the
+icons, the manifest — still comes straight off the phone, because none of it
+changes.
+
 The path is `/calc` and should stay dull. The address is visible exactly once,
 in the browser chrome while you are installing it, and a URL that says what it
 is would be the only thing in the whole routine that gives it away. Change it
@@ -43,9 +60,9 @@ with `CALCULATOR_SLUG` on the host; set it empty to stop serving it.
    as you like"_ — nine is the most it ever needs, and extra taps are swallowed.
 5. **Take the phone back and press and hold anywhere** for half a second to
    release the keypad. Then `=`.
-6. **Turn the phone sideways** for the reveal. The keypad rearranges the way the
-   system one does and the answer goes up to full size, with the whole sum above
-   it — big enough for the back row to copy down.
+6. **Turn the phone sideways** for the reveal, if you want it. The keypad
+   rearranges the way the system one does, and the answer and the whole sum sit
+   on one comfortable line each.
 
 The screen reads the date and time, and the whole sum is above it for anyone who
 wants to check.
@@ -58,11 +75,16 @@ start, hand it over sideways, or leave it upright throughout.
 
 The answer is eight digits and three commas and does not fit a phone held
 upright at full size. It shrinks until it does, exactly as the system calculator
-does — it is never cut off, in either orientation.
+does — it is never cut off, in either orientation. That is the part that was
+broken, and it is fixed in both.
 
-Landscape is a third again as wide, so there the number does not have to shrink
-at all: on a 13 Pro it comes out at 78px against 61px upright. That is the whole
-reason to turn it over, and the reason the routine ends with a rotation.
+Landscape is not a bigger number, and an earlier draft of this file claimed it
+was. A phone turned sideways is as tall as it was wide, and the readout now
+shares that height with four rows of keys, so the digits come out slightly
+smaller than upright — 64px against 61px on a 13 Pro, and smaller than portrait
+on the larger phones. What landscape actually gives you is the layout: the
+keypad the room recognises, the whole expression on one comfortable line above
+the answer, and no shrinking to fit.
 
 ### The crib, on the phone
 

@@ -238,12 +238,6 @@ check(
 );
 check('five columns of them', landscape.columns === 5, `${landscape.columns} columns`);
 check('and the keys are pills, not circles', landscape.pills);
-check(
-  'still big enough to hit',
-  landscape.smallest >= 42,
-  `shortest key ${landscape.smallest.toFixed(0)}px`,
-);
-
 const wide = await readout('#entry');
 check(
   'the full answer fits in landscape too',
@@ -252,11 +246,47 @@ check(
 );
 check(
   'and landscape does not have to shrink it',
-  !wide.inline && wide.size > portrait.size,
-  `${wide.size.toFixed(1)}px landscape vs ${portrait.size.toFixed(1)}px portrait`,
+  !wide.inline,
+  `${wide.size.toFixed(1)}px, from the stylesheet`,
 );
 
 await page.screenshot({ path: path.join(here, 'preview-landscape.png') });
+
+/*
+ * The same, on every phone this might be performed on.
+ *
+ * Landscape is the tight one: the readout and four rows of keys divide what
+ * used to be the phone's width, so the shortest handset is where the keypad
+ * gets squeezed. One size proved nothing — at 390 tall everything looked fine
+ * while a 13 mini was already down to 41pt keys, under Apple's minimum and
+ * small enough to misfire on stage.
+ */
+for (const [name, width, height] of [
+  ['SE', 667, 375],
+  ['13 mini', 780, 360],
+  ['14 Pro Max', 932, 430],
+  ['16 Pro Max', 956, 440],
+]) {
+  await page.setViewportSize({ width, height });
+  await page.waitForTimeout(100);
+  const fit = await page.evaluate(() => {
+    const keys = [...document.querySelectorAll('.key')].map((key) => key.getBoundingClientRect());
+    const entry = document.getElementById('entry');
+    return {
+      lowest: Math.max(...keys.map((key) => key.bottom)),
+      shortest: Math.min(...keys.map((key) => key.height)),
+      over: entry.scrollWidth - entry.clientWidth,
+    };
+  });
+  check(
+    `${name} (${width}×${height}) holds the whole layout`,
+    fit.lowest <= height && fit.shortest >= 44 && fit.over <= 1,
+    `bottom row ends at ${fit.lowest.toFixed(0)} of ${height}, keys ${fit.shortest.toFixed(0)}pt, ${fit.over}px hidden`,
+  );
+}
+
+await page.setViewportSize({ width: 844, height: 390 });
+await page.waitForTimeout(100);
 
 // The crib is on the prop, behind a hold — and must never show up on its own.
 check('the crib stays shut', await page.evaluate(() => document.getElementById('crib').hidden));
