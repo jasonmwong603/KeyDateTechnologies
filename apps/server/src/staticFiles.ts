@@ -66,10 +66,15 @@ export class StaticFileServer {
     }
 
     for (const mount of this.mounts) {
-      if (!pathname.startsWith(`${mount.urlPrefix}/`)) continue;
+      if (pathname !== mount.urlPrefix && !pathname.startsWith(`${mount.urlPrefix}/`)) continue;
 
-      const relative = pathname.slice(mount.urlPrefix.length + 1);
-      const resolved = path.resolve(mount.directory, relative);
+      const relative = pathname.slice(mount.urlPrefix.length).replace(/^\//, '');
+      // A request for the mount itself, or for a directory inside it, means the
+      // index page. Without this a second property mounted here answers its own
+      // front door with a 404 — every deep link works and the address someone
+      // would actually type does not.
+      const target = relative === '' || relative.endsWith('/') ? `${relative}index.html` : relative;
+      const resolved = path.resolve(mount.directory, target);
 
       // Reject anything that escapes the mount. `path.resolve` has already
       // collapsed `..`, so a prefix check on the resolved path is sufficient

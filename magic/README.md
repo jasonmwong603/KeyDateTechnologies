@@ -11,14 +11,25 @@ calculator in the room agrees, because the arithmetic is genuine.
 8742 × 1175 + 9183 = 10281033     →  10/28, 10:33
 ```
 
-## Running it
+## Installing it on the phone
 
-Open `index.html` on the phone, then **Share → Add to Home Screen**. That drops
-Safari's address bar and tab strip, which matters more than it sounds: with them
-on screen nobody believes it is the system calculator.
+Open **<https://play.keydate.ca/calc/>** in Safari, then **Share → Add to Home
+Screen**.
 
-Everything is in the one file. No network, no fonts to fetch, nothing to go
-stale — it works in a basement with no signal, which is where it will be used.
+Do that once, on wifi, at home. Two things happen: the shortcut launches without
+Safari's address bar and tab strip — with those on screen nobody believes it is
+the system calculator — and a service worker puts the files on the phone, so it
+opens with no signal at all.
+
+That second part is not a nicety. Adding a page to the home screen saves a
+bookmark, not the page; without the worker, tapping it in a basement with no
+bars gets you an error in front of an audience. Check it before you rely on it:
+put the phone in aeroplane mode and open the app. If it loads, you are done.
+
+The path is `/calc` and should stay dull. The address is visible exactly once,
+in the browser chrome while you are installing it, and a URL that says what it
+is would be the only thing in the whole routine that gives it away. Change it
+with `CALCULATOR_SLUG` on the host; set it empty to stop serving it.
 
 ## The handling
 

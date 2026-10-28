@@ -45,6 +45,14 @@ const staticServer = new StaticFileServer(
       urlPrefix: `${base}/vendor/three`,
       directory: path.join(repoRoot, 'node_modules/three/build'),
     },
+    // The calculator, a second property beside the game. Served from plain
+    // files with no build step and no server involvement beyond handing them
+    // over — once installed it runs from its own cache and never asks for
+    // anything again, which is the point: it gets performed in rooms with no
+    // signal.
+    ...(config.calculatorPath === ''
+      ? []
+      : [{ urlPrefix: config.calculatorPath, directory: path.join(repoRoot, 'magic') }]),
   ],
   path.join(repoRoot, 'apps/client/index.html'),
   base,

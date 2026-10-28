@@ -66,6 +66,20 @@ export const config = {
   basePath,
 
   /**
+   * Where the calculator is served, e.g. `/calc`.
+   *
+   * A second property on the same host, which is the arrangement the game's own
+   * mount point was built for. Set it to an empty string to stop serving it at
+   * all.
+   *
+   * Worth keeping dull. It is a stage prop that passes for the system
+   * calculator, and the one place its address is ever visible is the browser
+   * chrome while it is being installed — so a path that says what it is would
+   * be the only thing in the whole routine that gives it away.
+   */
+  calculatorPath: normalizeBasePath(process.env.CALCULATOR_SLUG ?? 'calc'),
+
+  /**
    * Slugs the game used to be served under, comma-separated.
    *
    * Renaming a game breaks every bookmark, shared link and — worse — every

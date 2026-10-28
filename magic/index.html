@@ -22,6 +22,8 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black" />
     <meta name="apple-mobile-web-app-title" content="Calculator" />
     <meta name="theme-color" content="#000000" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="./icon-180.png" />
 
     <style>
       :root {
@@ -594,6 +596,20 @@
       }
 
       render();
+
+      // Put the files on the phone, so the prop does not depend on the venue
+      // having signal. Needs a secure origin, which rules it out over plain
+      // http and from a file:// URL — neither of which matters, because the
+      // install happens once from the real address and never again.
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('./sw.js').catch(() => {
+            // Offline support is the only casualty, and only until it is opened
+            // somewhere it can register. Nothing about the routine depends on it
+            // having succeeded, so there is nothing worth saying here.
+          });
+        });
+      }
     </script>
   </body>
 </html>
