@@ -521,15 +521,21 @@
         <li>First spectator calls a 3- or 4-digit number. Type it, press <b>+</b>.</li>
         <li>Second spectator calls another. Type it, press <b>=</b>. Say the sum aloud.</li>
         <li>
-          <b>Press and hold ×</b> for half a second. The key turns white — that is the only thing to
-          remember. A normal tap of × just multiplies.
+          <b>Press and hold ×</b> for half a second. The key turns white — that is your
+          confirmation. A normal tap of × just multiplies.
         </li>
         <li>
-          Phone face down. Third spectator taps, <i>as many times as she likes</i>. Nine is the most
-          it ever needs; extras are ignored.
+          Phone face down. Third spectator taps, <i>as many times as she likes</i>. Take it back,
+          <b>press and hold anywhere</b> to release the keypad.
+        </li>
+        <li>Show her number. Press <b>=</b>. The room sees a real product — let it land.</li>
+        <li>
+          <b>Press and hold +</b> for half a second; it turns white the same way. Phone face down,
+          <i>fourth spectator</i> taps.
         </li>
         <li>
-          Take the phone back, <b>press and hold anywhere</b> to release the keypad, then <b>=</b>.
+          Take it back, <b>press and hold</b> to release, then <b>=</b>. That is the date and the
+          time.
         </li>
       </ol>
       <p>
@@ -544,7 +550,7 @@
         being a judgement call about what the screen looks like. Bump it with any
         change worth shipping, alongside CACHE in sw.js.
       -->
-      <p id="build">Build 3 · 28 Oct</p>
+      <p id="build">Build 4 · 28 Oct</p>
     </div>
 
     <script>
@@ -603,13 +609,26 @@
       /**
        * The two blind numbers.
        *
-       * Division with remainder, which is all it ever needed to be: C is how
-       * many whole sums fit inside the target, D is what is left over. Exact for
-       * every sum and every clock time, with no search and nothing to fail.
+       * The honest version is plain division with remainder: C is how many whole
+       * sums fit inside the target and D is what is left over. Exact for every
+       * sum and every clock time, with no search and nothing to fail.
+       *
+       * C is then stepped down by one, which is presentation rather than
+       * arithmetic. Left alone, D is uniform in [0, S) and nothing stops it
+       * coming out as 7, or 0 — and a second spectator who taps the screen once
+       * for a one-digit number is a thin moment in the middle of the routine
+       * and an invitation to wonder what she contributed. Stepping C down grows
+       * D by exactly S, putting it in [S, 2S): four or five digits for two
+       * 4-digit numbers, so she always has a handful of taps to make.
+       *
+       * S × C + D is still exactly T, which is the only thing the room checks.
        */
       function solve(sum, target) {
         if (!Number.isInteger(sum) || sum < 1 || target < 1) return null;
-        const c = Math.floor(target / sum);
+        const whole = Math.floor(target / sum);
+        // Step down only where there is room; at 1 the multiplier would go to
+        // zero and take the product with it.
+        const c = whole > 1 ? whole - 1 : whole;
         if (c < 1) return null;
         return { c, d: target - sum * c };
       }
@@ -637,6 +656,8 @@
       let blindDigits = [];
       /** True while taps are being intercepted, including after the digits run out. */
       let armed = false;
+      /** Which operator key is lit: '×' for the multiplier, '+' for the addend. */
+      let armedKey = null;
       let showRehearsal = false;
 
       const format = (value) => {
@@ -681,7 +702,7 @@
         fit(expressionEl);
 
         for (const button of document.querySelectorAll('.key.operator')) {
-          button.classList.toggle('armed', armed && button.dataset.key === '×');
+          button.classList.toggle('armed', armed && button.dataset.key === armedKey);
         }
 
         rehearsalEl.hidden = !showRehearsal;
@@ -748,6 +769,34 @@
       // Blind taps
       // ---------------------------------------------------------------------
 
+      /*
+       * Two blind numbers, two spectators, one each.
+       *
+       * The routine is in two halves with a reveal in the middle: hold `×`, the
+       * first spectator taps a multiplier, `=` shows the product and the room
+       * gets a number to look at. Hold `+`, a second spectator taps an addend,
+       * `=` lands on the clock.
+       *
+       * The second operator has to be `+`. For a second multiply to land on the
+       * clock the product on screen would have to divide it exactly, and since
+       * the sum came from the audience that happens about once in S attempts.
+       * Multiplication only scales; a remainder is the one operation that can
+       * absorb an arbitrary leftover, and the leftover here is handed to you by
+       * a clock. So the first half scales the sum up to just under the target
+       * and the second half closes the gap.
+       */
+
+      /** Lights an operator and starts intercepting taps for `digits`. */
+      function armWith(digits, key, crib) {
+        blindDigits = [...String(digits)];
+        armed = true;
+        armedKey = key;
+        blindEl.hidden = false;
+        rehearsalEl.textContent = `${crib}  ·  ${blindDigits.length} taps`;
+        render();
+      }
+
+      /** First half: hold `×`, she taps the multiplier. */
       function arm() {
         // The tap that started this hold has already pushed the `×`, so
         // everything before it is the sum — whatever shape it is in.
@@ -768,30 +817,48 @@
          * anyway, and the expression on screen is exactly what gets evaluated.
          */
         const sum = evaluate(tokens.slice(0, -1));
-        const target = stamp();
-        const answer = solve(sum, target);
+        const answer = solve(sum, stamp());
         if (answer === null) return;
 
         tokens = [sum, '×'];
         entry = String(sum);
         settled = true;
 
-        // Her taps spell out C, then the app lays in the `+` itself, then D.
-        // She taps straight through; you never have to reach in and press
-        // anything while the phone is face down.
-        blindDigits = [...String(answer.c), '+', ...String(answer.d)];
-        armed = true;
-        blindEl.hidden = false;
-        rehearsalEl.textContent =
-          `${sum} × ${answer.c} + ${answer.d} = ${target}` +
-          `  ·  needs ${String(answer.c).length + String(answer.d).length} taps`;
-        render();
+        armWith(answer.c, '×', `${sum} × ${answer.c}, then + ${answer.d}`);
+      }
+
+      /**
+       * Second half: hold `+`, a different spectator taps the addend.
+       *
+       * The gap is measured against the clock *now*, not against the one read
+       * when the multiplier was armed. That costs nothing and buys something
+       * worth having: however long you spend on the middle reveal — a minute of
+       * patter, a question from the floor, someone checking the product on their
+       * own phone — the final number is still the time it actually is when you
+       * get there. The delay corrects itself.
+       */
+      function armPlus() {
+        if (tokens[tokens.length - 1] !== '+') return;
+
+        const running = evaluate(tokens.slice(0, -1));
+        const gap = stamp() - running;
+        // Negative means the product already overshot the clock, which only
+        // happens if the first half was armed against a different sum. Better a
+        // key that stays orange than a total that is not the time.
+        if (!Number.isInteger(gap) || gap < 0) return;
+
+        tokens = [running, '+'];
+        entry = String(running);
+        settled = true;
+
+        armWith(gap, '+', `${running} + ${gap} = ${stamp()}`);
       }
 
       /** Abandons her number unfinished. Only AC does this. */
       function disarm() {
         blindDigits = [];
         armed = false;
+        armedKey = null;
         blindEl.hidden = true;
         render();
       }
@@ -808,11 +875,7 @@
        * left the moment you take it back.
        */
       function release() {
-        while (blindDigits.length > 0) {
-          const next = blindDigits.shift();
-          if (next === '+') operator('+');
-          else digit(next);
-        }
+        while (blindDigits.length > 0) digit(blindDigits.shift());
         disarm();
       }
 
@@ -840,16 +903,7 @@
 
         const next = blindDigits.shift();
         if (next === undefined) return; // Out of digits: the tap is absorbed.
-
-        if (next === '+') {
-          // The operator between her two numbers costs no tap of its own: it is
-          // laid in silently and the same tap carries the first digit after it.
-          operator('+');
-          const after = blindDigits.shift();
-          if (after !== undefined) digit(after);
-        } else {
-          digit(next);
-        }
+        digit(next);
       });
 
       for (const done of ['pointerup', 'pointercancel', 'pointerleave']) {
@@ -876,9 +930,8 @@
          * something nobody does by accident. The key going white is your
          * confirmation before the phone goes over.
          */
-        if (key === '×') {
-          armTimer = window.setTimeout(arm, 500);
-        }
+        if (key === '×') armTimer = window.setTimeout(arm, 500);
+        if (key === '+') armTimer = window.setTimeout(armPlus, 500);
 
         if (/^[0-9.]$/.test(key)) return digit(key);
         if (key === '+' || key === '−' || key === '×' || key === '÷') {

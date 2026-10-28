@@ -128,43 +128,66 @@ await type('3915');
 await tap('=');
 check('the two spectators total correctly', (await shown()) === '8,742', await shown());
 
-// Hold the multiply. That is the whole secret move — and the hold performs the
-// multiply itself, so it is the only press the expression ever sees.
-const armedAfter = await clock();
-const multiply = await page.locator('.key:text-is("×")').boundingBox();
-await page.mouse.move(multiply.x + multiply.width / 2, multiply.y + multiply.height / 2);
-await page.mouse.down();
-await page.waitForTimeout(700);
-await page.mouse.up();
-const armedBefore = await clock();
-
-const armedAfterHold = await page.evaluate(
-  () => document.querySelector('.key.operator.armed')?.dataset.key ?? null,
-);
-check('holding the multiply arms the taps', armedAfterHold === '×', `armed=${armedAfterHold}`);
-
-// She taps blind, far more times than the number needs, nowhere near a key.
 const box = page.viewportSize();
-for (let i = 0; i < 20; i += 1) {
-  await page.mouse.click(
-    box.width * (0.2 + Math.random() * 0.6),
-    box.height * (0.2 + Math.random() * 0.6),
-  );
-  await page.waitForTimeout(15);
-}
 
+/** Press and hold an operator for long enough to arm it. */
+const holdKey = async (label) => {
+  const key = await page.locator(`.key:text-is("${label}")`).boundingBox();
+  await page.mouse.move(key.x + key.width / 2, key.y + key.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(700);
+  await page.mouse.up();
+  return page.evaluate(() => document.querySelector('.key.operator.armed')?.dataset.key ?? null);
+};
+
+/** A spectator tapping a screen she cannot see, nowhere near a key. */
+const tapBlind = async (times) => {
+  for (let i = 0; i < times; i += 1) {
+    await page.mouse.click(
+      box.width * (0.2 + Math.random() * 0.6),
+      box.height * (0.2 + Math.random() * 0.6),
+    );
+    await page.waitForTimeout(15);
+  }
+};
+
+/** You take the phone back: press and hold anywhere. */
+const takeBack = async () => {
+  await page.mouse.move(box.width * 0.5, box.height * 0.45);
+  await page.mouse.down();
+  await page.waitForTimeout(800);
+  await page.mouse.up();
+  return page.evaluate(() => document.getElementById('blind').hidden);
+};
+
+// --- First half: hold the multiply, she taps the multiplier ---------------
+check('holding the multiply arms the first taps', (await holdKey('×')) === '×');
+
+await tapBlind(20);
 const overrun = await shown();
 check('extra taps cannot overrun the number', !overrun.includes('Error'), overrun);
+check('a press and hold releases the keypad', await takeBack());
 
-// You take the phone back and end it with a press and hold.
-await page.mouse.move(box.width * 0.5, box.height * 0.45);
-await page.mouse.down();
-await page.waitForTimeout(800);
-await page.mouse.up();
+// The middle reveal: a real product, on screen, for the room to look at. Her
+// number is in the readout and the sum is still above it, so both are showing
+// at the moment you lift the phone — which is the point of stopping here.
+const firstHalf = (await page.textContent('#expression')).trim();
+const multiplier = Number((await shown()).replace(/,/g, ''));
+await tap('=');
+const product = Number((await shown()).replace(/,/g, ''));
 check(
-  'a press and hold releases the keypad',
-  await page.evaluate(() => document.getElementById('blind').hidden),
+  'her number multiplies the sum, and the product is shown',
+  firstHalf === '8,742 ×' && multiplier > 0 && product === 8742 * multiplier,
+  `${firstHalf} ${multiplier} = ${product}`,
 );
+
+// --- Second half: hold the plus, a different spectator taps the addend ----
+const armedAfter = await clock();
+check('holding the plus arms the second taps', (await holdKey('+')) === '+');
+const armedBefore = await clock();
+
+await tapBlind(20);
+check('and the keypad comes back the same way', await takeBack());
 
 const expressionBefore = await page.textContent('#expression');
 
@@ -205,8 +228,8 @@ check(
   `${result} vs ${armedAfter}`,
 );
 check(
-  'and the sum is on screen for the room to copy',
-  /8,742 × [\d,]+ \+/.test(expressionBefore),
+  'and the closing sum is on screen for the room to copy',
+  expressionBefore.trim() === `${product.toLocaleString('en-US')} +`,
   expressionBefore,
 );
 
@@ -316,36 +339,44 @@ const perform = async ({ settle = true, taps = 20 } = {}) => {
   await type('3915');
   if (settle) await tap('=');
 
-  // The target is fixed the instant the hold arms it, and the minute can turn
-  // while the test is still clicking — so bracket it rather than guess.
-  const before = await clock();
-  const key = await page.locator('.key:text-is("×")').boundingBox();
-  await page.mouse.move(key.x + key.width / 2, key.y + key.height / 2);
-  await page.mouse.down();
-  await page.waitForTimeout(700);
-  await page.mouse.up();
-  const after = await clock();
-
   const size = page.viewportSize();
-  for (let i = 0; i < taps; i += 1) {
-    await page.mouse.click(size.width * 0.5, size.height * 0.4);
-    await page.waitForTimeout(15);
+
+  const half = async (label, count) => {
+    const key = await page.locator(`.key:text-is("${label}")`).boundingBox();
+    await page.mouse.move(key.x + key.width / 2, key.y + key.height / 2);
+    await page.mouse.down();
+    await page.waitForTimeout(700);
+    await page.mouse.up();
+
+    for (let i = 0; i < count; i += 1) {
+      await page.mouse.click(size.width * 0.5, size.height * 0.4);
+      await page.waitForTimeout(15);
+    }
+
+    // You take the phone back.
+    await page.mouse.move(size.width * 0.5, size.height * 0.45);
+    await page.mouse.down();
+    await page.waitForTimeout(800);
+    await page.mouse.up();
+
+    // If the overlay is still up the prop is dead in the hand — every key is
+    // behind it. Say so here rather than letting the click on `=` hang for
+    // thirty seconds and report a timeout instead of a diagnosis.
+    return page.evaluate(() => document.getElementById('blind').hidden);
+  };
+
+  if (!(await half('×', taps))) {
+    return { total: 0, sum: '', ok: false, want: await clock(), stuck: true };
   }
-
-  // You take the phone back.
-  await page.mouse.move(size.width * 0.5, size.height * 0.45);
-  await page.mouse.down();
-  await page.waitForTimeout(800);
-  await page.mouse.up();
-
   const sum = (await page.textContent('#expression')).trim();
+  await tap('=');
 
-  // If the overlay is still up the prop is dead in the hand — every key is
-  // behind it. Say so here rather than letting the click on `=` hang for
-  // thirty seconds and report a timeout instead of a diagnosis.
-  if (!(await page.evaluate(() => document.getElementById('blind').hidden))) {
-    return { total: 0, sum, ok: false, want: before, stuck: true };
-  }
+  // The target is fixed the instant the second half is armed, and the minute
+  // can turn while the test is still clicking — so bracket it rather than guess.
+  const before = await clock();
+  const free = await half('+', taps);
+  const after = await clock();
+  if (!free) return { total: 0, sum, ok: false, want: before, stuck: true };
 
   await tap('=');
   const total = Number((await shown()).replace(/,/g, ''));

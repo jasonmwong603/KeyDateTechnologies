@@ -2,13 +2,16 @@
 
 A phone calculator that is a real calculator, and once per performance is not.
 
-Two spectators each call out a free number. You add them. A third taps a screen
-she cannot see. The total is today's date and the time on the clock — and every
-calculator in the room agrees, because the arithmetic is genuine.
+Four spectators, and nothing is forced. Two call out free numbers and you add
+them. A third taps a screen she cannot see, and the product goes up on the
+display for the room to look at. A fourth taps, and the total is today's date
+and the time on the clock — with every calculator in the room agreeing, because
+the arithmetic is genuine throughout.
 
 ```
-(4827 + 3915) = 8742
-8742 × 1175 + 9183 = 10281033     →  10/28, 10:33
+4827 + 3915 = 8742              the first two, said aloud
+8742 × 1175 = 10,271,850        the third, and a real product to show
+10,271,850 + 9,183 = 10281033   the fourth  →  10/28, 10:33
 ```
 
 ## Installing it on the phone
@@ -54,25 +57,50 @@ with `CALCULATOR_SLUG` on the host; set it empty to stop serving it.
 2. **Second spectator** calls another. Type it. Press `=`.
    The sum is on screen — say it aloud, it is the number the room will work from.
 3. **Press and hold `×`** for half a second. The key turns white: that is your
-   confirmation, and the only thing you have to remember. A normal tap of `×`
-   multiplies as usual and arms nothing.
+   confirmation. A normal tap of `×` multiplies as usual and arms nothing.
 4. **Turn the phone face down.** Third spectator taps the screen. _"As many times
    as you like"_ — and mean it. Too many are swallowed; too few are finished for
    her the moment you take the phone back. You never have to count.
-
-   What she is typing is two numbers, not one, so partway through her taps the
-   screen lays in a `+` by itself and carries straight on. That is meant to
-   happen, and it costs her no tap of its own. Rehearse once and you will stop
-   noticing it; during the performance the phone is face down anyway.
-
 5. **Take the phone back and press and hold anywhere** for half a second to
-   release the keypad. Then `=`.
-6. **Turn the phone sideways** for the reveal, if you want it. The keypad
-   rearranges the way the system one does, and the answer and the whole sum sit
-   on one comfortable line each.
+   release the keypad. Her number is on the display — show it to her, show it to
+   the room.
+6. **Press `=`.** A genuine seven- or eight-figure product. Let it sit there.
+   This is the middle of the routine and it is doing real work: the room has a
+   number to look at that plainly came from her taps, and nothing has happened
+   yet that could be the trick.
+7. **Press and hold `+`** for half a second. It turns white the same way, and a
+   normal tap of `+` still just adds.
+8. **Phone face down again**, a _fourth_ spectator this time, same instruction.
+9. **Take it back, press and hold to release, then `=`.**
+10. **Turn the phone sideways** if you want the reveal bigger. The keypad
+    rearranges the way the system one does, and the answer and the sum above it
+    each sit on one comfortable line.
 
-The screen reads the date and time, and the whole sum is above it for anyone who
-wants to check.
+The screen reads the date and time, and the closing sum is above it for anyone
+who wants to check.
+
+### Why the second half is `+` and not another `×`
+
+Because a second multiply cannot work and no amount of code will make it. After
+the first reveal the screen holds `P = S × C`. For `P × D` to land on the clock,
+`P` would have to divide the clock exactly — and since `P` is built on a sum the
+audience chose, that needs `S` to divide `T`, which happens about once in `S`
+performances.
+
+Multiplication only scales. A remainder is the one operation that can absorb an
+arbitrary leftover, and the leftover here is handed to you by a clock you do not
+control. So the first half scales the sum up to just under the target and the
+second half closes the gap. The two halves look alike from the front, which is
+all that matters.
+
+### The gap is measured when you arm it
+
+The second number is worked out against the clock at the moment you hold `+`,
+not the one read when you held `×`. So however long you spend on the middle
+reveal — a minute of patter, a question from the floor, someone checking the
+product on their own phone — the final number is still the time it actually is
+when you get there. The delay corrects itself, and you can take as long over the
+middle beat as it deserves.
 
 Rotating is safe at any point in the routine. Nothing about the arithmetic or the
 blind taps depends on which way up the phone is, so you can turn it before you
@@ -104,11 +132,13 @@ not on stage.
 
 ### Rehearsing
 
-Press and hold the clock icon, top left, to show what she is about to tap and how
-many taps it needs. Hold it again to hide it. Do this before you ever perform it
-— not because the maths fails, but so you believe it.
+Press and hold the clock icon, top left, to show what the spectator in front of
+you is about to tap and how many taps it needs. It updates for each half, so
+hold `×`, read it, then hold `+` later and read it again. Hold the icon a second
+time to hide it. Do this before you ever perform it — not because the maths
+fails, but so you believe it.
 
-## Why she taps more than three times
+## Why they tap more than three times
 
 The obvious version has her tap a 3-digit number and multiplies by it. It cannot
 work. You need
@@ -130,11 +160,19 @@ S × C + D = T
 ```
 
 There is always a solution — take `C` near `T / S` and let `D` be the remainder.
-Nothing is forced, nobody is steered, all three spectators are genuinely free,
-and the whole correction hides in taps she cannot see. The price is that `C` and
-`D` together have to carry about as many digits as `T`, which is why she taps
-seven or eight times rather than three. There is no way around that: you are
-pinning down an eight-digit target, and eight digits have to come from somewhere.
+Nothing is forced, nobody is steered, all four spectators are genuinely free,
+and the whole correction hides in taps they cannot see. The price is that `C` and
+`D` together have to carry about as many digits as `T`: seven to nine taps in
+all. There is no way around that — you are pinning down an eight-digit target,
+and eight digits have to come from somewhere.
+
+Splitting them between two spectators is what makes that price invisible. One
+person tapping nine times is a long, odd beat; two people tapping four each,
+with a real product revealed in between, is two short ones. `C` is also stepped
+down by one from `floor(T / S)`, purely so the second number lands in `[S, 2S)`
+and the fourth spectator always has four or five taps to make rather than
+possibly one. The arithmetic is untouched by that: `S × C + D` is still exactly
+`T`, which is the only thing the room can check.
 
 ### Things that would have broken it
 
@@ -198,6 +236,12 @@ Splitting the blind multiplier into factors is available as _presentation_ — s
 taps several small numbers and you multiply each, which looks like more free
 choices while being the same number underneath. It usually costs more taps than
 it saves, and it is impossible whenever the multiplier comes out prime.
+
+This is also why the routine's second half is `+`. It is the same wall seen from
+the other side: once the product `P = S × C` is on screen, `P × D = T` needs `P`
+to divide `T`, which needs `S` to divide `T`. What the two halves buy is not more
+arithmetic but better staging — two spectators tapping four times each, with a
+real product shown in between, instead of one tapping nine times.
 
 ### January to September
 
