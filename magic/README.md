@@ -11,7 +11,7 @@ the arithmetic is genuine throughout.
 ```
 4827 + 3915 = 8742              the first two, said aloud
 8742 × 1175 = 10,271,850        the third, and a real product to show
-10,271,850 + 9,183 = 10281033   the fourth  →  10/28, 10:33
+10,271,850 + 9,184 = 10281034   the fourth  →  10/28, 10:34
 ```
 
 ## Installing it on the phone
@@ -71,7 +71,8 @@ with `CALCULATOR_SLUG` on the host; set it empty to stop serving it.
 7. **Press and hold `+`** for half a second. It turns white the same way, and a
    normal tap of `+` still just adds.
 8. **Phone face down again**, a _fourth_ spectator this time, same instruction.
-9. **Take it back, press and hold to release, then `=`.**
+9. **Take it back, press and hold to release, then `=`.** Read the number out
+   and let them get there — see below, it is the minute about to arrive.
 10. **Turn the phone sideways** if you want the reveal bigger. The keypad
     rearranges the way the system one does, and the answer and the sum above it
     each sit on one comfortable line.
@@ -120,6 +121,28 @@ arbitrary leftover, and the leftover here is handed to you by a clock you do not
 control. So the first half scales the sum up to just under the target and the
 second half closes the gap. The two halves look alike from the front, which is
 all that matters.
+
+### It lands a minute ahead
+
+The answer is not the minute on the clock. It is the next one.
+
+The reveal does not read as the time instantly — the room sees eight digits,
+then somebody works out that the front is the date, then that the back is the
+clock, and that is a few seconds you have to fill. Landing on the minute about
+to arrive turns the pause into the effect: you have the whole of it to say what
+the number is, and the phones in the room catch up to the phone in your hand
+while you are saying it.
+
+It also covers your own pace. The digits are fixed when you arm the second half,
+so every second between that and the final `=` is a second the clock moves and
+the answer does not. Without the lead, a slow middle beat could land the answer
+a minute _behind_ the room — the one way this number can look simply wrong.
+
+Change it with `LEAD_MINUTES` at the top of the script if you want more runway;
+`check.mjs` pins the rollovers it has to step over, which is the part that is
+easy to get wrong. A minute past 23:59 is 00:00 tomorrow, and the last minute of
+December is the first of January, with the date moving to match. Adding one to
+the minute field instead would give you 23:60.
 
 ### The gap is measured when you arm it
 
@@ -280,7 +303,8 @@ perform it in those months.
 ## Checking it
 
 ```bash
-node check.mjs    # the arithmetic, across a year of clock times and every shape of number
+node check.mjs    # the arithmetic, across a year of clock times and every shape of number,
+                  # plus the rollovers the one-minute lead has to step over
 node smoke.mjs    # drives a real browser: layout, ordinary use, then the trick end to end
 ```
 

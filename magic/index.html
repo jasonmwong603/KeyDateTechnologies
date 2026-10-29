@@ -541,7 +541,8 @@
         </li>
         <li>
           Take it back, <b>press and hold</b> to release, then <b>=</b>. That is the date and the
-          time.
+          time — <b>the minute about to arrive</b>, not the one showing. Read it out, let them get
+          there, and the clock catches up while you do.
         </li>
       </ol>
       <p>
@@ -556,7 +557,7 @@
         being a judgement call about what the screen looks like. Bump it with any
         change worth shipping, alongside CACHE in sw.js.
       -->
-      <p id="build">Build 5 · 28 Oct</p>
+      <p id="build">Build 6 · 29 Oct</p>
     </div>
 
     <script>
@@ -600,13 +601,35 @@
       // rest, and you end it with a press and hold when you take the phone
       // back. Freer to watch, and nothing to remember.
 
-      /** Today's date and the time on the clock, as the audience will read it. */
+      /**
+       * How far ahead of the clock the answer lands, in minutes.
+       *
+       * The reveal does not read as the time instantly. The room sees eight
+       * digits, then someone works out that the front of it is the date, then
+       * the back of it is the clock — and that takes a few seconds you have to
+       * fill. Landing on the minute that is about to arrive turns that pause
+       * from a gap into the effect: you have the whole of it to say what the
+       * number is, and the clock catches the phone up while you do.
+       *
+       * It also absorbs your own pace. The digits are fixed when you arm the
+       * second half, so every second between that and the final `=` is a second
+       * the clock moves and the answer does not. At zero lead a slow middle
+       * beat could land the answer a minute *behind* the room's phones, which
+       * is the one way this number can look simply wrong.
+       */
+      const LEAD_MINUTES = 1;
+
+      /** The date, and the minute the room is about to be in. */
       function stamp(now = new Date()) {
+        // Built from a real Date so the rollovers come free: 23:59 becomes
+        // 00:00 tomorrow, and the last minute of a month becomes the first of
+        // the next, with the date moving to match.
+        const when = new Date(now.getTime() + LEAD_MINUTES * 60_000);
         const pad = (value) => String(value).padStart(2, '0');
         // Minutes, not seconds: every phone in the room shows the minute, so the
         // whole number is checkable at a glance. Seconds would be unverifiable
         // and — worse — would be misread as minutes and look wrong.
-        const text = `${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}`;
+        const text = `${pad(when.getMonth() + 1)}${pad(when.getDate())}${pad(when.getHours())}${pad(when.getMinutes())}`;
         // January to September lose their leading zero, exactly as a calculator
         // would show them: 5 March reads 3051012, not 03051012.
         return Number(text);
@@ -847,7 +870,12 @@
         if (tokens[tokens.length - 1] !== '+') return;
 
         const running = evaluate(tokens.slice(0, -1));
-        const gap = stamp() - running;
+        // Read once. Two calls can straddle the turn of a minute, which would
+        // arm one number and print another on the rehearsal line — a
+        // disagreement that only shows up when you are checking the thing you
+        // rehearse with.
+        const target = stamp();
+        const gap = target - running;
         // Negative means the product already overshot the clock, which only
         // happens if the first half was armed against a different sum. Better a
         // key that stays orange than a total that is not the time.
@@ -857,7 +885,7 @@
         entry = String(running);
         settled = true;
 
-        armWith(gap, '+', `${running} + ${gap} = ${stamp()}`);
+        armWith(gap, '+', `${running} + ${gap} = ${target}`);
       }
 
       /** Abandons her number unfinished. Only AC does this. */

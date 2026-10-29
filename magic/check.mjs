@@ -9,10 +9,15 @@
 //      take the phone back — but a spectator with only one or two taps to make
 //      is a thin moment, so the spread matters to the handling.
 
+// Matches index.html: the answer lands on the minute about to arrive, not the
+// one showing, so the room has the whole of that minute to read it.
+const LEAD_MINUTES = 1;
+
 function stamp(now) {
+  const when = new Date(now.getTime() + LEAD_MINUTES * 60_000);
   const pad = (value) => String(value).padStart(2, '0');
   return Number(
-    `${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}`,
+    `${pad(when.getMonth() + 1)}${pad(when.getDate())}${pad(when.getHours())}${pad(when.getMinutes())}`,
   );
 }
 
@@ -101,6 +106,36 @@ if (misses.length > 0) {
   console.log(`\nmisses (${misses.length}), first few:`);
   for (const miss of misses.slice(0, 5)) console.log(' ', JSON.stringify(miss));
 }
+
+/*
+ * The minute the lead has to step over.
+ *
+ * Adding one to the minute field would give 23:60, or 31 November, or hour 24 —
+ * numbers that are not times and would read as plainly broken on the one
+ * occasion they came up. Going through a Date makes every rollover fall out for
+ * free, including the leap day and the turn of the year. Worth pinning, because
+ * these are exactly the performances nobody gets to rehearse.
+ */
+const rollovers = [
+  ['a minute before midnight', new Date(2026, 9, 28, 23, 59), 10290000],
+  ['the last minute of a month', new Date(2026, 9, 31, 23, 59), 11010000],
+  ['the last minute of the year', new Date(2026, 11, 31, 23, 59), 1010000],
+  ['a minute before noon', new Date(2026, 9, 28, 11, 59), 10281200],
+  ['the end of a leap February', new Date(2028, 1, 29, 23, 59), 3010000],
+  ['an ordinary minute', new Date(2026, 9, 28, 10, 33), 10281034],
+];
+
+let rollSlipped = 0;
+for (const [label, when, want] of rollovers) {
+  const got = stamp(when);
+  if (got !== want) {
+    rollSlipped += 1;
+    console.log(`\nROLLOVER WRONG  ${label}: got ${got}, want ${want}`);
+  }
+}
+console.log(
+  `rollovers        ${rollovers.length - rollSlipped}/${rollovers.length} land on a real minute`,
+);
 
 // And the worked example from the conversation, pinned exactly.
 const target = stamp(new Date(2026, 9, 28, 10, 33));

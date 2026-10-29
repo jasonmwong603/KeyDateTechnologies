@@ -87,10 +87,12 @@ const shown = () => page.textContent('#entry');
  */
 const clock = () =>
   page.evaluate(() => {
+    // The lead, computed here independently of the page so the test is checking
+    // the rule rather than echoing the code under test.
+    const when = new Date(Date.now() + 60_000);
     const pad = (value) => String(value).padStart(2, '0');
-    const now = new Date();
     return Number(
-      `${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}`,
+      `${pad(when.getMonth() + 1)}${pad(when.getDate())}${pad(when.getHours())}${pad(when.getMinutes())}`,
     );
   });
 
@@ -276,6 +278,27 @@ check(
   'the total is the date and the time on the clock',
   result === armedAfter || result === armedBefore,
   `${result} vs ${armedAfter}`,
+);
+
+/*
+ * And it is the minute ahead, not the one showing.
+ *
+ * Stated separately and against the bare clock, because the bracket above
+ * carries the lead in it: if the lead were dropped from the page, that check
+ * would notice but would report it as a mismatched time rather than as the
+ * thing that actually changed. This says what the rule is.
+ */
+const rightNow = await page.evaluate(() => {
+  const pad = (value) => String(value).padStart(2, '0');
+  const now = new Date();
+  return Number(
+    `${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}`,
+  );
+});
+check(
+  'and it reads a minute later than the clock does right now',
+  result !== rightNow,
+  `answer ${result}, clock ${rightNow}`,
 );
 check(
   'and the closing sum is on screen for the room to copy',
