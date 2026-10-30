@@ -24,121 +24,18 @@ jobs:
 
       - run: npm ci
 
-      - name: Type-check and build all packages
-        run: npm run build
-
+      # The host's own tests, then each app's arithmetic. For a trick, the
+      # arithmetic check is the one that matters: if it ever reports less than
+      # 100% exact, the room's calculators disagree with the phone.
       - name: Test
         run: npm test
 
+      # Drives a real browser against the apps, on a phone viewport. Whole-app
+      # breakage that headless checks cannot see — a dead keypad, an overlay
+      # that never lifts, a number clipped off the side of the screen — only
+      # shows up here.
+      - name: Browser tests
+        run: npm run test:browser
+
       - name: Check formatting
         run: npm run format:check
-
-      - name: Audit production dependencies
-        # The server holds a chip ledger and parses untrusted socket traffic, so
-        # a vulnerable runtime dependency is worth failing the build over. Dev
-        # tooling is excluded because it never runs in production.
-        run: npm audit --omit=dev --audit-level=moderate
-
-  smoke:
-    runs-on: ubuntu-latest
-    needs: verify
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: '.nvmrc'
-          cache: npm
-
-      - run: npm ci
-      - run: npm run build
-
-      - name: Boot the server and check it serves a playable client
-        # Catches the class of break the unit tests cannot: a bad static mount,
-        # a broken import map, or a server that type-checks but will not start.
-        #
-        # Runs under a path prefix because that is how it is deployed
-        # (play.keydate.ca/<slug>). Checking only the domain root would miss
-        # every mount-point bug.
-        env:
-          GAME_SLUG: the-floor
-        run: |
-          node apps/server/dist/index.js &
-          SERVER_PID=$!
-          trap "kill $SERVER_PID" EXIT
-
-          ORIGIN=http://127.0.0.1:8080
-          BASE=$ORIGIN/$GAME_SLUG
-
-          for i in $(seq 1 30); do
-            if curl -sf $ORIGIN/healthz > /dev/null; then break; fi
-            sleep 1
-          done
-
-          curl -sf $ORIGIN/healthz
-          curl -sf $BASE/ > /dev/null
-          curl -sf $BASE/js/main.js > /dev/null
-          curl -sf $BASE/pkg/sim/index.js > /dev/null
-          curl -sf $BASE/pkg/netcode/index.js > /dev/null
-          curl -sf $BASE/vendor/three/three.module.js > /dev/null
-          curl -sf $BASE/assets/manifest.webmanifest > /dev/null
-
-          echo "Static mounts OK"
-
-          # The host root must send players to the game rather than 404.
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" $ORIGIN/)
-          if [ "$STATUS" != "301" ]; then
-            echo "Expected 301 from the host root, got $STATUS"
-            exit 1
-          fi
-
-          # Assets must NOT be reachable outside the mount point.
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" $ORIGIN/js/main.js)
-          if [ "$STATUS" != "404" ]; then
-            echo "Expected 404 for an unprefixed asset, got $STATUS"
-            exit 1
-          fi
-
-          echo "Mount point OK"
-
-          # Directory traversal out of a static mount must be refused.
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --path-as-is \
-            "$BASE/pkg/sim/%2e%2e%2f%2e%2e%2f%2e%2e%2fpackage.json")
-          if [ "$STATUS" != "403" ]; then
-            echo "Expected 403 for traversal attempt, got $STATUS"
-            exit 1
-          fi
-
-          echo "Traversal guard OK"
-
-  client:
-    runs-on: ubuntu-latest
-    needs: verify
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: '.nvmrc'
-          cache: npm
-
-      - run: npm ci
-      - run: npm run build
-
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
-
-      - name: Drive the client in a real browser
-        # Headless logic tests cannot see a camera pointed at a wall, a HUD
-        # element swallowing every touch, or a render loop throwing each frame.
-        run: npm run test:client
-
-      - name: Upload screenshots
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: client-screenshots
-          path: .smoke/
-          if-no-files-found: ignore

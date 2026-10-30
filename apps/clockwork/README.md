@@ -1,5 +1,7 @@
 # Clockwork
 
+_An app in [KeyDate Magic](../../README.md). Served at `/calc`; only `public/` is published — this file is not._
+
 A phone calculator that is a real calculator, and once per performance is not.
 
 Four spectators, and nothing is forced. Two call out free numbers and you add

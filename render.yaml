@@ -1,42 +1,34 @@
 # Render blueprint. Push this repository, then in Render:
 #   New → Blueprint → pick this repo → Apply.
 #
-# Render terminates TLS and proxies WebSockets to the service with no extra
-# configuration, which is why it is the default suggestion here — the game needs
-# both, and a host that does not proxy WebSockets will serve the page and then
-# fail to connect.
+# There is no build step. The apps are plain files and the host is plain Node,
+# so a deploy is a checkout and a process start — which is also why it can be
+# rolled back by redeploying an older commit with nothing to rebuild.
 services:
   - type: web
-    name: beer-bets
+    name: keydate-magic
     runtime: node
     plan: free
-    # --include=dev is required: Render sets NODE_ENV=production, which makes
-    # a plain `npm ci` skip devDependencies, and the build needs TypeScript.
-    buildCommand: npm ci --include=dev && npm run build
-    # `serve` rather than `start`: the build already ran above.
-    startCommand: npm run serve
+    # `--omit=dev` is safe and fast here: the host has no runtime dependencies
+    # at all, and everything in devDependencies exists only to test the apps.
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
     healthCheckPath: /healthz
     envVars:
       - key: NODE_VERSION
         value: '22'
-      # The path the game is served under. Empty serves it at the domain root.
+      # Each app's address, named after its folder under apps/. Overrides the
+      # slug in that app's app.json; set one empty to take that app off the air
+      # without removing it.
       #
-      # A value set in the Render dashboard overrides this one and is not
-      # updated by re-applying the blueprint, so check the dashboard — and
-      # `/healthz`, which reports the basePath actually in use — after changing
-      # it here.
-      - key: GAME_SLUG
-        value: 'beer-bets'
-      # Paths the game used to live at. Redirected to GAME_SLUG so old links and
-      # already-installed apps keep working. Never list the current slug: the
-      # server drops it if you do, because it would redirect to itself.
-      - key: LEGACY_SLUGS
-        value: 'the-floor'
-      - key: STARTING_CHIPS
-        value: '2500'
-      - key: MAX_PLAYERS_PER_WORLD
-        value: '32'
-      # Playwright is a dev dependency used only by the client smoke test.
-      # Without this the build downloads a browser it will never run.
+      # IMPORTANT: a value set in the Render dashboard overrides this file and
+      # is NOT updated by re-applying the blueprint. The old service had
+      # GAME_SLUG set there, which is why it kept serving a path this file had
+      # already changed. Check the dashboard after editing anything here.
+      - key: SLUG_CLOCKWORK
+        value: 'calc'
+      # Playwright is a dev dependency used only by the apps' browser tests.
+      # Without this a build that did include dev deps would download a browser
+      # it will never run.
       - key: PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD
         value: '1'

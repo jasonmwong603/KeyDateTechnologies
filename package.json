@@ -1,44 +1,25 @@
 {
-  "name": "keydate-gaming",
+  "name": "keydate-magic",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "KeyDate Technologies game development monorepo",
+  "description": "KeyDate Technologies — magic apps. Props that run on a phone, on stage, with no signal.",
   "license": "MIT",
   "engines": {
     "node": ">=20.10"
   },
-  "workspaces": [
-    "packages/protocol",
-    "packages/netcode",
-    "packages/sim",
-    "packages/games/*",
-    "apps/server"
-  ],
   "scripts": {
-    "build": "tsc --build",
-    "clean": "tsc --build --clean",
-    "typecheck": "tsc --build --dry",
-    "start": "npm run build && node apps/server/dist/index.js",
-    "serve": "node apps/server/dist/index.js",
-    "bundle:client": "npm run build && node scripts/bundle-client.mjs",
-    "test": "vitest run",
+    "start": "node host/server.mjs",
+    "test": "vitest run && npm run check",
     "test:watch": "vitest",
-    "test:client": "node apps/client/smoke.mjs",
-    "coverage": "vitest run --coverage",
+    "check": "node apps/clockwork/check.mjs",
+    "test:browser": "node apps/clockwork/smoke.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
-  "dependencies": {
-    "three": "^0.170.0"
-  },
   "devDependencies": {
-    "@types/node": "^22.10.2",
-    "@types/ws": "^8.5.13",
-    "@vitest/coverage-v8": "^4.1.10",
     "playwright": "^1.62.1",
     "prettier": "^3.4.2",
-    "typescript": "^5.7.2",
     "vitest": "^4.1.10"
   }
 }

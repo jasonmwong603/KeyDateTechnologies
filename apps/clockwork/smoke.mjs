@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const page_url = `file://${path.join(here, 'index.html')}`;
+const page_url = `file://${path.join(here, 'public', 'index.html')}`;
 
 /**
  * Finds the preinstalled Chromium.

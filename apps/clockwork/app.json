@@ -1,0 +1,6 @@
+{
+  "name": "Clockwork",
+  "slug": "calc",
+  "summary": "A calculator that is a calculator, and once a performance is not.",
+  "note": "The slug is deliberately dull and should stay that way — it is the only part of this an audience ever sees. Override it on the host with SLUG_CLOCKWORK; set that empty to take it off the air."
+}

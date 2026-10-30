@@ -9,7 +9,7 @@
 // A plain calculator, not a copy of anybody's artwork: a dark rounded tile, a
 // readout, and a keypad with the operator column picked out in orange.
 //
-// Run with: node magic/make-icons.mjs
+// Run with: node apps/clockwork/make-icons.mjs
 
 import { chromium } from 'playwright';
 import { existsSync, readdirSync } from 'node:fs';
@@ -65,7 +65,10 @@ const browser = await chromium.launch(launchOptions());
 for (const size of [180, 512]) {
   const page = await browser.newPage({ viewport: { width: size, height: size } });
   await page.setContent(icon(size));
-  await page.screenshot({ path: path.join(here, `icon-${size}.png`), omitBackground: false });
+  await page.screenshot({
+    path: path.join(here, 'public', `icon-${size}.png`),
+    omitBackground: false,
+  });
   await page.close();
   console.log(`wrote icon-${size}.png`);
 }

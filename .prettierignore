@@ -3,3 +3,6 @@ coverage/
 node_modules/
 *.tsbuildinfo
 package-lock.json
+
+# The shelved game. Formatting it would churn code nobody is changing.
+shelved/
