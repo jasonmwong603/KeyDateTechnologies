@@ -77,9 +77,23 @@ without being asked.
 
 ## Adding a trick
 
-Make `apps/<name>/` with an `app.json` (`{"name": …, "slug": …}`) and a `public/`. That
-is the registration — the host finds it, and no shared code changes. Give it a
-`check.mjs` proving its arithmetic and a `smoke.mjs` driving a browser. Branch first.
+Make `apps/<name>/` with an `app.json` and a `public/`. That is the registration — the
+host finds it, and no shared code changes. Give it a `check.mjs` proving its arithmetic
+and a `smoke.mjs` driving a browser. Branch first.
+
+**The address defaults to the folder name:** `apps/mindreader/` is served at
+`play.keydate.ca/mindreader` with nothing configured. Omit `slug` and that is what you
+get.
+
+**Then override it, if the folder name is a tell.** The address is the one part of a prop
+an audience can see — it is on screen the whole time you install it, and again whenever
+you hand someone the phone. `play.keydate.ca/mindreader` announces what is about to
+happen; `/calc` does not. That is why Clockwork's folder says what it is and its `slug`
+says `calc`. Name the folder for yourself and the slug for the room.
+
+Addresses must be lower-case letters, digits and hyphens. Duplicates, reserved routes
+and anything needing URL-escaping refuse to start — an app that is silently unreachable
+would be found out on stage.
 
 ## The shelved game
 

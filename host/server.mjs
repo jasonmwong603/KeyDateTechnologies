@@ -1,7 +1,7 @@
 import { createServer } from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { discoverApps, mountsFor } from './apps.mjs';
+import { discoverApps, mountsFor, RESERVED_SLUGS } from './apps.mjs';
 import { StaticHost } from './staticHost.mjs';
 
 /**
@@ -33,7 +33,7 @@ const server = createServer((request, response) => {
    * the host, reachable by anyone who guesses one obvious URL. The count is
    * enough to tell a misconfigured deploy (0 apps) from a healthy one.
    */
-  if (url.pathname === '/healthz') {
+  if (RESERVED_SLUGS.includes(url.pathname)) {
     response
       .writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' })
       .end(JSON.stringify({ status: 'ok', apps: apps.length }));

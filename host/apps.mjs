@@ -10,6 +10,15 @@ import path from 'node:path';
  * code and cannot break the one that is already being performed.
  */
 
+/**
+ * Addresses the host answers itself, so no app may take them.
+ *
+ * Declared here rather than in the server so the two cannot drift: an address
+ * added to this list is reserved and refused in the same breath, instead of
+ * becoming a route that quietly shadows an app a year later.
+ */
+export const RESERVED_SLUGS = ['/healthz'];
+
 /** `calc` and `/calc/` and `//calc` all mean the same mount. */
 export function normalizeSlug(slug) {
   const trimmed = String(slug ?? '')
@@ -56,8 +65,43 @@ export async function discoverApps(appsDir) {
      * air entirely.
      */
     const override = process.env[`SLUG_${entry.name.toUpperCase().replace(/[^A-Z0-9]/g, '_')}`];
+    // No slug in app.json means the folder name is the address, which is the
+    // usual case: `apps/mindreader/` is served at `/mindreader`.
     const slug = normalizeSlug(override ?? manifest.slug ?? entry.name);
     if (slug === '') continue;
+
+    /*
+     * Everything below here refuses to start rather than quietly serving less
+     * than it was asked to.
+     *
+     * Skipping a folder with no `app.json` is right — that is a trick which is
+     * not finished. Every one of these is different: the app IS finished, and
+     * would be silently unreachable. Nobody checks a URL that worked last
+     * month, so the place that gets found out is the one place it must not be.
+     */
+    if (!/^\/[a-z0-9][a-z0-9-]*$/.test(slug)) {
+      throw new Error(
+        `apps/${entry.name}: the address "${slug}" needs escaping in a URL. ` +
+          `Use lower-case letters, digits and hyphens — set "slug" in its app.json ` +
+          `if the folder name cannot be one.`,
+      );
+    }
+
+    if (RESERVED_SLUGS.includes(slug)) {
+      throw new Error(
+        `apps/${entry.name}: "${slug}" is the host's own route, so the app would ` +
+          `never be reached. Give it a "slug" in its app.json.`,
+      );
+    }
+
+    const clash = apps.find((app) => app.slug === slug);
+    if (clash !== undefined) {
+      throw new Error(
+        `apps/${entry.name} and apps/${clash.id} both want "${slug}". ` +
+          `One of them would be served and the other would not, with nothing to ` +
+          `say which. Give one a different "slug" in its app.json.`,
+      );
+    }
 
     apps.push({
       id: entry.name,

@@ -242,6 +242,60 @@ describe('finding the apps', () => {
     }
   });
 
+  it('serves an app at its folder name when app.json names no slug', async () => {
+    // The usual case, and the reason a trick needs no configuration: drop
+    // `apps/mindreader/` in and it is at /mindreader.
+    const app = path.join(root, 'apps', 'mindreader');
+    mkdirSync(path.join(app, 'public'), { recursive: true });
+    writeFileSync(path.join(app, 'app.json'), JSON.stringify({ name: 'Mind Reader' }));
+
+    const apps = await discoverApps(path.join(root, 'apps'));
+    expect(apps[0].slug).toBe('/mindreader');
+  });
+
+  describe('refusing to start rather than serving less than it was asked to', () => {
+    /*
+     * Skipping a folder with no app.json is right: that trick is not finished.
+     * Each of these is the opposite — the app is finished and would be silently
+     * unreachable. Nobody re-checks a URL that worked last month, so the place
+     * it gets found out is a stage.
+     */
+    const appAt = (id, manifest) => {
+      const dir = path.join(root, 'apps', id);
+      mkdirSync(path.join(dir, 'public'), { recursive: true });
+      writeFileSync(path.join(dir, 'app.json'), JSON.stringify(manifest));
+    };
+
+    it('says which two apps collided, and that one would vanish', async () => {
+      appAt('alpha', { slug: 'cards' });
+      appAt('beta', { slug: 'cards' });
+
+      await expect(discoverApps(path.join(root, 'apps'))).rejects.toThrow(
+        /alpha.*cards|cards.*alpha/s,
+      );
+    });
+
+    it('refuses an app that would sit on a route the host answers itself', async () => {
+      appAt('healthz', {});
+      await expect(discoverApps(path.join(root, 'apps'))).rejects.toThrow(/healthz/);
+    });
+
+    it('refuses an address that would need escaping in a URL', async () => {
+      // A folder called `Mind Reader` would be served at /Mind%20Reader, which
+      // is neither dull nor typeable.
+      appAt('Mind Reader', {});
+      await expect(discoverApps(path.join(root, 'apps'))).rejects.toThrow(/escap/i);
+    });
+
+    it('still lets a finished app be taken off the air deliberately', async () => {
+      // Empty is a decision, not a mistake, and must not be confused for one.
+      appAt('clockwork', { slug: 'calc' });
+      process.env.SLUG_CLOCKWORK = '';
+      await expect(discoverApps(path.join(root, 'apps'))).resolves.toHaveLength(0);
+      delete process.env.SLUG_CLOCKWORK;
+    });
+  });
+
   it('treats a slug the same however it is punctuated', () => {
     for (const written of ['calc', '/calc', 'calc/', '//calc//']) {
       expect(normalizeSlug(written)).toBe('/calc');
