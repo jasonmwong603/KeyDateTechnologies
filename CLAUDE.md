@@ -88,7 +88,8 @@ tests when it was put down. It is kept for when it is picked back up; it does no
 from where it sits, because its TypeScript config, workspaces and deploy files moved
 with it.
 
-To bring it back: `git checkout beer-bets-shelved -- .` restores the repository as it
-was, or read `shelved/beer-bets/README.md`. Its design rules — authoritative server,
+To bring it back: `git checkout claude/gaming-repo-setup-mf80i9 -- .` restores the
+repository as it was — that branch's tip, `f8164e6`, is the last commit where the game
+was the subject. See `shelved/beer-bets/README.md`. Its design rules — authoritative server,
 deterministic sim, the chip ledger, no real money — apply to it and to nothing else
 here.

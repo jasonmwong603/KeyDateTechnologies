@@ -19,19 +19,19 @@ is changing is how you introduce a bug into something that currently works.
 ## Bringing it back
 
 ```bash
-git checkout beer-bets-shelved -- .
+git checkout claude/gaming-repo-setup-mf80i9 -- .
 ```
 
-That restores the whole repository to the commit where the game was its subject — the
-layout, the root `package.json` with its workspaces, the TypeScript build, the CI, all of
-it. The tag is annotated; `git show beer-bets-shelved` says when and why.
+That branch's tip, `f8164e6`, is the last commit where the game was this repository's
+subject: the layout, the root `package.json` with its workspaces, the TypeScript build
+and the CI, all of it. The branch is on the remote, so this works from a fresh clone.
 
 To take only part of it, the files here are the files as they were, just one directory
 deeper.
 
 ## What was true of it
 
-The original guide is in `../../CLAUDE.md` as of the tag, and its invariants were real:
+The original guide is in `../../CLAUDE.md` as of that commit, and its invariants were real:
 the server is authoritative, `packages/sim` stays deterministic, `ChipLedger` is the only
 writer of balances, game `resolve()` is pure in (wagers, rng), every message type is
 validated in `parseClientMessage`, and there is no real money — chips cannot be
