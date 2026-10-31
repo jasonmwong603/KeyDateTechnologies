@@ -1,0 +1,500 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no"
+    />
+    <title>Snapshot</title>
+
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Snapshot" />
+    <meta name="theme-color" content="#000000" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="./icon-180.png" />
+
+    <style>
+      * {
+        box-sizing: border-box;
+        -webkit-tap-highlight-color: transparent;
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-touch-callout: none;
+      }
+
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        background: #000;
+        color: #fff;
+        font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
+        touch-action: none;
+      }
+
+      /*
+       * The wallpaper is the trick's whole premise: the phone has to look like
+       * it is sitting idle, not running anything. It is the performer's own
+       * screenshot, loaded from their camera roll and kept on the device — see
+       * the note in the script about why it is never shipped with the app.
+       */
+      #wall {
+        position: fixed;
+        inset: 0;
+        background-position: center;
+        background-size: cover;
+        background-repeat: no-repeat;
+      }
+
+      /*
+       * The card.
+       *
+       * Sized in real millimetres and transformed onto four corners, so the
+       * perspective is a projection rather than a skew — a tilted card's far
+       * edge is genuinely narrower than its near one, which is the difference
+       * between an object lying on the glass and a picture of one.
+       */
+      #card {
+        position: fixed;
+        top: 0;
+        left: 0;
+        transform-origin: 0 0;
+        will-change: transform;
+        border-radius: 3.2%;
+        background: linear-gradient(118deg, #fdfdfb 0%, #fff 42%, #f1f1ee 100%);
+        /* Contact shadow, tight and dark where it meets the glass. A soft wide
+           shadow reads as floating; a real card touching a surface has almost
+           none at the contact edge. */
+        filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.38))
+          drop-shadow(0 6px 14px rgba(0, 0, 0, 0.3));
+        display: grid;
+        place-items: center;
+        overflow: hidden;
+      }
+
+      /* The glare of a glossy card catching the room. Subtle, and it does not
+         move with the card — light does not. */
+      #card::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+          126deg,
+          rgba(255, 255, 255, 0) 38%,
+          rgba(255, 255, 255, 0.5) 48%,
+          rgba(255, 255, 255, 0) 58%
+        );
+        pointer-events: none;
+      }
+
+      #card[hidden] {
+        display: none;
+      }
+
+      .pip {
+        font-weight: 500;
+        line-height: 1;
+      }
+
+      .corner {
+        position: absolute;
+        display: grid;
+        justify-items: center;
+        line-height: 0.95;
+      }
+
+      .corner.tl {
+        top: 4.5%;
+        left: 5%;
+      }
+
+      .corner.br {
+        bottom: 4.5%;
+        right: 5%;
+        transform: rotate(180deg);
+      }
+
+      /* --- Setup, and the crib. Neither is ever on screen by accident. ----- */
+
+      #setup {
+        position: fixed;
+        inset: 0;
+        z-index: 40;
+        background: #000;
+        display: grid;
+        place-items: center;
+        padding: 2rem 1.6rem;
+        text-align: center;
+        gap: 1rem;
+      }
+
+      #setup[hidden],
+      #panel[hidden] {
+        display: none;
+      }
+
+      #setup h1 {
+        font-size: 1.1rem;
+        font-weight: 600;
+        margin: 0 0 0.4rem;
+      }
+
+      #setup p {
+        color: #8e8e93;
+        font-size: 0.82rem;
+        line-height: 1.5;
+        margin: 0 0 1.2rem;
+      }
+
+      button.action {
+        appearance: none;
+        border: none;
+        border-radius: 999px;
+        background: #0a84ff;
+        color: #fff;
+        font-size: 1rem;
+        font-weight: 500;
+        padding: 0.85rem 1.8rem;
+      }
+
+      #panel {
+        position: fixed;
+        inset: auto 0 0 0;
+        z-index: 60;
+        background: rgba(20, 20, 22, 0.97);
+        padding: 1rem 1.2rem max(1.4rem, env(safe-area-inset-bottom));
+        font-size: 0.8rem;
+        display: grid;
+        gap: 0.9rem;
+      }
+
+      #panel label {
+        display: grid;
+        gap: 0.35rem;
+        color: #8e8e93;
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+
+      #panel input[type='range'] {
+        width: 100%;
+      }
+
+      #panel select,
+      #panel button {
+        appearance: none;
+        background: #2e2e32;
+        color: #fff;
+        border: none;
+        border-radius: 0.5rem;
+        padding: 0.6rem;
+        font-size: 0.9rem;
+      }
+
+      #panel .row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.7rem;
+      }
+
+      #panel .hint {
+        color: #8e8e93;
+        font-size: 0.72rem;
+        line-height: 1.45;
+        text-transform: none;
+        letter-spacing: 0;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div id="wall"></div>
+    <div id="card" hidden></div>
+
+    <div id="setup" hidden>
+      <div>
+        <h1>One-time setup</h1>
+        <p>
+          Take a screenshot of your home screen, then choose it here. It stays on this phone — it is
+          not uploaded and not part of the app.
+        </p>
+        <button class="action" id="pick" type="button">Choose a photo</button>
+        <input id="file" type="file" accept="image/*" hidden />
+      </div>
+    </div>
+
+    <div id="panel" hidden>
+      <label>
+        Card
+        <select id="rank"></select>
+      </label>
+      <label>
+        Size — hold a real card against the screen and match it
+        <input id="scale" type="range" min="1.6" max="7" step="0.01" />
+      </label>
+      <div class="row">
+        <button id="rewall" type="button">Change wallpaper</button>
+        <button id="close" type="button">Done</button>
+      </div>
+      <div class="hint">
+        Press and hold two fingers anywhere for a second to open this again. Nothing else opens it.
+      </div>
+    </div>
+
+    <script type="module">
+      import {
+        homographyMatrix,
+        applyMatrix,
+        unapplyMatrix,
+        dragTo,
+        cardCorners,
+        CARD_MM,
+      } from './card.mjs';
+
+      /*
+       * Everything the performer sets lives on the phone and nowhere else.
+       *
+       * The wallpaper is a screenshot of their own home screen, which is to say
+       * a photograph of their private life: their apps, their notification
+       * counts, whoever is in their wallpaper. Shipping one with the app would
+       * publish all of that — this repository is public — and would also only
+       * ever match one phone. So it is chosen on the device, stored on the
+       * device, and never sent anywhere. There is no network code in this file
+       * at all, which is the simplest way to be sure of that.
+       */
+      const store = {
+        get: (key, fallback) => {
+          try {
+            const raw = localStorage.getItem(`snapshot.${key}`);
+            return raw === null ? fallback : JSON.parse(raw);
+          } catch {
+            return fallback;
+          }
+        },
+        set: (key, value) => {
+          try {
+            localStorage.setItem(`snapshot.${key}`, JSON.stringify(value));
+          } catch {
+            // A full or blocked store costs the setting, not the performance.
+          }
+        },
+      };
+
+      const wallEl = document.getElementById('wall');
+      const cardEl = document.getElementById('card');
+      const setupEl = document.getElementById('setup');
+      const panelEl = document.getElementById('panel');
+      const scaleEl = document.getElementById('scale');
+      const rankEl = document.getElementById('rank');
+
+      const RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+      const SUITS = { '♠': '#111', '♥': '#c8102e', '♦': '#c8102e', '♣': '#111' };
+
+      for (const suit of Object.keys(SUITS)) {
+        for (const rank of RANKS) {
+          const option = document.createElement('option');
+          option.value = `${rank}${suit}`;
+          option.textContent = `${rank}${suit}`;
+          rankEl.append(option);
+        }
+      }
+
+      /** Pixels per millimetre. Measured against a real card, never guessed. */
+      let scale = store.get('scale', 3.8);
+      let face = store.get('face', 'A♠');
+      let corners = null;
+      let grabbed = null;
+
+      function drawFace() {
+        const [rank, suit] = [face.slice(0, -1), face.slice(-1)];
+        cardEl.style.color = SUITS[suit] ?? '#111';
+        cardEl.innerHTML = '';
+
+        const big = document.createElement('div');
+        big.className = 'pip';
+        big.style.fontSize = `${CARD_MM.width * scale * 0.46}px`;
+        big.textContent = suit;
+        cardEl.append(big);
+
+        for (const where of ['tl', 'br']) {
+          const corner = document.createElement('div');
+          corner.className = `corner ${where}`;
+          corner.style.fontSize = `${CARD_MM.width * scale * 0.15}px`;
+          corner.innerHTML = `<div class="pip">${rank}</div><div class="pip">${suit}</div>`;
+          cardEl.append(corner);
+        }
+      }
+
+      /** The element is the card's true size, so the face is never resampled. */
+      function size() {
+        return { w: CARD_MM.width * scale, h: CARD_MM.height * scale };
+      }
+
+      function render() {
+        const { w, h } = size();
+        cardEl.style.width = `${w}px`;
+        cardEl.style.height = `${h}px`;
+        const matrix = homographyMatrix(corners, w, h);
+        if (matrix === null) return;
+        cardEl.style.transform = `matrix3d(${matrix.join(',')})`;
+      }
+
+      /*
+       * Where the card starts: mostly off the bottom, one corner showing.
+       *
+       * The premise is that it is *under* the glass rather than drawn on it, and
+       * a whole card sitting in the middle of the home screen is plainly a
+       * picture. A corner emerging from the edge is the shape of something that
+       * continues where you cannot see it.
+       */
+      function reset() {
+        corners = cardCorners({
+          x: window.innerWidth * 0.62,
+          y: window.innerHeight + CARD_MM.height * scale * 0.3,
+          scale,
+          angle: -0.38,
+          tilt: 0.1,
+        });
+        render();
+      }
+
+      // --- The drag ---------------------------------------------------------
+      //
+      // `check.mjs` proves the part that matters: the point of the card under
+      // the fingertip stays under it, exactly, however far it is dragged. All
+      // this does is feed it real pointer positions.
+
+      cardEl.addEventListener('pointerdown', (event) => {
+        const { w, h } = size();
+        const matrix = homographyMatrix(corners, w, h);
+        if (matrix === null) return;
+
+        grabbed = unapplyMatrix(matrix, event.clientX, event.clientY);
+        if (grabbed === null) return;
+
+        cardEl.setPointerCapture(event.pointerId);
+        event.preventDefault();
+      });
+
+      cardEl.addEventListener('pointermove', (event) => {
+        if (grabbed === null) return;
+        event.preventDefault();
+        const { w, h } = size();
+        corners = dragTo(corners, grabbed, { x: event.clientX, y: event.clientY }, w, h);
+        render();
+      });
+
+      for (const done of ['pointerup', 'pointercancel']) {
+        cardEl.addEventListener(done, () => {
+          grabbed = null;
+        });
+      }
+
+      // --- Setup and settings ----------------------------------------------
+
+      const fileEl = document.getElementById('file');
+      document.getElementById('pick').addEventListener('click', () => fileEl.click());
+
+      fileEl.addEventListener('change', () => {
+        const file = fileEl.files?.[0];
+        if (file === undefined) return;
+        const reader = new FileReader();
+        reader.addEventListener('load', () => {
+          // A data URL in local storage: it never leaves the device, and it
+          // survives being offline, which a blob URL would not.
+          store.set('wall', reader.result);
+          applyWall(reader.result);
+          setupEl.hidden = true;
+          cardEl.hidden = false;
+          reset();
+        });
+        reader.readAsDataURL(file);
+      });
+
+      function applyWall(source) {
+        wallEl.style.backgroundImage = `url("${source}")`;
+      }
+
+      /*
+       * Two fingers, held. Not a tap, not a corner, not a shake.
+       *
+       * Everything that can put the settings on screen is something an audience
+       * might do by accident while holding the phone — except this. Nobody
+       * presses and holds two fingers on a picture of a home screen.
+       */
+      let panelTimer = 0;
+      window.addEventListener(
+        'touchstart',
+        (event) => {
+          if (event.touches.length !== 2) return;
+          panelTimer = window.setTimeout(() => {
+            panelEl.hidden = false;
+          }, 1000);
+        },
+        { passive: true },
+      );
+      for (const done of ['touchend', 'touchcancel', 'touchmove']) {
+        window.addEventListener(done, () => window.clearTimeout(panelTimer), { passive: true });
+      }
+
+      scaleEl.addEventListener('input', () => {
+        scale = Number(scaleEl.value);
+        store.set('scale', scale);
+        drawFace();
+        reset();
+      });
+
+      rankEl.addEventListener('change', () => {
+        face = rankEl.value;
+        store.set('face', face);
+        drawFace();
+      });
+
+      document.getElementById('close').addEventListener('click', () => {
+        panelEl.hidden = true;
+      });
+      document.getElementById('rewall').addEventListener('click', () => {
+        panelEl.hidden = true;
+        setupEl.hidden = false;
+      });
+
+      // --- Start ------------------------------------------------------------
+
+      scaleEl.value = String(scale);
+      rankEl.value = face;
+      drawFace();
+
+      const saved = store.get('wall', null);
+      if (saved === null) {
+        setupEl.hidden = false;
+      } else {
+        applyWall(saved);
+        cardEl.hidden = false;
+      }
+      reset();
+
+      window.addEventListener('resize', () => window.requestAnimationFrame(reset));
+
+      // Offline, like everything here. A prop that needs the venue's wifi is
+      // not a prop.
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('./sw.js').catch(() => {});
+        });
+
+        const hadController = navigator.serviceWorker.controller !== null;
+        let reloading = false;
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          if (!hadController || reloading) return;
+          reloading = true;
+          window.location.reload();
+        });
+      }
+    </script>
+  </body>
+</html>

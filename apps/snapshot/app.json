@@ -1,5 +1,5 @@
 {
   "name": "Snapshot",
-  "summary": "Placeholder while the effect is being built. Not ready to perform.",
+  "summary": "A card under the glass, and a finger that moves it.",
   "note": "Folders are codenames and the address defaults to the folder name, so this is served at /snapshot. Override on the host with SLUG_SNAPSHOT; set that empty to take it off the air."
 }

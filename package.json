@@ -12,8 +12,8 @@
     "start": "node host/server.mjs",
     "test": "vitest run && npm run check",
     "test:watch": "vitest",
-    "check": "node apps/clockwork/check.mjs",
-    "test:browser": "node apps/clockwork/smoke.mjs",
+    "check": "node apps/clockwork/check.mjs && node apps/snapshot/check.mjs",
+    "test:browser": "node apps/clockwork/smoke.mjs && node apps/snapshot/smoke.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },

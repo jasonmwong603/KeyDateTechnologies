@@ -9,9 +9,10 @@ browser.
 
 ## The apps
 
-| App                          | Address |
-| ---------------------------- | ------- |
-| [Clockwork](apps/clockwork/) | `/calc` |
+| App                          | Address     |
+| ---------------------------- | ----------- |
+| [Clockwork](apps/clockwork/) | `/calc`     |
+| [Snapshot](apps/snapshot/)   | `/snapshot` |
 
 Folders are codenames and this table does not say what any of them do. What a trick is
 lives in its own README, one level down — a single file mapping every codename to its
