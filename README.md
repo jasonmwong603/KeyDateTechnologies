@@ -9,9 +9,13 @@ browser.
 
 ## The apps
 
-| App                          | Address | What it is                                                        |
-| ---------------------------- | ------- | ----------------------------------------------------------------- |
-| [Clockwork](apps/clockwork/) | `/calc` | A calculator that is a calculator, and once a performance is not. |
+| App                          | Address |
+| ---------------------------- | ------- |
+| [Clockwork](apps/clockwork/) | `/calc` |
+
+Folders are codenames and this table does not say what any of them do. What a trick is
+lives in its own README, one level down — a single file mapping every codename to its
+effect would undo the point of having codenames.
 
 ## Running them
 
@@ -49,13 +53,17 @@ break one that is being performed tonight.
 ### Addresses
 
 Every app is served at `play.keydate.ca/<slug>`, and the slug defaults to the folder
-name — `apps/mindreader/` is at `/mindreader` with nothing configured.
+name — `apps/heron/` is at `/heron` with nothing configured.
 
-Set `slug` when the folder name gives the game away. The address is the one part of a
-prop an audience can see: it is on screen the whole time you install it, and again every
-time you hand someone the phone. `/mindreader` announces what is coming; `/calc` does
-not. Clockwork's folder says what it is and its slug says `calc`, which is the pattern —
-name the folder for yourself and the address for the room.
+**Folders are codenames, so the default is usually right.** The address is the one part
+of a prop an audience can see: it is on screen the whole time you install it, and again
+every time you hand someone the phone. `/mindreader` announces what is coming; `/heron`
+says nothing at all. Set `slug` only when the codename happens to read as something, or
+when the address should look like a category of ordinary app — which is why Clockwork is
+served at `/calc`.
+
+A codename protects against that glance and against nothing else. See
+[Secrecy](#secrecy).
 
 Lower-case letters, digits and hyphens only. Two apps claiming one address, an app
 sitting on a route the host answers itself, or an address that would need escaping all
@@ -65,6 +73,21 @@ that is silently unreachable, and the place that gets found out is a stage.
 **Only `public/` is ever served.** Everything beside it — the README that explains the
 method, the tests that walk the whole routine — is unreachable over HTTP. That boundary
 is a directory rather than a list of exclusions precisely so it cannot rot.
+
+## Secrecy
+
+Two different things get confused here, so they are worth separating.
+
+**Someone who found the address.** They get the app and nothing else: no index, no
+directory listing, no app names in `/healthz`, a flat 404 at the bare domain, and only
+`public/` served — `/<slug>/README.md` is a 404, not the method. Codenamed folders mean
+the address itself gives nothing away either.
+
+**Someone who found the repository.** They get everything. This repository is public, so
+every app README, every commit message and this file are readable by anyone, and no
+naming scheme changes that. If the methods are meant to be private, the repository has
+to be private. That is the control that matters; everything above is what you do on top
+of it, not instead of it.
 
 ## Deploying
 

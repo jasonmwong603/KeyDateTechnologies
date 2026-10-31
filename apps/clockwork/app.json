@@ -2,5 +2,5 @@
   "name": "Clockwork",
   "slug": "calc",
   "summary": "A calculator that is a calculator, and once a performance is not.",
-  "note": "The slug is deliberately dull and should stay that way — it is the only part of this an audience ever sees. Override it on the host with SLUG_CLOCKWORK; set that empty to take it off the air."
+  "note": "Folders are codenames and the address defaults to the folder name, so most apps need no slug at all. This one sets it: `/calc` reads as a category of ordinary app, which is better here than a word. Override it on the host with SLUG_CLOCKWORK; set that empty to take the app off the air."
 }

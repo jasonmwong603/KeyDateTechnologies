@@ -81,19 +81,38 @@ Make `apps/<name>/` with an `app.json` and a `public/`. That is the registration
 host finds it, and no shared code changes. Give it a `check.mjs` proving its arithmetic
 and a `smoke.mjs` driving a browser. Branch first.
 
-**The address defaults to the folder name:** `apps/mindreader/` is served at
-`play.keydate.ca/mindreader` with nothing configured. Omit `slug` and that is what you
-get.
+### Folders are codenames
 
-**Then override it, if the folder name is a tell.** The address is the one part of a prop
-an audience can see — it is on screen the whole time you install it, and again whenever
-you hand someone the phone. `play.keydate.ca/mindreader` announces what is about to
-happen; `/calc` does not. That is why Clockwork's folder says what it is and its `slug`
-says `calc`. Name the folder for yourself and the slug for the room.
+**The performer supplies the folder name, and it is a codename, not a description.**
+`apps/heron/`, not `apps/mindreader/`. Ask for one rather than inventing a descriptive
+name, and if you must propose one, propose something that says nothing: a bird, a
+street, a month.
+
+The address then defaults to the folder name with nothing configured — `apps/heron/` is
+served at `play.keydate.ca/heron` — and a codename is already dull enough to be the
+address, so most apps need no `slug` at all. Set one only when the codename happens to
+read as something (or, as with `clockwork` → `calc`, when the address should look like a
+category of ordinary app rather than a word).
+
+What a trick actually _is_ belongs in that folder's own README and nowhere above it. The
+root README lists codenames and addresses; it does not describe effects. One file that
+maps every codename to what it does would undo the point of having codenames.
 
 Addresses must be lower-case letters, digits and hyphens. Duplicates, reserved routes
 and anything needing URL-escaping refuse to start — an app that is silently unreachable
 would be found out on stage.
+
+### What a codename does and does not buy
+
+It protects against the glance: the address is on screen the whole time you install the
+app, and again whenever you hand someone the phone. `/mindreader` announces what is
+coming; `/heron` does not.
+
+It protects against nothing else. **This repository is public**, so every app README,
+every commit message and every line of this file is readable by anyone who finds it, and
+no naming scheme changes that. If the methods are meant to be private, the repository
+has to be private — that is the control that matters, and codenames are what you do on
+top of it, not instead of it.
 
 ## The shelved game
 
