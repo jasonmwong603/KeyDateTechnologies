@@ -207,37 +207,70 @@ function seeded(seed) {
 /**
  * The outline of the piece, in element pixels, clockwise from the card corner.
  *
- * `across` and `down` are how far along the top and left edges the tear starts,
- * as fractions of the card. The ragged line between those two points is the
- * torn edge; everything else is the card's own factory edge, which is why the
- * piece has to keep the real corner radius to look like anything.
+ * The tear turns a corner rather than cutting across one. A single diagonal
+ * from the top edge to the left edge gives a triangle, which is a shape a
+ * guillotine makes — and a steep one at that, so the piece reads as a wedge
+ * rather than as part of a card. Running the tear down, round, and back out
+ * leaves a rounded rectangle with the card's own corner on it: the shape you
+ * get when a corner is actually torn off, and one that holds the index where
+ * it belongs instead of slicing through it.
+ *
+ * `across` and `down` are how far the piece extends along the top and left
+ * edges; `round` is how much of the turn is curve rather than right angle.
  */
-export function tornCornerPolygon({ w, h, seed = 0x5eed, across = 0.46, down = 0.34, steps = 17 }) {
+export function tornCornerPolygon({
+  w,
+  h,
+  seed = 0x5eed,
+  across = 0.42,
+  down = 0.3,
+  round = 0.62,
+  steps = 30,
+}) {
   const random = seeded(seed);
-  const start = { x: w * across, y: 0 };
-  const end = { x: 0, y: h * down };
+  const ax = w * across;
+  const by = h * down;
+  const r = Math.min(ax, by) * round;
 
-  const dx = end.x - start.x;
-  const dy = end.y - start.y;
-  const length = Math.hypot(dx, dy);
-  // Perpendicular to the tear, for the ragged offsets.
-  const nx = -dy / length;
-  const ny = dx / length;
+  // The tear's line before it is torn: down the inside, around, and back out.
+  const spine = [];
+  const SIDE = Math.max(2, Math.round(steps * 0.3));
+  const ARC = Math.max(4, Math.round(steps * 0.4));
 
-  const points = [{ x: 0, y: 0 }, start];
-  for (let i = 1; i < steps; i += 1) {
-    const t = i / steps;
-    /*
-     * Paper tears in fibres, not in a sine wave: short runs with sudden small
-     * jogs. Biasing the offsets one way — into the piece — matters more than it
-     * sounds, because a tear that wanders both ways reads as a cut-out, and the
-     * eye knows the difference without being able to say so.
-     */
-    const amplitude = length * 0.09 * (0.35 + random());
-    const offset = (random() - 0.62) * amplitude;
-    points.push({ x: start.x + dx * t + nx * offset, y: start.y + dy * t + ny * offset });
+  for (let i = 0; i <= SIDE; i += 1) spine.push({ x: ax, y: ((by - r) * i) / SIDE });
+  for (let i = 1; i <= ARC; i += 1) {
+    const angle = (Math.PI / 2) * (i / ARC);
+    spine.push({ x: ax - r + r * Math.cos(angle), y: by - r + r * Math.sin(angle) });
   }
-  points.push(end);
+  for (let i = 1; i <= SIDE; i += 1) spine.push({ x: (ax - r) * (1 - i / SIDE), y: by });
+
+  /*
+   * Then tear it.
+   *
+   * Paper gives way in fibres: short runs with sudden small jogs, and the jogs
+   * favour one side because the sheet is being pulled one way. A wander that is
+   * even in both directions reads as a cut-out, and the eye knows the
+   * difference without being able to name it.
+   */
+  const points = [{ x: 0, y: 0 }];
+  for (let i = 0; i < spine.length; i += 1) {
+    const here = spine[i];
+    const before = spine[Math.max(0, i - 1)];
+    const after = spine[Math.min(spine.length - 1, i + 1)];
+    const dx = after.x - before.x;
+    const dy = after.y - before.y;
+    const length = Math.hypot(dx, dy) || 1;
+    // Perpendicular to the tear at this point.
+    const nx = -dy / length;
+    const ny = dx / length;
+
+    // The ends stay put, so the tear meets the card's clean edges exactly.
+    const ends = Math.min(i, spine.length - 1 - i);
+    const fade = Math.min(1, ends / 3);
+    const amplitude = Math.min(ax, by) * 0.07 * (0.3 + random()) * fade;
+    const offset = (random() - 0.62) * amplitude;
+    points.push({ x: here.x + nx * offset, y: here.y + ny * offset });
+  }
   return points;
 }
 
@@ -267,15 +300,67 @@ export function polygonCentroid(points) {
   return { x: cx / (6 * area), y: cy / (6 * area) };
 }
 
+/** The signed area of a polygon, by the shoelace formula. */
+export function polygonArea(points) {
+  let total = 0;
+  for (let i = 0; i < points.length; i += 1) {
+    const a = points[i];
+    const b = points[(i + 1) % points.length];
+    total += a.x * b.y - b.x * a.y;
+  }
+  return total / 2;
+}
+
 /**
- * Whether the piece has been taken out of the phone.
+ * The part of a polygon inside a rectangle — Sutherland and Hodgman, 1974.
  *
- * True only once the middle of the piece is past an edge of the screen. The
- * test is deliberately on the centre rather than on any part of it: vanishing
- * the moment a corner touched the edge would take it while most of it was still
- * in plain sight, which looks like a bug and not like a thing being drawn out.
+ * Clipped against each of the four screen edges in turn. A homography maps
+ * straight lines to straight lines, so the piece is still a polygon once it is
+ * on screen and this is exact rather than an approximation of a curve.
  */
-export function hasLeftScreen(matrix, centroid, viewport) {
-  const at = applyMatrix(matrix, centroid.x, centroid.y);
-  return at.x < 0 || at.y < 0 || at.x > viewport.width || at.y > viewport.height;
+export function clipToRect(points, { width, height }) {
+  const edges = [(p) => p.x >= 0, (p) => p.x <= width, (p) => p.y >= 0, (p) => p.y <= height];
+  const crossings = [
+    (a, b) => ({ x: 0, y: a.y + ((b.y - a.y) * (0 - a.x)) / (b.x - a.x) }),
+    (a, b) => ({ x: width, y: a.y + ((b.y - a.y) * (width - a.x)) / (b.x - a.x) }),
+    (a, b) => ({ x: a.x + ((b.x - a.x) * (0 - a.y)) / (b.y - a.y), y: 0 }),
+    (a, b) => ({ x: a.x + ((b.x - a.x) * (height - a.y)) / (b.y - a.y), y: height }),
+  ];
+
+  let output = points;
+  for (let e = 0; e < 4; e += 1) {
+    const input = output;
+    output = [];
+    for (let i = 0; i < input.length; i += 1) {
+      const current = input[i];
+      const previous = input[(i + input.length - 1) % input.length];
+      const inNow = edges[e](current);
+      const inBefore = edges[e](previous);
+      if (inNow) {
+        if (!inBefore) output.push(crossings[e](previous, current));
+        output.push(current);
+      } else if (inBefore) {
+        output.push(crossings[e](previous, current));
+      }
+    }
+    if (output.length === 0) return [];
+  }
+  return output;
+}
+
+/**
+ * How much of the piece is still on the screen, from 1 to 0.
+ *
+ * Measured as area rather than guessed from a centre point. The piece goes when
+ * more than half of it has left, which is the moment it stops looking like a
+ * thing on a screen and starts looking like a thing being drawn through the
+ * edge of one — and it has to be more than half, because letting go any earlier
+ * takes it out of a hand that is still visibly holding it.
+ */
+export function visibleFraction(matrix, polygon, viewport) {
+  const onScreen = polygon.map((p) => applyMatrix(matrix, p.x, p.y));
+  const whole = Math.abs(polygonArea(onScreen));
+  if (whole === 0) return 0;
+  const inside = clipToRect(onScreen, viewport);
+  return inside.length < 3 ? 0 : Math.abs(polygonArea(inside)) / whole;
 }

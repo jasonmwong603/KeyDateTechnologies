@@ -161,6 +161,76 @@
         display: none;
       }
 
+      /*
+       * The opening screen: pick the card, then the phone goes dark.
+       *
+       * It is also the only part of this that looks like an app, which is the
+       * point of putting it first. Somebody who opens the thing finds a card
+       * picker — dull, plausible, and over in two taps.
+       */
+      #choose {
+        position: fixed;
+        inset: 0;
+        z-index: 30;
+        background: #000;
+        overflow-y: auto;
+        padding: max(2rem, env(safe-area-inset-top)) 1rem max(2rem, env(safe-area-inset-bottom));
+      }
+
+      #choose[hidden] {
+        display: none;
+      }
+
+      #ranks {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(5.2rem, 1fr));
+        gap: 0.55rem;
+        max-width: 26rem;
+        margin: 0 auto;
+      }
+
+      .rank {
+        appearance: none;
+        border: none;
+        border-radius: 0.8rem;
+        background: #1c1c1e;
+        color: #fff;
+        font-size: 1.4rem;
+        font-weight: 500;
+        padding: 1.05rem 0;
+      }
+
+      .rank[aria-expanded='true'] {
+        background: #2e2e32;
+      }
+
+      /* The suits drop in under the rank that was tapped, spanning the row, so
+         the choice reads as one gesture continuing rather than a new screen. */
+      .suits {
+        grid-column: 1 / -1;
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 0.55rem;
+      }
+
+      .suit {
+        appearance: none;
+        border: none;
+        border-radius: 0.8rem;
+        background: #fff;
+        font-size: 1.9rem;
+        padding: 0.8rem 0;
+        line-height: 1;
+      }
+
+      .suit.red {
+        color: #c8102e;
+      }
+
+      .suit.black {
+        color: #111;
+      }
+
       #panel {
         position: fixed;
         inset: auto 0 0 0;
@@ -216,11 +286,12 @@
     <div id="wall"></div>
     <div id="card" hidden></div>
 
+    <div id="choose">
+      <div id="ranks"></div>
+    </div>
+
     <div id="panel" hidden>
-      <label>
-        Card
-        <select id="rank"></select>
-      </label>
+      <button id="recard" type="button">Choose a different card</button>
       <label>
         Size — hold a real card against the screen and match it
         <input id="scale" type="range" min="1.6" max="7" step="0.01" />
@@ -242,7 +313,7 @@
         tornCornerPolygon,
         clipPath,
         polygonCentroid,
-        hasLeftScreen,
+        visibleFraction,
       } from './card.mjs';
 
       /*
@@ -279,19 +350,73 @@
       const cardEl = document.getElementById('card');
       const panelEl = document.getElementById('panel');
       const scaleEl = document.getElementById('scale');
-      const rankEl = document.getElementById('rank');
 
       const RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
       const SUITS = { '♠': '#111', '♥': '#c8102e', '♦': '#c8102e', '♣': '#111' };
 
-      for (const suit of Object.keys(SUITS)) {
+      /*
+       * Rank first, then suit under it.
+       *
+       * Thirteen buttons and then four is two easy taps; a grid of fifty-two is
+       * a wall of symbols to hunt through, which is a thing you do not want to
+       * be doing while somebody watches you hold the phone.
+       */
+      const chooseEl = document.getElementById('choose');
+      const ranksEl = document.getElementById('ranks');
+
+      function buildChooser() {
+        ranksEl.innerHTML = '';
         for (const rank of RANKS) {
-          const option = document.createElement('option');
-          option.value = `${rank}${suit}`;
-          option.textContent = `${rank}${suit}`;
-          rankEl.append(option);
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'rank';
+          button.textContent = rank;
+          button.setAttribute('aria-expanded', 'false');
+          button.dataset.rank = rank;
+          ranksEl.append(button);
         }
       }
+
+      function closeSuits() {
+        ranksEl.querySelector('.suits')?.remove();
+        for (const button of ranksEl.querySelectorAll('.rank')) {
+          button.setAttribute('aria-expanded', 'false');
+        }
+      }
+
+      ranksEl.addEventListener('click', (event) => {
+        const rankButton = event.target.closest('.rank');
+        const suitButton = event.target.closest('.suit');
+
+        if (suitButton !== null) {
+          face = `${suitButton.dataset.rank}${suitButton.dataset.suit}`;
+          store.set('face', face);
+          drawFace();
+          closeSuits();
+          chooseEl.hidden = true;
+          return;
+        }
+
+        if (rankButton === null) return;
+        const alreadyOpen = rankButton.getAttribute('aria-expanded') === 'true';
+        closeSuits();
+        if (alreadyOpen) return;
+
+        rankButton.setAttribute('aria-expanded', 'true');
+        const suits = document.createElement('div');
+        suits.className = 'suits';
+        for (const suit of Object.keys(SUITS)) {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = `suit ${SUITS[suit] === '#111' ? 'black' : 'red'}`;
+          button.textContent = suit;
+          button.dataset.rank = rankButton.dataset.rank;
+          button.dataset.suit = suit;
+          suits.append(button);
+        }
+        // Directly after the tapped rank, so the suits appear under it.
+        rankButton.after(suits);
+      });
 
       /** Pixels per millimetre. Measured against a real card, never guessed. */
       let scale = store.get('scale', 3.8);
@@ -399,6 +524,21 @@
         }, 160);
       }
 
+      /** Whether a point of the element is on the torn piece or the clipped-away rest. */
+      function insideOutline(point) {
+        if (outline === null) return false;
+        let inside = false;
+        for (let i = 0, j = outline.length - 1; i < outline.length; j = i, i += 1) {
+          const a = outline[i];
+          const b = outline[j];
+          const straddles = a.y > point.y !== b.y > point.y;
+          if (straddles && point.x < ((b.x - a.x) * (point.y - a.y)) / (b.y - a.y) + a.x) {
+            inside = !inside;
+          }
+        }
+        return inside;
+      }
+
       // --- The drag ---------------------------------------------------------
       //
       // `check.mjs` proves the part that matters: the point of the card under
@@ -418,14 +558,73 @@
         event.preventDefault();
       });
 
-      // Bare glass. The clip means this only fires away from the piece, so it
-      // cannot steal a grab from it.
-      window.addEventListener('pointerdown', (event) => {
-        if (present || !panelEl.hidden) return;
-        appear({ x: event.clientX, y: event.clientY });
+      /*
+       * Bare glass, and the lightest possible trigger.
+       *
+       * `touchstart` fires before the browser has synthesised a pointer event,
+       * and before it knows whether the contact will become a tap, a drag or
+       * nothing at all — so the piece is already there by the time a brush has
+       * finished being a brush. There is no threshold, no delay and no distance
+       * to travel first: contact is the whole condition.
+       *
+       * That sensitivity is only for the arrival. Once the piece exists the
+       * drag is ordinary and one-to-one, because a piece that leapt about under
+       * a light touch would feel like anything except a thing lying on glass.
+       */
+      function firstContact(x, y) {
+        if (present || !panelEl.hidden || !chooseEl.hidden) return;
+        appear({ x, y });
         const { w, h } = size();
         const matrix = homographyMatrix(corners, w, h);
-        grabbed = matrix === null ? null : unapplyMatrix(matrix, event.clientX, event.clientY);
+        grabbed = matrix === null ? null : unapplyMatrix(matrix, x, y);
+      }
+
+      window.addEventListener(
+        'touchstart',
+        (event) => {
+          const touch = event.touches[0];
+          if (touch === undefined || event.touches.length !== 1) return;
+          firstContact(touch.clientX, touch.clientY);
+        },
+        { passive: true },
+      );
+
+      // Mice, trackpads, and anything that never sends a touch event.
+      window.addEventListener('pointerdown', (event) => {
+        if (event.pointerType === 'touch') return;
+        firstContact(event.clientX, event.clientY);
+      });
+
+      /*
+       * Keeps hold of the finger all the way to the edge.
+       *
+       * Without capture the browser stops delivering moves the moment the
+       * pointer leaves the element it started on — which, for a piece being
+       * drawn off the side of the screen, is exactly when it matters. The
+       * capture is taken on the window so it survives the piece being clipped
+       * out from under the fingertip on the way out.
+       */
+      window.addEventListener('pointerdown', (event) => {
+        if (grabbed === null) return;
+        try {
+          event.target.setPointerCapture?.(event.pointerId);
+        } catch {
+          // Capture is a convenience; the window listener still gets moves.
+        }
+      });
+
+      // A touch that arrives on the glass should also be able to pick the piece
+      // back up, which `touchstart` above does not do on its own.
+      window.addEventListener('pointerdown', (event) => {
+        if (!present || grabbed !== null || !panelEl.hidden) return;
+        const { w, h } = size();
+        const matrix = homographyMatrix(corners, w, h);
+        if (matrix === null) return;
+        const local = unapplyMatrix(matrix, event.clientX, event.clientY);
+        if (local === null) return;
+        // Only if the touch actually landed on the torn piece, not on the
+        // invisible rest of the card.
+        if (insideOutline(local)) grabbed = local;
       });
 
       window.addEventListener('pointermove', (event) => {
@@ -435,12 +634,19 @@
         corners = dragTo(corners, grabbed, { x: event.clientX, y: event.clientY }, w, h);
         const matrix = render();
 
+        /*
+         * It goes only once more than half of it has gone.
+         *
+         * Measured as area, every frame. Anything that lets go earlier takes
+         * the piece out of a hand that is still visibly holding it, which reads
+         * as the thing breaking rather than being drawn through the edge.
+         */
         if (
           matrix !== null &&
-          hasLeftScreen(matrix, centroid, {
+          visibleFraction(matrix, outline, {
             width: window.innerWidth,
             height: window.innerHeight,
-          })
+          }) < 0.5
         ) {
           vanish();
         }
@@ -465,7 +671,7 @@
       window.addEventListener(
         'touchstart',
         (event) => {
-          if (event.touches.length !== 2) return;
+          if (event.touches.length !== 2 || !chooseEl.hidden) return;
           panelTimer = window.setTimeout(() => {
             panelEl.hidden = false;
           }, 1000);
@@ -484,23 +690,25 @@
         if (present) render();
       });
 
-      rankEl.addEventListener('change', () => {
-        face = rankEl.value;
-        store.set('face', face);
-        drawFace();
-      });
-
       document.getElementById('close').addEventListener('click', () => {
         panelEl.hidden = true;
+      });
+
+      document.getElementById('recard').addEventListener('click', () => {
+        panelEl.hidden = true;
+        if (present) vanish();
+        closeSuits();
+        chooseEl.hidden = false;
       });
       // --- Start ------------------------------------------------------------
 
       scaleEl.value = String(scale);
-      rankEl.value = face;
+      buildChooser();
       drawFace();
-
-      // There is no setup, and nothing on screen. It opens as a dark phone.
       shape();
+
+      // The choice comes first, every launch. It is two taps, and it is also
+      // the only part of this that looks like an app to anyone who opens it.
 
       window.addEventListener('resize', () => {
         shape();

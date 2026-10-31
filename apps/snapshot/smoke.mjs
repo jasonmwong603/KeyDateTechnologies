@@ -94,12 +94,59 @@ await page.goto(pageUrl);
 // piece to be on it waits forever.
 await page.waitForSelector('#card', { state: 'attached' });
 
+// --- The choice comes first ----------------------------------------------
 check(
-  'it opens with nothing on the screen at all',
+  'it opens on the card chooser',
+  await page.evaluate(() => document.getElementById('choose').hidden === false),
+);
+
+const ranks = await page.evaluate(() =>
+  [...document.querySelectorAll('.rank')].map((b) => b.textContent),
+);
+check(
+  'all thirteen ranks, ace through king',
+  ranks.join(' ') === 'A 2 3 4 5 6 7 8 9 10 J Q K',
+  ranks.join(' '),
+);
+
+check(
+  'with no suits showing until a rank is tapped',
+  await page.evaluate(() => document.querySelectorAll('.suit').length === 0),
+);
+
+await page.click('.rank:text-is("Q")');
+const suits = await page.evaluate(() => {
+  const list = [...document.querySelectorAll('.suit')];
+  const queen = document.querySelector('.rank[data-rank="Q"]');
+  return {
+    faces: list.map((b) => b.textContent),
+    // The suits must sit directly under the rank that was tapped, not at the
+    // end of the grid — the choice should read as one gesture continuing.
+    rightAfter: queen?.nextElementSibling?.classList.contains('suits') === true,
+  };
+});
+check(
+  'tapping a rank drops its four suits in beneath it',
+  suits.faces.join('') === '♠♥♦♣' && suits.rightAfter,
+  JSON.stringify(suits),
+);
+
+await page.click('.suit[data-rank="Q"][data-suit="♦"]');
+check(
+  'and choosing one takes you to the dark screen',
+  await page.evaluate(() => document.getElementById('choose').hidden === true),
+);
+check(
+  'which has nothing on it at all',
   await page.evaluate(() => {
     const card = document.getElementById('card');
     return card.hidden || getComputedStyle(card).opacity === '0';
   }),
+);
+check(
+  'armed with the card that was chosen',
+  (await page.evaluate(() => localStorage.getItem('snapshot.face'))) === '"Q♦"',
+  await page.evaluate(() => localStorage.getItem('snapshot.face')),
 );
 
 /*
@@ -146,11 +193,16 @@ const send = (type, point) =>
     { type, point },
   );
 
-await send('pointerdown', touch);
+await page.evaluate(({ x, y }) => {
+  const point = new Touch({ identifier: 7, target: document.body, clientX: x, clientY: y });
+  window.dispatchEvent(
+    new TouchEvent('touchstart', { touches: [point], bubbles: true, cancelable: true }),
+  );
+}, touch);
 await page.waitForTimeout(220);
 
 check(
-  'a touch on the black brings the piece out',
+  'the lightest touch on the black brings the piece out',
   await page.evaluate(() => {
     const card = document.getElementById('card');
     return !card.hidden && getComputedStyle(card).opacity === '1';
@@ -187,7 +239,7 @@ const before = await page.evaluate(() => {
 });
 
 // The finger is still down from the touch that brought it out, which is how it
-// is actually performed — touch, and draw it away without lifting.
+// is actually performed — brush the glass, and draw it away without lifting.
 const journey = [
   { x: touch.x - 60, y: touch.y - 140 },
   { x: touch.x + 50, y: touch.y - 260 },
@@ -230,24 +282,30 @@ check(
 await page.screenshot({ path: path.join(here, 'preview.png') });
 
 /*
- * Drawn out of the phone.
+ * Drawn out of the phone, at the halfway mark and not before.
  *
- * Off the left edge, past the point where the middle of the piece has crossed
- * it. Checked as two separate things — still there a moment before, gone a
- * moment after — because a test that only looks at the end cannot tell a piece
- * that left when it should from one that was never there.
+ * Tested either side of it: hard against the edge with most of the piece still
+ * showing it must stay, and only once more than half has gone may it go. A
+ * test that looked only at the end could not tell a piece that left on time
+ * from one that left the moment it touched the edge — which is the failure
+ * that takes it out of a hand still visibly holding it.
  */
-await send('pointermove', { x: 40, y: viewport.height * 0.5 });
+await send('pointermove', { x: 2, y: viewport.height * 0.5 });
 await page.evaluate(() => new Promise((r) => requestAnimationFrame(r)));
+const atEdge = await page.evaluate(() => ({
+  showing: getComputedStyle(document.getElementById('card')).opacity === '1',
+  rect: document.getElementById('card').getBoundingClientRect().toJSON(),
+}));
 check(
-  'it survives being dragged near the edge',
-  await page.evaluate(() => getComputedStyle(document.getElementById('card')).opacity === '1'),
+  'it survives the finger reaching the very edge of the screen',
+  atEdge.showing,
+  `piece spans x ${Math.round(atEdge.rect.x)} to ${Math.round(atEdge.rect.x + atEdge.rect.width)}`,
 );
 
-await send('pointermove', { x: -140, y: viewport.height * 0.5 });
+await send('pointermove', { x: -200, y: viewport.height * 0.5 });
 await page.waitForTimeout(320);
 check(
-  'and is gone once it is taken past it',
+  'and is gone once more than half of it has left',
   await page.evaluate(() => {
     const card = document.getElementById('card');
     return card.hidden || getComputedStyle(card).opacity === '0';

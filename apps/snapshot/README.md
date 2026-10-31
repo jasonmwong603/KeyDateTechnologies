@@ -3,47 +3,57 @@
 _An app in [KeyDate Magic](../../README.md). Served at `/snapshot`; only `public/` is
 published — this file is not._
 
-A black phone, apparently asleep. Touch the glass and a **torn corner of a playing
-card** is there, under your fingertip. You can slide it around the screen. Slide it off
-the edge and it is gone — drawn out of the phone.
+It opens as a card picker: thirteen ranks, tap one and its four suits drop in
+underneath. Choose, and the phone goes black and empty — apparently asleep.
+
+Brush the glass and a **torn corner of that card** is there under your fingertip. Slide
+it. Draw it off the edge and once more than half of it has gone, it is gone — taken out
+of the phone.
 
 What you do with the piece once it is out is the rest of the routine, and the obvious
 one is the oldest: produce the real torn corner, and let it match.
 
 ## The state of it
 
-The piece, the tear, the drag and the extraction all work and are proved. **There is no
-method yet** — nothing forces a card, nothing matches anything. It is the prop; the
-routine around it is still to be written.
+The choice, the piece, the tear, the drag and the extraction all work and are proved.
+**There is no method yet** — the card is one you pick, not one anybody is forced to. It
+is the prop; the routine around it is still to be written.
 
-## The handling, so far
+## The handling
 
-1. **Install it and open it.** There is no setup. The screen is black and empty.
-2. **Size it once.** Two fingers held anywhere for a second opens the settings. Hold a
-   real card flat against the screen and move the slider until the drawn one matches it.
-   This matters more than anything else on this page — see below.
-3. **Pick the card** it should be, in the same panel.
-4. Then: touch, slide, and draw it off the edge.
+1. **Open it and choose the card.** Two taps: rank, then suit. This is also the only
+   part of the app that looks like an app, which is why it is first — somebody who opens
+   the thing finds a card picker, and it is over before they have read it.
+2. **Size it once, ever.** Two fingers held anywhere for a second opens the settings.
+   Hold a real card flat against the screen and move the slider until the drawn one
+   matches it. This matters more than anything else on this page — see below.
+3. **Brush, slide, and draw it off the edge.**
 
-Touching the black brings a new piece out, so it resets itself between performances with
-nothing to press.
+Touching the black brings the piece back, so it resets itself between performances with
+nothing to press. "Choose a different card" in the settings returns to the picker.
 
-## Three things that had to be right
+## Four things that had to be right
 
-**It appears because a finger arrived, not because an app did something.** Eighty
-milliseconds — under what reads as a transition and over what reads as a glitch. A slide
-or a grow would announce that software is involved, which nothing else on that screen
-does.
+**The tear turns a corner; it does not cut across one.** A single diagonal gives a
+triangle, which is a shape a guillotine makes — and it slices through the index, which is
+the one part of a torn corner anybody reads. Running the tear down, round and back out
+leaves a rounded rectangle with the card's own corner on it. As a number: the piece fills
+88% of its bounding box, where a triangle fills 50%.
 
-**It leaves when its middle passes the edge, not when a corner touches it.** Vanishing
-while three-quarters of the piece is still in plain sight looks like a fault. Letting go
-at the midpoint looks like the last of it being pulled through.
+**It arrives on the lightest contact.** `touchstart`, before the browser has synthesised
+a pointer event and before it knows whether the contact will become a tap, a drag or
+nothing — so the piece is already there by the time a brush has finished being a brush.
+No threshold, no delay, no distance to travel first.
 
-**The tear is the same every time.** It is generated from a fixed seed rather than drawn
-by hand, so the piece that appears tonight is the piece that appeared last week. A tear
-whose shape changed between appearances would be the tell, the one time somebody looked
-twice — and a deterministic tear is also the only kind `check.mjs` can say anything
-about.
+**And then it behaves like an object.** That sensitivity is only for the arrival. Once
+the piece exists the drag is ordinary and exactly one-to-one, because something that
+leapt about under a light touch would feel like anything except a thing lying on glass.
+
+**It goes when more than half of it has gone, measured by area, every frame.** Not when
+it touches the edge, not when its centre crosses — either of those takes the piece out of
+a hand that is still visibly holding it, which reads as the thing breaking rather than
+being drawn through. The finger keeps hold all the way out: pointer capture is taken on
+the window, so moves keep arriving even as the piece is clipped away under the fingertip.
 
 ## Why the background is black and nothing else
 
@@ -88,10 +98,10 @@ every pose, and holds to floating-point exactness — along with the card keepin
 while it moves, and being the size of a card.
 
 It also pins the tear — inside the card it came off, keeping the card's own corner,
-ragged rather than cut, identical every run — and the rule that takes the piece away,
-across four thousand positions: never gone while its middle is on screen, always gone
-once it is not. A piece that vanished early would look broken; one that never vanished
-could not be taken out of the phone.
+ragged rather than cut, filling enough of its box to be a rectangle rather than a wedge,
+and identical every run — and the rule that takes the piece away, across four thousand
+positions either side of the halfway mark, with a piece in the middle of the screen
+reading as exactly 1.0 visible and one off it as exactly 0.
 
 That all of it is geometry, and therefore provable without a phone, is why it was built
 this way round: the part that must be exact is the part a terminal can settle.

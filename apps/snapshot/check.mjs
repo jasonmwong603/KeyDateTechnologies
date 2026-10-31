@@ -20,7 +20,8 @@ import {
   CARD_MM,
   tornCornerPolygon,
   polygonCentroid,
-  hasLeftScreen,
+  polygonArea,
+  visibleFraction,
 } from './public/card.mjs';
 
 /** Deterministic, so a failure can be reproduced exactly. */
@@ -143,9 +144,10 @@ for (const scale of [2, 3.5, 4.77, 6]) {
 
 // --- 5. The torn piece -----------------------------------------------------
 //
-// The tear has to be a tear: ragged, the same every time, inside the card it
-// came off, and keeping the card's own corner. A vertex outside the element
-// would be cut off square by the box, which turns a torn edge into a cut one.
+// The tear has to turn a corner rather than cut across one. A single diagonal
+// gives a triangle, which is a shape a guillotine makes; running the tear down,
+// round and back out leaves a rounded rectangle with the card's own corner on
+// it — and keeps the index, instead of slicing through it.
 const SHAPE = { w: 254, h: 356 };
 const outline = tornCornerPolygon(SHAPE);
 
@@ -163,29 +165,43 @@ const again = tornCornerPolygon(SHAPE);
 const drifted = outline.some((p, i) => Math.hypot(p.x - again[i].x, p.y - again[i].y) > 1e-12);
 if (drifted) note('the tear is not the same shape twice');
 
-// Ragged, not straight: at least some points off the line between its ends.
-const first = outline[1];
-const last = outline.at(-1);
-const run = Math.hypot(last.x - first.x, last.y - first.y);
+/*
+ * Rectangular, not wedge-shaped.
+ *
+ * A triangle cut off a corner fills half its bounding box. This piece should
+ * fill most of one — that is what "rounded rectangle" means as a number, and it
+ * is the difference between a torn corner and a steep slice.
+ */
+const spanX = Math.max(...outline.map((p) => p.x));
+const spanY = Math.max(...outline.map((p) => p.y));
+const fill = Math.abs(polygonArea(outline)) / (spanX * spanY);
+if (fill < 0.72)
+  note(`the piece fills only ${(fill * 100).toFixed(0)}% of its box — still a wedge`);
+
+// Ragged, not cut: some points off the smooth path the tear follows.
 let roughest = 0;
-for (const p of outline.slice(2, -1)) {
+for (let i = 2; i < outline.length - 1; i += 1) {
+  const before = outline[i - 1];
+  const here = outline[i];
+  const after = outline[i + 1];
+  const run = Math.hypot(after.x - before.x, after.y - before.y) || 1;
   const d =
-    Math.abs((last.y - first.y) * (p.x - first.x) - (last.x - first.x) * (p.y - first.y)) / run;
+    Math.abs(
+      (after.y - before.y) * (here.x - before.x) - (after.x - before.x) * (here.y - before.y),
+    ) / run;
   roughest = Math.max(roughest, d);
 }
-if (roughest < 1) note(`the tear is too straight to be one (${roughest.toFixed(2)}px of rag)`);
+if (roughest < 0.8) note(`the tear is too smooth to be one (${roughest.toFixed(2)}px)`);
 
-// --- 6. It leaves only when it has actually left ---------------------------
+// --- 6. It goes when more than half of it has gone -------------------------
 //
-// Vanishing while most of the piece is still on screen looks like a fault.
-// Never vanishing means it cannot be taken out of the phone. Both are checked
-// against a real screen's worth of positions.
+// Measured by area, every frame, against the screen. Letting go any earlier
+// takes the piece out of a hand that is still visibly holding it.
 const VIEWPORT = { width: 390, height: 844 };
-const middle = polygonCentroid(outline);
-let heldWhenVisible = 0;
-let wrongHolds = 0;
-let leftWhenGone = 0;
-let wrongLeaves = 0;
+let heldWhileMostlyOn = 0;
+let goneWhenMostlyOff = 0;
+let tooEarly = 0;
+let tooLate = 0;
 
 for (let trial = 0; trial < 4000; trial += 1) {
   const pose = {
@@ -198,21 +214,38 @@ for (let trial = 0; trial < 4000; trial += 1) {
   const matrix = homographyMatrix(cardCorners(pose), SHAPE.w, SHAPE.h);
   if (matrix === null) continue;
 
-  const at = applyMatrix(matrix, middle.x, middle.y);
-  const onScreen = at.x >= 0 && at.y >= 0 && at.x <= VIEWPORT.width && at.y <= VIEWPORT.height;
-  const left = hasLeftScreen(matrix, middle, VIEWPORT);
+  const showing = visibleFraction(matrix, outline, VIEWPORT);
+  if (showing < 0 || showing > 1 + 1e-9) {
+    note(`visible fraction out of range: ${showing}`);
+    continue;
+  }
 
-  if (onScreen) {
-    heldWhenVisible += 1;
-    if (left) wrongLeaves += 1;
+  if (showing >= 0.5) {
+    heldWhileMostlyOn += 1;
+    if (showing < 0.5) tooEarly += 1;
   } else {
-    leftWhenGone += 1;
-    if (!left) wrongHolds += 1;
+    goneWhenMostlyOff += 1;
   }
 }
 
-if (wrongLeaves > 0) note(`${wrongLeaves} pieces vanished while still on screen`);
-if (wrongHolds > 0) note(`${wrongHolds} pieces stayed after leaving the screen`);
+// A piece wholly on screen must read as wholly there, and one wholly off as
+// wholly gone — the two ends the rule is anchored to.
+const whollyOn = homographyMatrix(
+  cardCorners({ x: 195, y: 422, scale: 3.8, angle: 0, tilt: 0 }),
+  SHAPE.w,
+  SHAPE.h,
+);
+const onFraction = visibleFraction(whollyOn, outline, VIEWPORT);
+if (Math.abs(onFraction - 1) > 1e-9)
+  note(`a piece in the middle reads as ${onFraction.toFixed(3)} visible`);
+
+const whollyOff = homographyMatrix(
+  cardCorners({ x: -900, y: 422, scale: 3.8, angle: 0, tilt: 0 }),
+  SHAPE.w,
+  SHAPE.h,
+);
+if (visibleFraction(whollyOff, outline, VIEWPORT) !== 0)
+  note('a piece off the screen still reads as visible');
 
 // --- Report ---------------------------------------------------------------
 console.log(`round trip        worst ${roundTripWorst.toExponential(1)}px over 2000 poses`);
@@ -220,10 +253,10 @@ console.log(`stays under finger worst ${dragWorst.toExponential(1)}px over 24000
 console.log(`keeps its shape   worst ${shapeWorst.toExponential(1)}px over 500 drags`);
 console.log(`card size         worst ${sizeWorst.toExponential(1)}mm off`);
 console.log(
-  `the tear          ${outline.length} points, ${roughest.toFixed(1)}px of rag, same every time`,
+  `the tear          ${outline.length} points, fills ${(fill * 100).toFixed(0)}% of its box, ${roughest.toFixed(1)}px of rag`,
 );
 console.log(
-  `taken out         ${heldWhenVisible} held on screen, ${leftWhenGone} let go past the edge`,
+  `taken out         held ${heldWhileMostlyOn}, let go ${goneWhenMostlyOff}, at the halfway mark`,
 );
 
 // Budgets are floating-point slack, not tolerances. Every one of these is an
