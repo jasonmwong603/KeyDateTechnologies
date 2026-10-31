@@ -15,13 +15,31 @@ to it is still to be designed.
 
 ## The handling, so far
 
-1. **First run:** it asks for a photo. Take a screenshot of your own home screen and
-   choose it. It is stored on the phone and never leaves it.
+1. **Install it and open it.** There is no setup. It opens as a dark phone with a card
+   lying on it.
 2. **Size it once.** Two fingers held anywhere for a second opens the settings. Hold a
    real card flat against the screen and move the slider until the drawn one matches it
    exactly. This matters more than anything else on this page — see below.
 3. **Pick the card** it should be, in the same panel.
-4. Then it is just a phone with a card under the screen.
+4. Then it is a phone that looks asleep with a card under the glass.
+
+## Why the background is black and nothing else
+
+The first version asked for a screenshot of the performer's own home screen. It looked
+right and was wrong, because a screenshot drifts: notification badges change, the status
+bar clock is frozen at whatever minute it was taken, the wallpaper rotates. The moment
+the fake home screen stops matching the real one, the illusion breaks on the way _out_
+of it — which is the worst moment available, because that is when the phone is being
+handed back and looked at properly.
+
+Black never drifts. On an OLED phone those pixels are switched off, so the screen is not
+showing black, it _is_ black, and indistinguishable from a phone that is asleep. A card
+lying on it reads as an object on dark, inert glass, which is the premise rather than a
+compromise with it.
+
+It also needs no setup, fits every phone, keeps the performer's notification counts out
+of a prop, and retires a megabyte or three of somebody's private life sitting in local
+storage against a quota of about five.
 
 ## Why the size slider exists
 

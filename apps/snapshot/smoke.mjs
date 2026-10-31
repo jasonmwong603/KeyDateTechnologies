@@ -75,15 +75,8 @@ page.on('console', (message) => {
   errors.push(message.text());
 });
 
-// A one-pixel wallpaper, so the app behaves as it does once set up. The real
-// one is the performer's own screenshot and never goes near this repository.
+// Only the two settings the app actually keeps. There is nothing to set up.
 await page.addInitScript(() => {
-  localStorage.setItem(
-    'snapshot.wall',
-    JSON.stringify(
-      'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
-    ),
-  );
   localStorage.setItem('snapshot.scale', '3.8');
   localStorage.setItem('snapshot.face', '"A♠"');
 });
@@ -92,8 +85,27 @@ await page.goto(pageUrl);
 await page.waitForSelector('#card');
 
 check(
-  'it opens straight onto the wallpaper, not a setup screen',
-  await page.evaluate(() => document.getElementById('setup').hidden),
+  'it opens straight to the card, with nothing to set up',
+  await page.evaluate(() => document.getElementById('card').hidden === false),
+);
+
+/*
+ * The background has to be black, and has to stay black.
+ *
+ * On an OLED phone those pixels are off, so the screen is not showing black, it
+ * is black — a phone that looks asleep rather than one running something. Any
+ * drift towards a near-black grey gives that away in a dark room, which is
+ * where this gets performed.
+ */
+const backdrop = await page.evaluate(() => {
+  const wall = getComputedStyle(document.getElementById('wall'));
+  const body = getComputedStyle(document.body);
+  return { wall: wall.backgroundColor, image: wall.backgroundImage, body: body.backgroundColor };
+});
+check(
+  'the background is true black, and is not an image that could drift',
+  backdrop.wall === 'rgb(0, 0, 0)' && backdrop.image === 'none' && backdrop.body === 'rgb(0, 0, 0)',
+  JSON.stringify(backdrop),
 );
 
 const card = await page.locator('#card').boundingBox();

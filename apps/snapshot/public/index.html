@@ -37,17 +37,26 @@
       }
 
       /*
-       * The wallpaper is the trick's whole premise: the phone has to look like
-       * it is sitting idle, not running anything. It is the performer's own
-       * screenshot, loaded from their camera roll and kept on the device — see
-       * the note in the script about why it is never shipped with the app.
+       * Black, and nothing else, forever.
+       *
+       * The first version asked the performer for a screenshot of their own
+       * home screen. It looked right and was wrong: a screenshot drifts.
+       * Notification badges change, the status bar clock is frozen at whatever
+       * minute it was taken, the wallpaper rotates — and the instant the fake
+       * home screen stops matching the real one, the illusion breaks on the way
+       * *out* of it, which is the worst moment available.
+       *
+       * Black never drifts. On an OLED phone those pixels are switched off, so
+       * the screen is not showing black, it is black — indistinguishable from a
+       * phone that is asleep. A card lying on it reads as an object on dark,
+       * inert glass, which is the premise rather than a compromise with it. It
+       * also needs no setup, fits every phone, and keeps the performer's
+       * notification counts out of a prop.
        */
       #wall {
         position: fixed;
         inset: 0;
-        background-position: center;
-        background-size: cover;
-        background-repeat: no-repeat;
+        background: #000;
       }
 
       /*
@@ -76,17 +85,23 @@
         overflow: hidden;
       }
 
-      /* The glare of a glossy card catching the room. Subtle, and it does not
-         move with the card — light does not. */
+      /*
+       * The glare of a glossy card catching the room.
+       *
+       * Weak and wide on purpose. A strong sweep looked right against a busy
+       * wallpaper and, once the background went black, washed the pip out — the
+       * one thing on the card anybody is going to read. It does not move with
+       * the card either, because light does not.
+       */
       #card::after {
         content: '';
         position: absolute;
         inset: 0;
         background: linear-gradient(
           126deg,
-          rgba(255, 255, 255, 0) 38%,
-          rgba(255, 255, 255, 0.5) 48%,
-          rgba(255, 255, 255, 0) 58%
+          rgba(255, 255, 255, 0) 30%,
+          rgba(255, 255, 255, 0.18) 47%,
+          rgba(255, 255, 255, 0) 64%
         );
         pointer-events: none;
       }
@@ -120,45 +135,8 @@
 
       /* --- Setup, and the crib. Neither is ever on screen by accident. ----- */
 
-      #setup {
-        position: fixed;
-        inset: 0;
-        z-index: 40;
-        background: #000;
-        display: grid;
-        place-items: center;
-        padding: 2rem 1.6rem;
-        text-align: center;
-        gap: 1rem;
-      }
-
-      #setup[hidden],
       #panel[hidden] {
         display: none;
-      }
-
-      #setup h1 {
-        font-size: 1.1rem;
-        font-weight: 600;
-        margin: 0 0 0.4rem;
-      }
-
-      #setup p {
-        color: #8e8e93;
-        font-size: 0.82rem;
-        line-height: 1.5;
-        margin: 0 0 1.2rem;
-      }
-
-      button.action {
-        appearance: none;
-        border: none;
-        border-radius: 999px;
-        background: #0a84ff;
-        color: #fff;
-        font-size: 1rem;
-        font-weight: 500;
-        padding: 0.85rem 1.8rem;
       }
 
       #panel {
@@ -216,18 +194,6 @@
     <div id="wall"></div>
     <div id="card" hidden></div>
 
-    <div id="setup" hidden>
-      <div>
-        <h1>One-time setup</h1>
-        <p>
-          Take a screenshot of your home screen, then choose it here. It stays on this phone — it is
-          not uploaded and not part of the app.
-        </p>
-        <button class="action" id="pick" type="button">Choose a photo</button>
-        <input id="file" type="file" accept="image/*" hidden />
-      </div>
-    </div>
-
     <div id="panel" hidden>
       <label>
         Card
@@ -237,10 +203,7 @@
         Size — hold a real card against the screen and match it
         <input id="scale" type="range" min="1.6" max="7" step="0.01" />
       </label>
-      <div class="row">
-        <button id="rewall" type="button">Change wallpaper</button>
-        <button id="close" type="button">Done</button>
-      </div>
+      <button id="close" type="button">Done</button>
       <div class="hint">
         Press and hold two fingers anywhere for a second to open this again. Nothing else opens it.
       </div>
@@ -257,15 +220,17 @@
       } from './card.mjs';
 
       /*
-       * Everything the performer sets lives on the phone and nowhere else.
+       * The two settings, kept on the phone.
        *
-       * The wallpaper is a screenshot of their own home screen, which is to say
-       * a photograph of their private life: their apps, their notification
-       * counts, whoever is in their wallpaper. Shipping one with the app would
-       * publish all of that — this repository is public — and would also only
-       * ever match one phone. So it is chosen on the device, stored on the
-       * device, and never sent anywhere. There is no network code in this file
-       * at all, which is the simplest way to be sure of that.
+       * Only the card's size and which card it is — both small, both the
+       * performer's own choice, neither worth a byte leaving the device. An
+       * earlier version also stored a screenshot of the performer's home screen
+       * as a data URL, which was a megabyte or three of somebody's private life
+       * in local storage, against a quota of about five. That is gone with the
+       * wallpaper it belonged to.
+       *
+       * There is no network code in this file at all, which is the simplest way
+       * to be sure none of it travels.
        */
       const store = {
         get: (key, fallback) => {
@@ -285,9 +250,7 @@
         },
       };
 
-      const wallEl = document.getElementById('wall');
       const cardEl = document.getElementById('card');
-      const setupEl = document.getElementById('setup');
       const panelEl = document.getElementById('panel');
       const scaleEl = document.getElementById('scale');
       const rankEl = document.getElementById('rank');
@@ -395,30 +358,7 @@
         });
       }
 
-      // --- Setup and settings ----------------------------------------------
-
-      const fileEl = document.getElementById('file');
-      document.getElementById('pick').addEventListener('click', () => fileEl.click());
-
-      fileEl.addEventListener('change', () => {
-        const file = fileEl.files?.[0];
-        if (file === undefined) return;
-        const reader = new FileReader();
-        reader.addEventListener('load', () => {
-          // A data URL in local storage: it never leaves the device, and it
-          // survives being offline, which a blob URL would not.
-          store.set('wall', reader.result);
-          applyWall(reader.result);
-          setupEl.hidden = true;
-          cardEl.hidden = false;
-          reset();
-        });
-        reader.readAsDataURL(file);
-      });
-
-      function applyWall(source) {
-        wallEl.style.backgroundImage = `url("${source}")`;
-      }
+      // --- Settings ---------------------------------------------------------
 
       /*
        * Two fingers, held. Not a tap, not a corner, not a shake.
@@ -458,24 +398,14 @@
       document.getElementById('close').addEventListener('click', () => {
         panelEl.hidden = true;
       });
-      document.getElementById('rewall').addEventListener('click', () => {
-        panelEl.hidden = true;
-        setupEl.hidden = false;
-      });
-
       // --- Start ------------------------------------------------------------
 
       scaleEl.value = String(scale);
       rankEl.value = face;
       drawFace();
 
-      const saved = store.get('wall', null);
-      if (saved === null) {
-        setupEl.hidden = false;
-      } else {
-        applyWall(saved);
-        cardEl.hidden = false;
-      }
+      // There is no setup. It opens as a dark phone with a card on it.
+      cardEl.hidden = false;
       reset();
 
       window.addEventListener('resize', () => window.requestAnimationFrame(reset));
