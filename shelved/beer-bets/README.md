@@ -19,7 +19,7 @@ is changing is how you introduce a bug into something that currently works.
 ## Bringing it back
 
 ```bash
-git checkout claude/gaming-repo-setup-mf80i9 -- .
+git checkout gaming/beer-bets -- .
 ```
 
 That branch's tip, `f8164e6`, is the last commit where the game was this repository's

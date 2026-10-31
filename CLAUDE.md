@@ -45,9 +45,22 @@ npm run format:check
 
 ## Branches
 
-**One branch per trick**, named `claude/<trick>-<topic>` — `claude/clockwork-landscape`,
-`claude/newtrick-scaffold`. A new trick starts a new branch. Never push to `main`
-without being asked.
+Two lines of work, each with a trunk and its branches beside it:
+
+| Branch             | What                                                      |
+| ------------------ | --------------------------------------------------------- |
+| `magic/main`       | The magic apps. **This is the branch that deploys.**      |
+| `magic/<trick>`    | One per trick — `magic/clockwork`, `magic/snapshot`.      |
+| `gaming/main`      | The shelved game's trunk.                                 |
+| `gaming/beer-bets` | Beer Bets as it stood when it was put down, at `f8164e6`. |
+
+Work on a trick happens on `magic/<trick>` and merges into `magic/main`. A new trick
+starts a new branch. Never push to a trunk without being asked.
+
+**Why `magic/main` rather than `magic`:** git refs are paths on disk, so a branch called
+`magic` and a branch called `magic/snapshot` cannot both exist — the first is a file
+where the second needs a directory, and git refuses whichever is created second.
+Giving each trunk a `/main` keeps the grouping and sidesteps it.
 
 ## Invariants — do not break these
 
@@ -132,8 +145,7 @@ tests when it was put down. It is kept for when it is picked back up; it does no
 from where it sits, because its TypeScript config, workspaces and deploy files moved
 with it.
 
-To bring it back: `git checkout claude/gaming-repo-setup-mf80i9 -- .` restores the
-repository as it was — that branch's tip, `f8164e6`, is the last commit where the game
-was the subject. See `shelved/beer-bets/README.md`. Its design rules — authoritative server,
+To bring it back: `git checkout gaming/beer-bets -- .` restores the repository as it
+was — that branch's tip, `f8164e6`, is the last commit where the game was the subject. See `shelved/beer-bets/README.md`. Its design rules — authoritative server,
 deterministic sim, the chip ledger, no real money — apply to it and to nothing else
 here.

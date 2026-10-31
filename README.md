@@ -116,6 +116,5 @@ by re-applying it.
 
 The multiplayer casino game that used to be this repository is in
 [`shelved/beer-bets/`](shelved/beer-bets/), complete and passing its tests, waiting to be
-picked back up. The branch `claude/gaming-repo-setup-mf80i9` still points at `f8164e6`,
-the last commit where it was this repository's subject, so the whole thing as it stood is
-one checkout away.
+picked back up. The branch `gaming/beer-bets` points at `f8164e6`, the last commit where
+it was this repository's subject, so the whole thing as it stood is one checkout away.
