@@ -108,11 +108,21 @@ It protects against the glance: the address is on screen the whole time you inst
 app, and again whenever you hand someone the phone. `/mindreader` announces what is
 coming; `/heron` does not.
 
-It protects against nothing else. **This repository is public**, so every app README,
-every commit message and every line of this file is readable by anyone who finds it, and
-no naming scheme changes that. If the methods are meant to be private, the repository
-has to be private — that is the control that matters, and codenames are what you do on
-top of it, not instead of it.
+It protects against nothing else. Every app README, every commit message and every line
+of this file are readable by anyone who can read the repository, and no naming scheme
+changes that. **Repository visibility is therefore the control that matters**, and
+codenames are what you do on top of it, not instead of it.
+
+Check it before assuming either way — it is one setting and it can change without
+anything in here being updated:
+
+```bash
+gh repo view --json visibility -q .visibility   # or look at the badge on GitHub
+```
+
+Private changes nothing about how the apps run. They are self-contained static files
+with no dependency on the repository being readable, and the served site stays public
+regardless — a private repository is not a private app.
 
 ## The shelved game
 

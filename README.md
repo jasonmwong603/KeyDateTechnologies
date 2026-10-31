@@ -83,11 +83,19 @@ directory listing, no app names in `/healthz`, a flat 404 at the bare domain, an
 `public/` served — `/<slug>/README.md` is a 404, not the method. Codenamed folders mean
 the address itself gives nothing away either.
 
-**Someone who found the repository.** They get everything. This repository is public, so
-every app README, every commit message and this file are readable by anyone, and no
-naming scheme changes that. If the methods are meant to be private, the repository has
-to be private. That is the control that matters; everything above is what you do on top
-of it, not instead of it.
+**Someone who found the repository.** They get everything — every app README, every
+commit message, this file. No naming scheme touches that, so repository visibility is
+the control that matters and everything above is what you do on top of it, not instead
+of it. Check which it currently is rather than trusting this paragraph:
+
+```bash
+gh repo view --json visibility -q .visibility
+```
+
+Making it private changes nothing operationally. The apps are self-contained static
+files, Render keeps deploying from a private repository once the connection is
+authorised, and **the served site stays public either way** — which it must, since the
+phone has to reach it to install the app. A private repository is not a private app.
 
 ## Deploying
 
