@@ -132,6 +132,16 @@ check('the two spectators total correctly', (await shown()) === '8,742', await s
 
 const box = page.viewportSize();
 
+/** The clock with no lead on it — what the room's own phones say. */
+const bareClock = () =>
+  page.evaluate(() => {
+    const pad = (value) => String(value).padStart(2, '0');
+    const now = new Date();
+    return Number(
+      `${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}`,
+    );
+  });
+
 /** Press and hold an operator for long enough to arm it. */
 const holdKey = async (label) => {
   const key = await page.locator(`.key:text-is("${label}")`).boundingBox();
@@ -235,6 +245,11 @@ check(
 
 // --- Second half: hold the plus, a different spectator taps the addend ----
 const armedAfter = await clock();
+// The bare clock as it was when the digits were fixed. Read here, not after
+// the reveal: between arming and pressing `=` the minute can turn, and then
+// the clock has caught up with the answer and a check at the end sees them
+// equal. The claim is about the moment of arming, so that is when to look.
+const bareAtArming = await bareClock();
 check('holding the plus arms the second taps', (await holdKey('+')) === '+');
 const armedBefore = await clock();
 
@@ -288,17 +303,10 @@ check(
  * would notice but would report it as a mismatched time rather than as the
  * thing that actually changed. This says what the rule is.
  */
-const rightNow = await page.evaluate(() => {
-  const pad = (value) => String(value).padStart(2, '0');
-  const now = new Date();
-  return Number(
-    `${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}`,
-  );
-});
 check(
-  'and it reads a minute later than the clock does right now',
-  result !== rightNow,
-  `answer ${result}, clock ${rightNow}`,
+  'and it reads a minute later than the clock did when it was armed',
+  result !== bareAtArming,
+  `answer ${result}, clock at arming ${bareAtArming}`,
 );
 check(
   'and the closing sum is on screen for the room to copy',
