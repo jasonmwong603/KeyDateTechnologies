@@ -15,9 +15,18 @@ one is the oldest: produce the real torn corner, and let it match.
 
 ## The state of it
 
-The choice, the piece, the tear, the drag and the extraction all work and are proved.
-**There is no method yet** — the card is one you pick, not one anybody is forced to. It
-is the prop; the routine around it is still to be written.
+Finished, for what it is meant to do. The choice, the piece, the tear, the drag and the
+extraction all work and are proved.
+
+**The force is not the app's job, and deliberately so.** The spectator is brought to the
+card in the hands, by whatever method the performer already uses; the phone's only part
+is to be set to that card beforehand and to produce its torn corner on cue. That is a
+complete design rather than a missing half — a prop that tried to run the force as well
+would be a prop staging a fake shuffle on a screen, which is both less convincing and
+less deniable than a technique that leaves no trace to find.
+
+What remains is presentation: what you do with the piece once it is out. The obvious
+finish is the oldest — produce the real torn corner, and let it match.
 
 ## The handling
 

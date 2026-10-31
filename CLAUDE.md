@@ -60,8 +60,13 @@ without being asked.
    verifies its claim across the whole input space. If it reports less than 100%, the
    room's calculators disagree with the phone and the trick is dead. It is the one test
    that cannot be allowed to fail.
-4. **The audience's choices must be real.** Nothing is forced, nobody is steered. The
-   correction hides in what the performer controls, never in the spectators' freedom.
+4. **Never fake what the room can check.** Clockwork's arithmetic is genuine — the
+   audience can follow it on their own calculators and will — so the correction hides in
+   what the performer controls and never in a number that has been fudged. Where a
+   selection is forced instead, as in Snapshot, **the force happens in the hands, away
+   from the phone**. The app shows the card the performer set; it does not simulate a
+   choice, stage a fake shuffle, or claim a freedom nobody was given. Both rules are the
+   same rule: the prop does not lie about the part that is visible.
 5. **Test in a real browser, on a phone viewport.** Whole-app breakage — a dead keypad,
    an overlay that never lifts, digits clipped off the side — is invisible to headless
    checks. Assert at the _end_ of a routine, not just after load.
