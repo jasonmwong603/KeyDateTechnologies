@@ -3,25 +3,47 @@
 _An app in [KeyDate Magic](../../README.md). Served at `/snapshot`; only `public/` is
 published — this file is not._
 
-A card under the glass. The phone looks like it is sitting idle on its home screen, and
-a corner of a playing card is lying on it — not drawn on it, under it, continuing past
-the edge of the screen. You can put a finger on the corner and slide it around.
+A black phone, apparently asleep. Touch the glass and a **torn corner of a playing
+card** is there, under your fingertip. You can slide it around the screen. Slide it off
+the edge and it is gone — drawn out of the phone.
+
+What you do with the piece once it is out is the rest of the routine, and the obvious
+one is the oldest: produce the real torn corner, and let it match.
 
 ## The state of it
 
-The card, the drag and the perspective work and are proved. **It is not a finished
-routine yet** — there is no reveal, no change, no method. It is the object; what happens
-to it is still to be designed.
+The piece, the tear, the drag and the extraction all work and are proved. **There is no
+method yet** — nothing forces a card, nothing matches anything. It is the prop; the
+routine around it is still to be written.
 
 ## The handling, so far
 
-1. **Install it and open it.** There is no setup. It opens as a dark phone with a card
-   lying on it.
+1. **Install it and open it.** There is no setup. The screen is black and empty.
 2. **Size it once.** Two fingers held anywhere for a second opens the settings. Hold a
-   real card flat against the screen and move the slider until the drawn one matches it
-   exactly. This matters more than anything else on this page — see below.
+   real card flat against the screen and move the slider until the drawn one matches it.
+   This matters more than anything else on this page — see below.
 3. **Pick the card** it should be, in the same panel.
-4. Then it is a phone that looks asleep with a card under the glass.
+4. Then: touch, slide, and draw it off the edge.
+
+Touching the black brings a new piece out, so it resets itself between performances with
+nothing to press.
+
+## Three things that had to be right
+
+**It appears because a finger arrived, not because an app did something.** Eighty
+milliseconds — under what reads as a transition and over what reads as a glitch. A slide
+or a grow would announce that software is involved, which nothing else on that screen
+does.
+
+**It leaves when its middle passes the edge, not when a corner touches it.** Vanishing
+while three-quarters of the piece is still in plain sight looks like a fault. Letting go
+at the midpoint looks like the last of it being pulled through.
+
+**The tear is the same every time.** It is generated from a fixed seed rather than drawn
+by hand, so the piece that appears tonight is the piece that appeared last week. A tear
+whose shape changed between appearances would be the tell, the one time somebody looked
+twice — and a deterministic tear is also the only kind `check.mjs` can say anything
+about.
 
 ## Why the background is black and nothing else
 
@@ -59,14 +81,20 @@ node smoke.mjs    # the app in a real browser, through the real host, with real 
 ```
 
 `check.mjs` proves the one property the illusion cannot survive being wrong about: **the
-point of the card under your fingertip stays under it.** A real object does. Anything
+point of the piece under your fingertip stays under it.** A real object does. Anything
 that slides, lags or drifts by a millimetre over a long drag reads as a graphic at once,
 and no amount of shadow or gloss gets it back. It is checked across 24,000 drag steps at
 every pose, and holds to floating-point exactness — along with the card keeping its shape
 while it moves, and being the size of a card.
 
-That it is geometry, and therefore provable without a phone, is why it was built this
-way round: the part that must be exact is the part a terminal can settle.
+It also pins the tear — inside the card it came off, keeping the card's own corner,
+ragged rather than cut, identical every run — and the rule that takes the piece away,
+across four thousand positions: never gone while its middle is on screen, always gone
+once it is not. A piece that vanished early would look broken; one that never vanished
+could not be taken out of the phone.
+
+That all of it is geometry, and therefore provable without a phone, is why it was built
+this way round: the part that must be exact is the part a terminal can settle.
 
 ## What this cannot do, and why
 

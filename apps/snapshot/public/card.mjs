@@ -176,3 +176,106 @@ export function cardCorners({ x, y, scale, angle = 0, tilt = 0 }) {
     place(-w / 2, h / 2, near),
   ];
 }
+
+/*
+ * The torn corner.
+ *
+ * Not a small card — a piece of one. Two clean edges meeting at the card's own
+ * rounded corner, and a ragged diagonal where it was torn away. That shape says
+ * something a whole card cannot: the rest of it exists, somewhere else. It is
+ * the difference between a picture of a card and evidence of one.
+ *
+ * The tear is generated from a seed rather than drawn by hand, and the seed is
+ * fixed, so the same piece appears every time. A tear whose shape changed
+ * between appearances would be a tell the one time somebody looked twice — and
+ * determinism is also what lets check.mjs say anything about it at all.
+ */
+
+/** Deterministic noise, so the same seed always tears the same way. */
+function seeded(seed) {
+  let state = seed >>> 0 || 1;
+  return () => {
+    state ^= state << 13;
+    state >>>= 0;
+    state ^= state >> 17;
+    state ^= state << 5;
+    state >>>= 0;
+    return state / 4294967296;
+  };
+}
+
+/**
+ * The outline of the piece, in element pixels, clockwise from the card corner.
+ *
+ * `across` and `down` are how far along the top and left edges the tear starts,
+ * as fractions of the card. The ragged line between those two points is the
+ * torn edge; everything else is the card's own factory edge, which is why the
+ * piece has to keep the real corner radius to look like anything.
+ */
+export function tornCornerPolygon({ w, h, seed = 0x5eed, across = 0.46, down = 0.34, steps = 17 }) {
+  const random = seeded(seed);
+  const start = { x: w * across, y: 0 };
+  const end = { x: 0, y: h * down };
+
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const length = Math.hypot(dx, dy);
+  // Perpendicular to the tear, for the ragged offsets.
+  const nx = -dy / length;
+  const ny = dx / length;
+
+  const points = [{ x: 0, y: 0 }, start];
+  for (let i = 1; i < steps; i += 1) {
+    const t = i / steps;
+    /*
+     * Paper tears in fibres, not in a sine wave: short runs with sudden small
+     * jogs. Biasing the offsets one way — into the piece — matters more than it
+     * sounds, because a tear that wanders both ways reads as a cut-out, and the
+     * eye knows the difference without being able to say so.
+     */
+    const amplitude = length * 0.09 * (0.35 + random());
+    const offset = (random() - 0.62) * amplitude;
+    points.push({ x: start.x + dx * t + nx * offset, y: start.y + dy * t + ny * offset });
+  }
+  points.push(end);
+  return points;
+}
+
+/** The polygon as a CSS `clip-path`, which also decides what a finger can touch. */
+export function clipPath(points, w, h) {
+  const pairs = points.map(
+    (p) => `${((p.x / w) * 100).toFixed(3)}% ${((p.y / h) * 100).toFixed(3)}%`,
+  );
+  return `polygon(${pairs.join(', ')})`;
+}
+
+/** The middle of the visible piece — not of the card it was torn from. */
+export function polygonCentroid(points) {
+  let area = 0;
+  let cx = 0;
+  let cy = 0;
+  for (let i = 0; i < points.length; i += 1) {
+    const a = points[i];
+    const b = points[(i + 1) % points.length];
+    const cross = a.x * b.y - b.x * a.y;
+    area += cross;
+    cx += (a.x + b.x) * cross;
+    cy += (a.y + b.y) * cross;
+  }
+  area /= 2;
+  if (area === 0) return { x: points[0].x, y: points[0].y };
+  return { x: cx / (6 * area), y: cy / (6 * area) };
+}
+
+/**
+ * Whether the piece has been taken out of the phone.
+ *
+ * True only once the middle of the piece is past an edge of the screen. The
+ * test is deliberately on the centre rather than on any part of it: vanishing
+ * the moment a corner touched the edge would take it while most of it was still
+ * in plain sight, which looks like a bug and not like a thing being drawn out.
+ */
+export function hasLeftScreen(matrix, centroid, viewport) {
+  const at = applyMatrix(matrix, centroid.x, centroid.y);
+  return at.x < 0 || at.y < 0 || at.x > viewport.width || at.y > viewport.height;
+}

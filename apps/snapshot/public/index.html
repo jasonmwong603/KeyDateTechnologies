@@ -110,6 +110,28 @@
         display: none;
       }
 
+      /*
+       * It arrives, rather than animating in.
+       *
+       * Eighty milliseconds is under what reads as a transition and over what
+       * reads as a glitch — the piece is simply there, which is the claim. A
+       * slide or a grow would say "an app did this" in a way nothing else about
+       * the screen does.
+       */
+      #card {
+        opacity: 0;
+        transition: opacity 80ms linear;
+      }
+
+      #card.here {
+        opacity: 1;
+      }
+
+      #card.leaving {
+        transition: opacity 110ms linear;
+        opacity: 0;
+      }
+
       .pip {
         font-weight: 500;
         line-height: 1;
@@ -217,6 +239,10 @@
         dragTo,
         cardCorners,
         CARD_MM,
+        tornCornerPolygon,
+        clipPath,
+        polygonCentroid,
+        hasLeftScreen,
       } from './card.mjs';
 
       /*
@@ -298,6 +324,20 @@
         return { w: CARD_MM.width * scale, h: CARD_MM.height * scale };
       }
 
+      /** The torn outline, in element pixels. Recomputed only when the size is. */
+      let outline = null;
+      let centroid = null;
+
+      function shape() {
+        const { w, h } = size();
+        outline = tornCornerPolygon({ w, h });
+        centroid = polygonCentroid(outline);
+        // The clip decides what is drawn *and* what a finger can touch: the
+        // element is still a whole card, and without this the invisible
+        // three-quarters of it would catch touches nowhere near the piece.
+        cardEl.style.clipPath = clipPath(outline, w, h);
+      }
+
       function render() {
         const { w, h } = size();
         cardEl.style.width = `${w}px`;
@@ -305,25 +345,58 @@
         const matrix = homographyMatrix(corners, w, h);
         if (matrix === null) return;
         cardEl.style.transform = `matrix3d(${matrix.join(',')})`;
+        return matrix;
       }
 
       /*
-       * Where the card starts: mostly off the bottom, one corner showing.
+       * Nothing is on screen until somebody touches it.
        *
-       * The premise is that it is *under* the glass rather than drawn on it, and
-       * a whole card sitting in the middle of the home screen is plainly a
-       * picture. A corner emerging from the edge is the shape of something that
-       * continues where you cannot see it.
+       * The phone is black and empty — asleep, as far as anyone can tell — and
+       * the piece appears under the finger that touches the glass. That is the
+       * whole opening: no app, no launch, no animation that a phone would not
+       * do. It arrives because a finger arrived.
        */
-      function reset() {
+      let present = false;
+
+      function appear(at) {
+        shape();
+        // Placed so the finger lands on the piece rather than beside it: the
+        // card is positioned by its centre, and the piece sits in one corner of
+        // it, so the card's centre goes where the piece's middle would not.
+        const { w, h } = size();
         corners = cardCorners({
-          x: window.innerWidth * 0.62,
-          y: window.innerHeight + CARD_MM.height * scale * 0.3,
+          x: at.x + (w / 2 - centroid.x),
+          y: at.y + (h / 2 - centroid.y),
           scale,
-          angle: -0.38,
-          tilt: 0.1,
+          angle: -0.14,
+          tilt: 0.08,
         });
+        present = true;
+        cardEl.hidden = false;
+        cardEl.classList.remove('leaving');
         render();
+        // One frame, so the browser has the element laid out before the class
+        // that fades it in — otherwise there is no transition to run and it
+        // snaps, which is the one thing eighty milliseconds exists to avoid.
+        requestAnimationFrame(() => cardEl.classList.add('here'));
+      }
+
+      /*
+       * Taken out of the phone.
+       *
+       * It goes when the middle of the piece passes an edge, not when a corner
+       * of it touches one — vanishing while three-quarters of it is still in
+       * plain sight looks like a fault, where this looks like the last of it
+       * being drawn through.
+       */
+      function vanish() {
+        present = false;
+        grabbed = null;
+        cardEl.classList.remove('here');
+        cardEl.classList.add('leaving');
+        window.setTimeout(() => {
+          if (!present) cardEl.hidden = true;
+        }, 160);
       }
 
       // --- The drag ---------------------------------------------------------
@@ -333,6 +406,7 @@
       // this does is feed it real pointer positions.
 
       cardEl.addEventListener('pointerdown', (event) => {
+        if (!present) return;
         const { w, h } = size();
         const matrix = homographyMatrix(corners, w, h);
         if (matrix === null) return;
@@ -344,16 +418,36 @@
         event.preventDefault();
       });
 
-      cardEl.addEventListener('pointermove', (event) => {
-        if (grabbed === null) return;
+      // Bare glass. The clip means this only fires away from the piece, so it
+      // cannot steal a grab from it.
+      window.addEventListener('pointerdown', (event) => {
+        if (present || !panelEl.hidden) return;
+        appear({ x: event.clientX, y: event.clientY });
+        const { w, h } = size();
+        const matrix = homographyMatrix(corners, w, h);
+        grabbed = matrix === null ? null : unapplyMatrix(matrix, event.clientX, event.clientY);
+      });
+
+      window.addEventListener('pointermove', (event) => {
+        if (grabbed === null || !present) return;
         event.preventDefault();
         const { w, h } = size();
         corners = dragTo(corners, grabbed, { x: event.clientX, y: event.clientY }, w, h);
-        render();
+        const matrix = render();
+
+        if (
+          matrix !== null &&
+          hasLeftScreen(matrix, centroid, {
+            width: window.innerWidth,
+            height: window.innerHeight,
+          })
+        ) {
+          vanish();
+        }
       });
 
       for (const done of ['pointerup', 'pointercancel']) {
-        cardEl.addEventListener(done, () => {
+        window.addEventListener(done, () => {
           grabbed = null;
         });
       }
@@ -386,7 +480,8 @@
         scale = Number(scaleEl.value);
         store.set('scale', scale);
         drawFace();
-        reset();
+        shape();
+        if (present) render();
       });
 
       rankEl.addEventListener('change', () => {
@@ -404,11 +499,13 @@
       rankEl.value = face;
       drawFace();
 
-      // There is no setup. It opens as a dark phone with a card on it.
-      cardEl.hidden = false;
-      reset();
+      // There is no setup, and nothing on screen. It opens as a dark phone.
+      shape();
 
-      window.addEventListener('resize', () => window.requestAnimationFrame(reset));
+      window.addEventListener('resize', () => {
+        shape();
+        if (present) window.requestAnimationFrame(render);
+      });
 
       // Offline, like everything here. A prop that needs the venue's wifi is
       // not a prop.

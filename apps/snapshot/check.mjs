@@ -18,6 +18,9 @@ import {
   dragTo,
   cardCorners,
   CARD_MM,
+  tornCornerPolygon,
+  polygonCentroid,
+  hasLeftScreen,
 } from './public/card.mjs';
 
 /** Deterministic, so a failure can be reproduced exactly. */
@@ -138,11 +141,90 @@ for (const scale of [2, 3.5, 4.77, 6]) {
   );
 }
 
+// --- 5. The torn piece -----------------------------------------------------
+//
+// The tear has to be a tear: ragged, the same every time, inside the card it
+// came off, and keeping the card's own corner. A vertex outside the element
+// would be cut off square by the box, which turns a torn edge into a cut one.
+const SHAPE = { w: 254, h: 356 };
+const outline = tornCornerPolygon(SHAPE);
+
+const strayed = outline.filter(
+  (p) => p.x < -1e-9 || p.y < -1e-9 || p.x > SHAPE.w + 1e-9 || p.y > SHAPE.h + 1e-9,
+);
+if (strayed.length > 0) note(`${strayed.length} of the tear's points fall outside the card`);
+
+const keepsCorner = outline.some((p) => Math.hypot(p.x, p.y) < 1e-9);
+if (!keepsCorner) note("the piece does not include the card's own corner");
+
+// Same seed, same tear. A piece that changed shape between appearances is a
+// tell the one time somebody looks twice.
+const again = tornCornerPolygon(SHAPE);
+const drifted = outline.some((p, i) => Math.hypot(p.x - again[i].x, p.y - again[i].y) > 1e-12);
+if (drifted) note('the tear is not the same shape twice');
+
+// Ragged, not straight: at least some points off the line between its ends.
+const first = outline[1];
+const last = outline.at(-1);
+const run = Math.hypot(last.x - first.x, last.y - first.y);
+let roughest = 0;
+for (const p of outline.slice(2, -1)) {
+  const d =
+    Math.abs((last.y - first.y) * (p.x - first.x) - (last.x - first.x) * (p.y - first.y)) / run;
+  roughest = Math.max(roughest, d);
+}
+if (roughest < 1) note(`the tear is too straight to be one (${roughest.toFixed(2)}px of rag)`);
+
+// --- 6. It leaves only when it has actually left ---------------------------
+//
+// Vanishing while most of the piece is still on screen looks like a fault.
+// Never vanishing means it cannot be taken out of the phone. Both are checked
+// against a real screen's worth of positions.
+const VIEWPORT = { width: 390, height: 844 };
+const middle = polygonCentroid(outline);
+let heldWhenVisible = 0;
+let wrongHolds = 0;
+let leftWhenGone = 0;
+let wrongLeaves = 0;
+
+for (let trial = 0; trial < 4000; trial += 1) {
+  const pose = {
+    x: -200 + random() * 800,
+    y: -200 + random() * 1300,
+    scale: 3.8,
+    angle: (random() - 0.5) * 0.6,
+    tilt: random() * 0.2,
+  };
+  const matrix = homographyMatrix(cardCorners(pose), SHAPE.w, SHAPE.h);
+  if (matrix === null) continue;
+
+  const at = applyMatrix(matrix, middle.x, middle.y);
+  const onScreen = at.x >= 0 && at.y >= 0 && at.x <= VIEWPORT.width && at.y <= VIEWPORT.height;
+  const left = hasLeftScreen(matrix, middle, VIEWPORT);
+
+  if (onScreen) {
+    heldWhenVisible += 1;
+    if (left) wrongLeaves += 1;
+  } else {
+    leftWhenGone += 1;
+    if (!left) wrongHolds += 1;
+  }
+}
+
+if (wrongLeaves > 0) note(`${wrongLeaves} pieces vanished while still on screen`);
+if (wrongHolds > 0) note(`${wrongHolds} pieces stayed after leaving the screen`);
+
 // --- Report ---------------------------------------------------------------
 console.log(`round trip        worst ${roundTripWorst.toExponential(1)}px over 2000 poses`);
 console.log(`stays under finger worst ${dragWorst.toExponential(1)}px over 24000 drag steps`);
 console.log(`keeps its shape   worst ${shapeWorst.toExponential(1)}px over 500 drags`);
 console.log(`card size         worst ${sizeWorst.toExponential(1)}mm off`);
+console.log(
+  `the tear          ${outline.length} points, ${roughest.toFixed(1)}px of rag, same every time`,
+);
+console.log(
+  `taken out         ${heldWhenVisible} held on screen, ${leftWhenGone} let go past the edge`,
+);
 
 // Budgets are floating-point slack, not tolerances. Every one of these is an
 // exact identity; anything above noise means the maths is wrong, not imprecise.
