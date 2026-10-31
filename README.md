@@ -74,28 +74,30 @@ that is silently unreachable, and the place that gets found out is a stage.
 method, the tests that walk the whole routine — is unreachable over HTTP. That boundary
 is a directory rather than a list of exclusions precisely so it cannot rot.
 
-## Secrecy
+## What is hidden, and what is not
 
-Two different things get confused here, so they are worth separating.
+**The methods are public, on purpose.** This repository is open and the licence is MIT.
+Every app README explains exactly how its trick works, and the commit history explains
+why it works that way. If you found this and want to build one for yourself, take it —
+that is the intent, not an oversight, and there is nothing here to be careful about on
+the author's behalf.
 
-**Someone who found the address.** They get the app and nothing else: no index, no
-directory listing, no app names in `/healthz`, a flat 404 at the bare domain, and only
-`public/` served — `/<slug>/README.md` is a 404, not the method. Codenamed folders mean
-the address itself gives nothing away either.
+**What is protected is the performance, not the secret.** A prop is handed to people. It
+is unlocked, in someone else's hand, with its address on screen — and the person holding
+it has every reason to look. Everything below exists for that minute and no other:
 
-**Someone who found the repository.** They get everything — every app README, every
-commit message, this file. No naming scheme touches that, so repository visibility is
-the control that matters and everything above is what you do on top of it, not instead
-of it. Check which it currently is rather than trusting this paragraph:
+- Folders are codenames, so the address says nothing. `/heron`, not `/mindreader`.
+- Only `public/` is served, so `/<slug>/README.md` is a 404 rather than the method.
+- No index, no directory listing, no app names in `/healthz`, a flat 404 at the bare
+  domain. Nothing invites a look around.
 
-```bash
-gh repo view --json visibility -q .visibility
-```
+None of that is undone by the repository being readable. Somebody at the back of a room
+with your phone in their hand is not going to find the GitHub repository in the ninety
+seconds they have it; they might well tap the address bar. These measures are aimed at
+the person in the room, which is the only person who can actually spoil anything.
 
-Making it private changes nothing operationally. The apps are self-contained static
-files, Render keeps deploying from a private repository once the connection is
-authorised, and **the served site stays public either way** — which it must, since the
-phone has to reach it to install the app. A private repository is not a private app.
+The served site is public either way — it has to be, since the phone must reach it to
+install the app. A private repository would not have changed that.
 
 ## Deploying
 

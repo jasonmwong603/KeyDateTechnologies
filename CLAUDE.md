@@ -102,27 +102,23 @@ Addresses must be lower-case letters, digits and hyphens. Duplicates, reserved r
 and anything needing URL-escaping refuse to start — an app that is silently unreachable
 would be found out on stage.
 
-### What a codename does and does not buy
+### What a codename protects, and what is deliberately open
 
-It protects against the glance: the address is on screen the whole time you install the
-app, and again whenever you hand someone the phone. `/mindreader` announces what is
-coming; `/heron` does not.
+**The repository is public and the methods are published, by choice.** MIT licence, app
+READMEs that explain each trick in full, commit messages that explain the reasoning.
+Treat that as settled: it has been weighed and decided, and it is not a gap to close or
+to keep raising. Anyone who finds this and rebuilds it is welcome to.
 
-It protects against nothing else. Every app README, every commit message and every line
-of this file are readable by anyone who can read the repository, and no naming scheme
-changes that. **Repository visibility is therefore the control that matters**, and
-codenames are what you do on top of it, not instead of it.
+**What the measures in here protect is the performance.** A prop gets handed to someone,
+unlocked, with its address on screen, and they have every reason to look at it. Codenamed
+folders, `public/`-only serving, a quiet `/healthz` and a flat 404 at the root are all
+aimed at that one minute — at the person holding the phone, who is the only person in a
+position to spoil anything. None of it is weakened by the repository being readable,
+because nobody is going to find a GitHub repository while a trick is happening to them.
 
-Check it before assuming either way — it is one setting and it can change without
-anything in here being updated:
-
-```bash
-gh repo view --json visibility -q .visibility   # or look at the badge on GitHub
-```
-
-Private changes nothing about how the apps run. They are self-contained static files
-with no dependency on the repository being readable, and the served site stays public
-regardless — a private repository is not a private app.
+So: keep the measures, and do not mistake them for secrecy about the method. They are
+stagecraft. Write app READMEs as openly as you like — that is where the method is
+supposed to live — and keep what is on the phone's screen saying nothing.
 
 ## The shelved game
 
