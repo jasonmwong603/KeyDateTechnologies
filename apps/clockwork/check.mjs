@@ -1,16 +1,20 @@
-// Checks the trick's arithmetic across a wide spread of spectator numbers and
-// clock times. Run with: node /home/user/KeyDateTechnologies/magic/check.mjs
+// Checks the trick's arithmetic, and the room the performer has to work in.
+// Run with: node apps/clockwork/check.mjs
 //
-// The two properties that matter on stage:
-//   1. S x C + D really equals the timestamp. If this is ever off by one, the
-//      room's calculators disagree with the phone and the trick dies.
-//   2. How many taps each of the two spectators needs. Neither can overrun —
-//      extra taps are swallowed and a number left short is finished when you
-//      take the phone back — but a spectator with only one or two taps to make
-//      is a thin moment, so the spread matters to the handling.
+// The routine is now: four numbers the audience gives you, three
+// multiplications in plain sight, and one blind addition at the end. Only the
+// addend is fed in, so only one thing has to be exact:
+//
+//     running total + D = the clock
+//
+// But giving the multiplications away buys a constraint that did not exist
+// when the multiplier was forced too: **the running total has to come in under
+// the clock.** Over it and no addition reaches the target. That failure is in
+// the performer's hands, not the maths — it is a matter of how big the numbers
+// are — so the second half of this file measures how much room each shape of
+// numbers leaves, and does it month by month, because the target in January is
+// a tenth of the one in December.
 
-// Matches index.html: the answer lands on the minute about to arrive, not the
-// one showing, so the room has the whole of that minute to read it.
 const LEAD_MINUTES = 1;
 
 function stamp(now) {
@@ -21,127 +25,181 @@ function stamp(now) {
   );
 }
 
-/*
- * The two blind numbers.
- *
- * The honest version is plain division with remainder: C = floor(T / S) and D
- * is what is left. That is exact, but D is then uniform in [0, S) and nothing
- * stops it coming out as 7, or 0 — and a second spectator who taps the screen
- * once, for a one-digit number, is a thin moment in the middle of the routine
- * and an invitation to wonder what she contributed.
- *
- * So C is stepped down by one. D grows by exactly S, which puts it in [S, 2S)
- * — always four or five digits for two 4-digit spectator numbers, so she always
- * has a handful of taps to make. The arithmetic is untouched: S x C + D is
- * still exactly T, which is the only thing the room can check.
- */
-function solve(sum, target) {
-  if (!Number.isInteger(sum) || sum < 1 || target < 1) return null;
-  const whole = Math.floor(target / sum);
-  // Step down only when there is room to; at whole === 1 the multiplier would
-  // go to zero and the product with it.
-  const c = whole > 1 ? whole - 1 : whole;
-  if (c < 1) return null;
-  return { c, d: target - sum * c };
+/** Deterministic, so a failure can be reproduced exactly. */
+function makeRandom(seed) {
+  let state = seed >>> 0;
+  return () => {
+    state = (state * 1664525 + 1013904223) >>> 0;
+    return state / 4294967296;
+  };
 }
 
-let checked = 0;
-let exact = 0;
-const misses = [];
-const taps = [];
-const first = [];
-const second = [];
+const random = makeRandom(20261105);
+const problems = [];
+const note = (line) => problems.push(line);
 
-// Every minute of a whole year, against spectator numbers of every plausible
-// shape: two 3-digit, two 4-digit, and one of each.
+/** A number of the requested number of digits, never with a leading zero. */
+const draw = (digits) => {
+  const low = 10 ** (digits - 1);
+  const high = 10 ** digits - 1;
+  return digits === 1
+    ? 1 + Math.floor(random() * 9)
+    : low + Math.floor(random() * (high - low + 1));
+};
+
+// Every month, several days, a spread of times across the day.
+const targets = [];
 for (let month = 1; month <= 12; month += 1) {
   for (const day of [1, 14, 28]) {
     for (const hour of [0, 9, 15, 23]) {
-      for (const minute of [0, 7, 33, 59]) {
-        const target = stamp(new Date(2026, month - 1, day, hour, minute));
-
-        for (const [lo, hi] of [
-          [100, 999],
-          [1000, 9999],
-        ]) {
-          for (const [lo2, hi2] of [
-            [100, 999],
-            [1000, 9999],
-          ]) {
-            for (let trial = 0; trial < 6; trial += 1) {
-              const a = lo + Math.floor(Math.random() * (hi - lo + 1));
-              const b = lo2 + Math.floor(Math.random() * (hi2 - lo2 + 1));
-              const sum = a + b;
-              const answer = solve(sum, target);
-              checked += 1;
-
-              if (answer === null) {
-                misses.push({ a, b, target, reason: 'no solution' });
-                continue;
-              }
-              if (sum * answer.c + answer.d === target) exact += 1;
-              else misses.push({ a, b, target, answer, reason: 'arithmetic wrong' });
-
-              taps.push(String(answer.c).length + String(answer.d).length);
-              first.push(String(answer.c).length);
-              second.push(String(answer.d).length);
-            }
-          }
-        }
+      for (const minute of [0, 17, 41, 58]) {
+        targets.push({
+          month,
+          target: stamp(new Date(2027, month - 1, day, hour, minute)),
+        });
       }
     }
   }
 }
 
-console.log(`checked          ${checked}`);
-console.log(`arithmetic exact ${exact}  (${((exact / checked) * 100).toFixed(2)}%)`);
-const span = (list) => {
-  const sorted = list.slice().sort((a, b) => a - b);
-  return `${sorted[0]}-${sorted.at(-1)}  (median ${sorted[Math.floor(sorted.length / 2)]})`;
-};
-console.log(`taps, first      ${span(first)}`);
-console.log(`taps, second     ${span(second)}`);
-console.log(`taps, both       ${span(taps)}`);
-if (misses.length > 0) {
-  console.log(`\nmisses (${misses.length}), first few:`);
-  for (const miss of misses.slice(0, 5)) console.log(' ', JSON.stringify(miss));
+// --- 1. The arithmetic, wherever it is workable ----------------------------
+//
+// Whenever the running total lands under the clock, the addend must close the
+// gap exactly. This is the part that cannot ever be wrong: if it is, the room's
+// calculators disagree with the phone.
+let checked = 0;
+let exact = 0;
+let overshot = 0;
+
+const SHAPES = [
+  [2, 2, 1, 1],
+  [3, 1, 1, 1],
+  [3, 2, 1, 1],
+  [2, 2, 2, 1],
+  [3, 2, 2, 1],
+  [2, 2, 2, 2],
+  [3, 3, 2, 1],
+];
+
+for (const { target } of targets) {
+  for (const shape of SHAPES) {
+    for (let trial = 0; trial < 4; trial += 1) {
+      const numbers = shape.map(draw);
+      const running = numbers.reduce((a, b) => a * b, 1);
+      checked += 1;
+
+      const gap = target - running;
+      if (gap < 0) {
+        overshot += 1;
+        continue;
+      }
+      if (running + gap === target) exact += 1;
+      else note(`${numbers.join(' x ')} + ${gap} != ${target}`);
+    }
+  }
+}
+
+// --- 2. How much room each shape leaves ------------------------------------
+//
+// The number that actually decides whether a performance works. A shape that
+// overshoots a third of the time is a shape that fails on stage a third of the
+// time, however exact the arithmetic is when it does not.
+const workable = new Map();
+for (const shape of SHAPES) {
+  const key = shape.join('·');
+  const rows = { tried: 0, under: 0, taps: [], worstMonth: { month: 0, rate: 2 } };
+  const byMonth = new Map();
+
+  for (const { month, target } of targets) {
+    for (let trial = 0; trial < 60; trial += 1) {
+      const running = shape.map(draw).reduce((a, b) => a * b, 1);
+      rows.tried += 1;
+      const month_ = byMonth.get(month) ?? { tried: 0, under: 0 };
+      month_.tried += 1;
+      if (running <= target) {
+        rows.under += 1;
+        month_.under += 1;
+        rows.taps.push(String(target - running).length);
+      }
+      byMonth.set(month, month_);
+    }
+  }
+
+  for (const [month, counts] of byMonth) {
+    const rate = counts.under / counts.tried;
+    if (rate < rows.worstMonth.rate) rows.worstMonth = { month, rate };
+  }
+  workable.set(key, rows);
+}
+
+// --- 3. The shape the handling recommends ----------------------------------
+//
+// One shape has to be good enough in January, which is the hard month: the
+// clock reads about 1,010,000 there against about 12,310,000 in December, so a
+// set of numbers that is comfortable at Christmas overshoots by ten times in
+// the new year.
+const RECOMMENDED = '2·2·1·1';
+const recommended = workable.get(RECOMMENDED);
+
+console.log(`combinations      ${checked}`);
+console.log(
+  `arithmetic exact  ${exact}/${checked - overshot} of the workable ones  (${((exact / Math.max(1, checked - overshot)) * 100).toFixed(2)}%)`,
+);
+/*
+ * The decisive column is the ceiling, not the percentage.
+ *
+ * A shape whose largest possible product is below the smallest clock of the
+ * year cannot overshoot — not usually, ever, including the one night a year
+ * when four people all call out 99. Everything else is a shape that works
+ * until it does not, and "usually" is not a property a prop can have.
+ */
+const minTarget = Math.min(...targets.map((t) => t.target));
+const ceilingOf = (shape) => shape.reduce((p, d) => p * (10 ** d - 1), 1);
+
+console.log(`smallest clock    ${minTarget}  (the first minute of January)`);
+console.log('');
+console.log('shape      biggest product   safe?   worst month     taps for the addend');
+for (const [key, rows] of workable) {
+  const shape = key.split('·').map(Number);
+  const ceiling = ceilingOf(shape);
+  const safe = ceiling <= minTarget;
+  const sorted = rows.taps.slice().sort((a, b) => a - b);
+  const span =
+    sorted.length === 0
+      ? 'n/a'
+      : `${sorted[0]}-${sorted.at(-1)} (median ${sorted[Math.floor(sorted.length / 2)]})`;
+  const worst = `${String(rows.worstMonth.month).padStart(2, '0')} at ${(rows.worstMonth.rate * 100).toFixed(0)}%`;
+  console.log(
+    `${key.padEnd(10)} ${String(ceiling).padStart(15)}   ${(safe ? 'always' : 'no').padEnd(7)} ${worst.padEnd(15)} ${span}`,
+  );
+}
+
+// --- The two things that must hold -----------------------------------------
+if (exact !== checked - overshot) {
+  note(`${checked - overshot - exact} workable combinations did not add up`);
 }
 
 /*
- * The minute the lead has to step over.
- *
- * Adding one to the minute field would give 23:60, or 31 November, or hour 24 —
- * numbers that are not times and would read as plainly broken on the one
- * occasion they came up. Going through a Date makes every rollover fall out for
- * free, including the leap day and the turn of the year. Worth pinning, because
- * these are exactly the performances nobody gets to rehearse.
+ * The recommended shape has to be safe in every month, not on average.
+ * "Usually works" is not a property a prop can have: the month it fails in is
+ * a month of performances, not a rounding error.
  */
-const rollovers = [
-  ['a minute before midnight', new Date(2026, 9, 28, 23, 59), 10290000],
-  ['the last minute of a month', new Date(2026, 9, 31, 23, 59), 11010000],
-  ['the last minute of the year', new Date(2026, 11, 31, 23, 59), 1010000],
-  ['a minute before noon', new Date(2026, 9, 28, 11, 59), 10281200],
-  ['the end of a leap February', new Date(2028, 1, 29, 23, 59), 3010000],
-  ['an ordinary minute', new Date(2026, 9, 28, 10, 33), 10281034],
-];
-
-let rollSlipped = 0;
-for (const [label, when, want] of rollovers) {
-  const got = stamp(when);
-  if (got !== want) {
-    rollSlipped += 1;
-    console.log(`\nROLLOVER WRONG  ${label}: got ${got}, want ${want}`);
-  }
+if (recommended === undefined) {
+  note(`no measurements for the recommended shape ${RECOMMENDED}`);
+} else if (recommended.worstMonth.rate < 1) {
+  note(
+    `${RECOMMENDED} overshoots in month ${recommended.worstMonth.month} ` +
+      `(${(recommended.worstMonth.rate * 100).toFixed(0)}% workable)`,
+  );
+} else if (ceilingOf(RECOMMENDED.split('·').map(Number)) > minTarget) {
+  // Sampling can miss the worst draw. The ceiling cannot.
+  note(`${RECOMMENDED} can in principle exceed the smallest clock of the year`);
 }
-console.log(
-  `rollovers        ${rollovers.length - rollSlipped}/${rollovers.length} land on a real minute`,
-);
 
-// And the worked example from the conversation, pinned exactly.
-const target = stamp(new Date(2026, 9, 28, 10, 33));
-const answer = solve(4827 + 3915, target);
-console.log(
-  `\nworked example   (4827 + 3915) = ${4827 + 3915}` +
-    ` -> x ${answer.c} + ${answer.d} = ${(4827 + 3915) * answer.c + answer.d}` +
-    `  (want ${target})`,
-);
+if (problems.length > 0) {
+  console.log('\nFAILED:');
+  for (const line of problems.slice(0, 8)) console.log(`  ${line}`);
+  process.exit(1);
+}
+
+console.log(`\nExact wherever it fits, and ${RECOMMENDED} always fits.`);

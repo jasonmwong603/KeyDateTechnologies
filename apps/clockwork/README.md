@@ -4,16 +4,15 @@ _An app in [KeyDate Magic](../../README.md). Served at `/calc`; only `public/` i
 
 A phone calculator that is a real calculator, and once per performance is not.
 
-Four spectators, and nothing is forced. Two call out free numbers and you add
-them. A third taps a screen she cannot see, and the product goes up on the
-display for the room to look at. A fourth taps, and the total is today's date
-and the time on the clock — with every calculator in the room agreeing, because
-the arithmetic is genuine throughout.
+The audience does the whole sum in plain sight: four numbers they call out, three
+multiplications, and a running total you say aloud. Then one person taps a screen she
+cannot see, you add what she taps, and the answer is today's date and the time on the
+clock. Every calculator in the room agrees, because **only the last addition is fed in**
+— the rest is theirs.
 
 ```
-4827 + 3915 = 8742              the first two, said aloud
-8742 × 1175 = 10,271,850        the third, and a real product to show
-10,271,850 + 9,184 = 10281034   the fourth  →  10/28, 10:34
+47 x 32 x 6 x 8 = 72,192       all four numbers from the room
+72,192 + 10,978,246 = 11050438  her taps  ->  11/05, 04:38
 ```
 
 ## Installing it on the phone
@@ -55,62 +54,56 @@ with `CALCULATOR_SLUG` on the host; set it empty to stop serving it.
 
 ## The handling
 
-1. **First spectator** calls any 3- or 4-digit number. Type it. Press `+`.
-2. **Second spectator** calls another. Type it. Press `=`.
-   The sum is on screen — say it aloud, it is the number the room will work from.
-3. **Press and hold `×`** for half a second. The key turns white: that is your
-   confirmation. A normal tap of `×` multiplies as usual and arms nothing.
-4. **Turn the phone face down.** Third spectator taps the screen. _"As many times
-   as you like"_ — and mean it. Too many are swallowed; too few are finished for
-   her the moment you take the phone back. You never have to count.
-5. **Take the phone back and press and hold anywhere** for half a second to
-   release the keypad. Her number is on the display — show it to her, show it to
-   the room.
-6. **Press `=`.** A genuine seven- or eight-figure product. Let it sit there.
-   This is the middle of the routine and it is doing real work: the room has a
-   number to look at that plainly came from her taps, and nothing has happened
-   yet that could be the trick.
-7. **Press and hold `+`** for half a second. It turns white the same way, and a
-   normal tap of `+` still just adds.
-8. **Phone face down again**, a _fourth_ spectator this time, same instruction.
-9. **Take it back, press and hold to release, then `=`.** Read the number out
-   and let them get there — see below, it is the minute about to arrive.
-10. **Turn the phone sideways** if you want the reveal bigger. The keypad
-    rearranges the way the system one does, and the answer and the sum above it
-    each sit on one comfortable line.
+1. **Ask for two 2-digit numbers and two single digits.** Type the first, `×`, the next,
+   `×`, and so on, then `=`. That size always fits — see the next section, it is the one
+   thing you have to get right.
+2. **Say the running total aloud.** Everything to this point is the room's and visible.
+3. **Press and hold `+`** for half a second. The key turns white: that is your
+   confirmation and the only signal there is. A normal tap of `+` just adds, and a held
+   `×` does nothing at all.
+4. **Turn the phone face down.** She taps, _"as many times as you like"_ — and mean it.
+   Too many are swallowed; too few are finished for her the moment you take the phone
+   back. You never have to count.
+5. **Take it back, press and hold anywhere** to release the keypad, then `=`.
+6. **Turn the phone sideways** if you want the reveal bigger.
 
-The screen reads the date and time, and the closing sum is above it for anyone
-who wants to check.
+Keys are dead for about a second after a release. That is the failsafe, not a fault.
 
-### The failsafe
+## The one thing you have to get right
 
-She is tapping a screen she cannot see, so she cannot avoid the keys. While she
-taps she never reaches them: the overlay takes every touch, and taps past the
-ones her number needs are swallowed.
+**The running total must come in under the clock.** Nothing added gets back from above
+it, so if the four numbers multiply past the target there is no addend that lands and
+the `+` will not arm. The key stays orange, which you will notice, because going white
+is the one thing you are waiting for. Hold the clock icon and the rehearsal line says
+what happened.
 
-The exposed moment is the release. It is meant to be you taking the phone back,
-but a spectator who rests a finger for half a second has performed the identical
-gesture and has no way of knowing it. Before this was dealt with, her next taps
-landed on a live keypad — one test run turned `8,742 × 1,175` into `7 ÷ 0` and
-the routine into `5.58`.
+This is a real constraint and it moves through the year, because the target does. The
+clock reads about `1,010,000` in the first minute of January and about `12,310,000` on
+New Year's Eve — **a twelvefold difference**. Numbers that are comfortable at Christmas
+overshoot by ten times in January.
 
-So after any release every key is inert, and stays inert for as long as the
-screen keeps being touched. Each stray tap is swallowed and pushes the unlock
-further out; the seal lifts only once the screen has been left alone for most of
-a second, which happens when the phone is in your hand and not before. Whatever
-she does, the display stays on the force number and the pending operator.
+`check.mjs` measures it by ceiling rather than by sampling, which is the difference
+between "usually works" and "cannot fail":
 
-Two smaller guards go with it. A hold that travels more than a thumb's width is
-a drag, not a hold, and releases nothing — a hand sliding over a face-down phone
-cannot end force mode. And extra fingers count as one gesture rather than one
-tap each.
+| Four numbers  | Biggest possible product | Safe all year? | In January |
+| ------------- | -----------------------: | -------------- | ---------- |
+| 2 · 2 · 1 · 1 |                  793,881 | **always**     | 100%       |
+| 3 · 1 · 1 · 1 |                  728,271 | **always**     | 100%       |
+| 3 · 2 · 1 · 1 |                8,010,981 | no             | 78%        |
+| 2 · 2 · 2 · 1 |                8,732,691 | no             | 77%        |
+| 3 · 2 · 2 · 1 |               88,120,791 | no             | 14%        |
+| 2 · 2 · 2 · 2 |               96,059,601 | no             | 12%        |
+| 3 · 3 · 2 · 1 |              889,218,891 | no             | 0%         |
 
-**What this costs you:** for about a second after you release, the keypad does
-nothing. Take the phone, turn it over, show the number — you are well past a
-second by then. If you stab at `=` the instant you release and nothing happens,
-that is the failsafe doing its job; press it again.
+Two 2-digit numbers and two single digits is the largest shape that cannot overshoot in
+any month of any year, including the night four people all call out 99. Ask for bigger
+in October and you will probably get away with it; ask for bigger in January and you
+mostly will not.
 
-### Why the second half is `+` and not another `×`
+Her addend comes out at six to eight digits either way, so the tap count does not change
+much between shapes — there is nothing to buy by pushing it.
+
+### Why it is the addition that is forced, and not a multiply
 
 Because a second multiply cannot work and no amount of code will make it. After
 the first reveal the screen holds `P = S × C`. For `P × D` to land on the clock,
