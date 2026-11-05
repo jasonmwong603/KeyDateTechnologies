@@ -4,15 +4,16 @@ _An app in [KeyDate Magic](../../README.md). Served at `/calc`; only `public/` i
 
 A phone calculator that is a real calculator, and once per performance is not.
 
-The audience does the whole sum in plain sight: four numbers they call out, three
-multiplications, and a running total you say aloud. Then one person taps a screen she
-cannot see, you add what she taps, and the answer is today's date and the time on the
-clock. Every calculator in the room agrees, because **only the last addition is fed in**
-— the rest is theirs.
+The audience does the whole sum in plain sight. Two spectators call out a four-digit
+number each and you add them. A third calls a single digit and you multiply by it. Then
+one person taps a screen she cannot see, you add what she taps, and the answer is today's
+date and the time on the clock. Every calculator in the room agrees, because **only the
+last addition is fed in** — the rest is theirs.
 
 ```
-47 x 32 x 6 x 8 = 72,192       all four numbers from the room
-72,192 + 10,978,246 = 11050438  her taps  ->  11/05, 04:38
+4827 + 3915 = 8,742            two spectators, said aloud
+8,742 x 7 = 61,194             a third, a single digit
+61,194 + 10,989,244 = 11050438  her taps  ->  11/05, 04:38
 ```
 
 ## Installing it on the phone
@@ -54,10 +55,9 @@ with `CALCULATOR_SLUG` on the host; set it empty to stop serving it.
 
 ## The handling
 
-1. **Ask for two 2-digit numbers and two single digits.** Type the first, `×`, the next,
-   `×`, and so on, then `=`. That size always fits — see the next section, it is the one
-   thing you have to get right.
-2. **Say the running total aloud.** Everything to this point is the room's and visible.
+1. **Two spectators, a four-digit number each.** Type the first, `+`, the second, `=`.
+   Say the total aloud.
+2. **A third calls a single digit.** Press `×`, type it. Everything so far is theirs.
 3. **Press and hold `+`** for half a second. The key turns white: that is your
    confirmation and the only signal there is. A normal tap of `+` just adds, and a held
    `×` does nothing at all.
@@ -69,39 +69,44 @@ with `CALCULATOR_SLUG` on the host; set it empty to stop serving it.
 
 Keys are dead for about a second after a release. That is the failsafe, not a fault.
 
+**Press `=` after the addition.** Typed straight through, `A + B × c` is `A + (B × c)`
+on every calculator ever made, which is not the routine. Settling the sum first makes
+the multiplication apply to the total — and it reads better, because the number you said
+aloud is the one the room then watches get multiplied.
+
 ## The one thing you have to get right
 
 **The running total must come in under the clock.** Nothing added gets back from above
-it, so if the four numbers multiply past the target there is no addend that lands and
-the `+` will not arm. The key stays orange, which you will notice, because going white
-is the one thing you are waiting for. Hold the clock icon and the rehearsal line says
-what happened.
+it, so if the numbers run past the target there is no addend that lands and the `+` will
+not arm. The key stays orange, which you will notice, because going white is the one
+thing you are waiting for. Hold the clock icon and the rehearsal line says what happened.
+Press AC and start again; nobody has seen anything.
 
-This is a real constraint and it moves through the year, because the target does. The
-clock reads about `1,010,000` in the first minute of January and about `12,310,000` on
-New Year's Eve — **a twelvefold difference**. Numbers that are comfortable at Christmas
-overshoot by ten times in January.
+This matters because the target moves through the year. The clock reads about `1,010,000`
+in the first minute of January and about `12,280,000` on New Year's Eve — **a twelvefold
+difference** — so numbers that are comfortable at Christmas overshoot by ten times in
+January.
 
 `check.mjs` measures it by ceiling rather than by sampling, which is the difference
 between "usually works" and "cannot fail":
 
-| Four numbers  | Biggest possible product | Safe all year? | In January |
-| ------------- | -----------------------: | -------------- | ---------- |
-| 2 · 2 · 1 · 1 |                  793,881 | **always**     | 100%       |
-| 3 · 1 · 1 · 1 |                  728,271 | **always**     | 100%       |
-| 3 · 2 · 1 · 1 |                8,010,981 | no             | 78%        |
-| 2 · 2 · 2 · 1 |                8,732,691 | no             | 77%        |
-| 3 · 2 · 2 · 1 |               88,120,791 | no             | 14%        |
-| 2 · 2 · 2 · 2 |               96,059,601 | no             | 12%        |
-| 3 · 3 · 2 · 1 |              889,218,891 | no             | 0%         |
+| What you ask for                  | Biggest possible total | Safe all year? | In January |
+| --------------------------------- | ---------------------: | -------------- | ---------- |
+| **(4-digit + 4-digit) × 1 digit** |            **179,982** | **always**     | 100%       |
+| 2-digit · 2-digit · 1 · 1         |                793,881 | always         | 100%       |
+| (4-digit + 4-digit) × 2-digit     |              1,979,802 | no             | 90%        |
+| 3-digit · 2-digit · 1 · 1         |              8,010,981 | no             | 79%        |
+| (4-digit + 4-digit) × 4-digit     |            199,960,002 | no             | **0%**     |
+| 3-digit · 3-digit · 2-digit · 1   |            889,218,891 | no             | **0%**     |
 
-Two 2-digit numbers and two single digits is the largest shape that cannot overshoot in
-any month of any year, including the night four people all call out 99. Ask for bigger
-in October and you will probably get away with it; ask for bigger in January and you
-mostly will not.
+The multiplier is the whole story. Two four-digit numbers come to about ten thousand,
+which is fine; ten thousand times another four-digit number is about fifty million,
+which is four times the biggest clock there is. That shape fails every month of the
+year and roughly 96% of the time in its best one.
 
-Her addend comes out at six to eight digits either way, so the tap count does not change
-much between shapes — there is nothing to buy by pushing it.
+So: ask for the big numbers in the **addition**, where their size costs nothing, and
+keep the **multiplier** to one digit. Her addend lands at six to eight digits whichever
+safe shape you use, so there is nothing to buy by pushing it.
 
 ### Why it is the addition that is forced, and not a multiply
 

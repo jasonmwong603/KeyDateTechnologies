@@ -71,21 +71,46 @@ let checked = 0;
 let exact = 0;
 let overshot = 0;
 
+/*
+ * A shape is what you ask the room for.
+ *
+ * `sum` is an opening addition — two numbers added and settled with `=` before
+ * anything is multiplied — and `mul` is what the total is then multiplied by.
+ * The opening sum is worth having for its own sake: two four-digit numbers
+ * read as generous, where four small ones read as careful, and the maths does
+ * not mind which.
+ */
 const SHAPES = [
-  [2, 2, 1, 1],
-  [3, 1, 1, 1],
-  [3, 2, 1, 1],
-  [2, 2, 2, 1],
-  [3, 2, 2, 1],
-  [2, 2, 2, 2],
-  [3, 3, 2, 1],
+  { sum: [4, 4], mul: [1] },
+  { sum: [4, 4], mul: [2] },
+  { sum: [4, 4], mul: [4] },
+  { mul: [2, 2, 1, 1] },
+  { mul: [3, 1, 1, 1] },
+  { mul: [3, 2, 1, 1] },
+  { mul: [3, 2, 2, 1] },
+  { mul: [3, 3, 2, 1] },
 ];
+
+const label = (shape) =>
+  shape.sum === undefined ? shape.mul.join('·') : `(${shape.sum.join('+')})·${shape.mul.join('·')}`;
+
+/** What the room's numbers come to, before the forced addition. */
+const runningTotal = (shape) => {
+  const opening = shape.sum === undefined ? 1 : shape.sum.map(draw).reduce((a, b) => a + b, 0);
+  return shape.mul.map(draw).reduce((a, b) => a * b, opening);
+};
+
+/** The largest total a shape can possibly reach — the number that decides it. */
+const ceilingOf = (shape) => {
+  const top = (d) => 10 ** d - 1;
+  const opening = shape.sum === undefined ? 1 : shape.sum.reduce((a, d) => a + top(d), 0);
+  return shape.mul.reduce((a, d) => a * top(d), opening);
+};
 
 for (const { target } of targets) {
   for (const shape of SHAPES) {
     for (let trial = 0; trial < 4; trial += 1) {
-      const numbers = shape.map(draw);
-      const running = numbers.reduce((a, b) => a * b, 1);
+      const running = runningTotal(shape);
       checked += 1;
 
       const gap = target - running;
@@ -94,7 +119,7 @@ for (const { target } of targets) {
         continue;
       }
       if (running + gap === target) exact += 1;
-      else note(`${numbers.join(' x ')} + ${gap} != ${target}`);
+      else note(`${label(shape)}: ${running} + ${gap} != ${target}`);
     }
   }
 }
@@ -106,13 +131,13 @@ for (const { target } of targets) {
 // time, however exact the arithmetic is when it does not.
 const workable = new Map();
 for (const shape of SHAPES) {
-  const key = shape.join('·');
+  const key = label(shape);
   const rows = { tried: 0, under: 0, taps: [], worstMonth: { month: 0, rate: 2 } };
   const byMonth = new Map();
 
   for (const { month, target } of targets) {
     for (let trial = 0; trial < 60; trial += 1) {
-      const running = shape.map(draw).reduce((a, b) => a * b, 1);
+      const running = runningTotal(shape);
       rows.tried += 1;
       const month_ = byMonth.get(month) ?? { tried: 0, under: 0 };
       month_.tried += 1;
@@ -138,7 +163,7 @@ for (const shape of SHAPES) {
 // clock reads about 1,010,000 there against about 12,310,000 in December, so a
 // set of numbers that is comfortable at Christmas overshoots by ten times in
 // the new year.
-const RECOMMENDED = '2·2·1·1';
+const RECOMMENDED = '(4+4)·1';
 const recommended = workable.get(RECOMMENDED);
 
 console.log(`combinations      ${checked}`);
@@ -154,14 +179,12 @@ console.log(
  * until it does not, and "usually" is not a property a prop can have.
  */
 const minTarget = Math.min(...targets.map((t) => t.target));
-const ceilingOf = (shape) => shape.reduce((p, d) => p * (10 ** d - 1), 1);
 
 console.log(`smallest clock    ${minTarget}  (the first minute of January)`);
 console.log('');
-console.log('shape      biggest product   safe?   worst month     taps for the addend');
+console.log('shape        biggest total   safe?   worst month     taps for the addend');
 for (const [key, rows] of workable) {
-  const shape = key.split('·').map(Number);
-  const ceiling = ceilingOf(shape);
+  const ceiling = ceilingOf(SHAPES.find((candidate) => label(candidate) === key));
   const safe = ceiling <= minTarget;
   const sorted = rows.taps.slice().sort((a, b) => a - b);
   const span =
@@ -170,7 +193,7 @@ for (const [key, rows] of workable) {
       : `${sorted[0]}-${sorted.at(-1)} (median ${sorted[Math.floor(sorted.length / 2)]})`;
   const worst = `${String(rows.worstMonth.month).padStart(2, '0')} at ${(rows.worstMonth.rate * 100).toFixed(0)}%`;
   console.log(
-    `${key.padEnd(10)} ${String(ceiling).padStart(15)}   ${(safe ? 'always' : 'no').padEnd(7)} ${worst.padEnd(15)} ${span}`,
+    `${key.padEnd(12)} ${String(ceiling).padStart(13)}   ${(safe ? 'always' : 'no').padEnd(7)} ${worst.padEnd(15)} ${span}`,
   );
 }
 
@@ -191,7 +214,7 @@ if (recommended === undefined) {
     `${RECOMMENDED} overshoots in month ${recommended.worstMonth.month} ` +
       `(${(recommended.worstMonth.rate * 100).toFixed(0)}% workable)`,
   );
-} else if (ceilingOf(RECOMMENDED.split('·').map(Number)) > minTarget) {
+} else if (ceilingOf(SHAPES.find((candidate) => label(candidate) === RECOMMENDED)) > minTarget) {
   // Sampling can miss the worst draw. The ceiling cannot.
   note(`${RECOMMENDED} can in principle exceed the smallest clock of the year`);
 }

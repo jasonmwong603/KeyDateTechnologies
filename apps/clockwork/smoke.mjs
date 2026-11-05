@@ -129,17 +129,26 @@ check('groups thousands like the real one', (await shown()) === '1,234,567', awa
 // than by sampling.
 await page.click('.key:text-is("AC")');
 
-await type('47');
-await tap('×');
-await type('32');
-await tap('×');
-await type('6');
-await tap('×');
-await type('8');
+/*
+ * The `=` after the addition is load-bearing, and it is the performer's job.
+ *
+ * Typed straight through, `A + B × c` is `A + (B × c)` on every calculator
+ * ever made, which is not the routine. Settling the sum first makes the
+ * multiplication apply to the total, and it reads better anyway — the number
+ * said aloud is the one the room then watches get multiplied.
+ */
+await type('4827');
+await tap('+');
+await type('3915');
 await tap('=');
-const PRODUCT = 47 * 32 * 6 * 8;
+check('the two spectators total correctly', (await shown()) === '8,742', await shown());
+
+await tap('×');
+await type('7');
+await tap('=');
+const PRODUCT = (4827 + 3915) * 7;
 check(
-  'three multiplications, in plain sight',
+  'and the third multiplies that total, in plain sight',
   Number((await shown()).replace(/,/g, '')) === PRODUCT,
   `${await shown()} vs ${PRODUCT}`,
 );
@@ -206,13 +215,12 @@ const takeBack = async () => {
  */
 check('holding the multiply arms nothing any more', (await holdKey('×')) === null);
 await page.click('.key:text-is("AC")');
-await type('47');
+await type('4827');
+await tap('+');
+await type('3915');
+await tap('=');
 await tap('×');
-await type('32');
-await tap('×');
-await type('6');
-await tap('×');
-await type('8');
+await type('7');
 await tap('=');
 check(
   'and the running total survived being leaned on',
@@ -422,14 +430,18 @@ await page.waitForTimeout(100);
  * addition comes back from there. The first must be invisible; the second must
  * be impossible to miss.
  */
-const perform = async ({ numbers = ['47', '32', '6', '8'], taps = 20 } = {}) => {
+const perform = async ({ opening = ['4827', '3915'], times = ['7'], taps = 20 } = {}) => {
   await page.click('.key:text-is("AC")');
   await page.setViewportSize(devices['iPhone 13 Pro'].viewport);
   await page.waitForTimeout(80);
 
-  for (const [index, number] of numbers.entries()) {
+  await type(opening[0]);
+  await tap('+');
+  await type(opening[1]);
+  await tap('=');
+  for (const number of times) {
+    await tap('×');
     await type(number);
-    if (index < numbers.length - 1) await tap('×');
   }
   await tap('=');
   const running = Number((await shown()).replace(/,/g, ''));
@@ -482,13 +494,13 @@ check(
 /*
  * And the new one: numbers too big.
  *
- * Three multiplications of what the room calls out can run past the clock
- * easily — 999 x 99 x 9 x 9 is eight million, and in January the target is one
- * million. There is no addend that comes back from there, so the key must stay
+ * Two four-digit numbers come to about ten thousand, and ten thousand times a
+ * four-digit number is around fifty million — four times the biggest clock
+ * there is. There is no addend that comes back from there, so the key must stay
  * orange. That is a thing a performer notices, because going white is the one
  * signal they are waiting for.
  */
-const tooBig = await perform({ numbers: ['9999', '9999', '99', '99'] });
+const tooBig = await perform({ opening: ['9999', '9999'], times: ['9999'] });
 check(
   'numbers that overshoot the clock refuse to arm, rather than lying',
   tooBig.armed === false,
