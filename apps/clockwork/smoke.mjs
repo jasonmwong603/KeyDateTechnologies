@@ -137,18 +137,29 @@ await page.click('.key:text-is("AC")');
  * multiplication apply to the total, and it reads better anyway — the number
  * said aloud is the one the room then watches get multiplied.
  */
-await type('4827');
-await tap('+');
-await type('3915');
+// Eight birthdays as MMDD — three digits January to September, four from
+// October — then a 2-digit multiplier. The largest shape that cannot overshoot.
+const BIRTHDAYS = ['1028', '305', '712', '1231', '101', '904', '618', '1115'];
+const MULTIPLIER = 47;
+const SUM = BIRTHDAYS.reduce((a, b) => a + Number(b), 0);
+const PRODUCT = SUM * MULTIPLIER;
+
+for (const [index, birthday] of BIRTHDAYS.entries()) {
+  await type(birthday);
+  if (index < BIRTHDAYS.length - 1) await tap('+');
+}
 await tap('=');
-check('the two spectators total correctly', (await shown()) === '8,742', await shown());
+check(
+  'eight birthdays total correctly',
+  Number((await shown()).replace(/,/g, '')) === SUM,
+  `${await shown()} vs ${SUM}`,
+);
 
 await tap('×');
-await type('7');
+await type(String(MULTIPLIER));
 await tap('=');
-const PRODUCT = (4827 + 3915) * 7;
 check(
-  'and the third multiplies that total, in plain sight',
+  'and the multiplier applies to that total, in plain sight',
   Number((await shown()).replace(/,/g, '')) === PRODUCT,
   `${await shown()} vs ${PRODUCT}`,
 );
@@ -215,12 +226,13 @@ const takeBack = async () => {
  */
 check('holding the multiply arms nothing any more', (await holdKey('×')) === null);
 await page.click('.key:text-is("AC")');
-await type('4827');
-await tap('+');
-await type('3915');
+for (const [index, birthday] of BIRTHDAYS.entries()) {
+  await type(birthday);
+  if (index < BIRTHDAYS.length - 1) await tap('+');
+}
 await tap('=');
 await tap('×');
-await type('7');
+await type(String(MULTIPLIER));
 await tap('=');
 check(
   'and the running total survived being leaned on',
@@ -430,14 +442,15 @@ await page.waitForTimeout(100);
  * addition comes back from there. The first must be invisible; the second must
  * be impossible to miss.
  */
-const perform = async ({ opening = ['4827', '3915'], times = ['7'], taps = 20 } = {}) => {
+const perform = async ({ opening = BIRTHDAYS, times = [String(MULTIPLIER)], taps = 20 } = {}) => {
   await page.click('.key:text-is("AC")');
   await page.setViewportSize(devices['iPhone 13 Pro'].viewport);
   await page.waitForTimeout(80);
 
-  await type(opening[0]);
-  await tap('+');
-  await type(opening[1]);
+  for (const [index, number] of opening.entries()) {
+    await type(number);
+    if (index < opening.length - 1) await tap('+');
+  }
   await tap('=');
   for (const number of times) {
     await tap('×');
@@ -494,13 +507,13 @@ check(
 /*
  * And the new one: numbers too big.
  *
- * Two four-digit numbers come to about ten thousand, and ten thousand times a
- * four-digit number is around fifty million — four times the biggest clock
- * there is. There is no addend that comes back from there, so the key must stay
+ * A birthday tops out at 1231, and even one of them times a four-digit number
+ * reaches 12,308,769 — past the biggest clock there is, before January is even
+ * considered. There is no addend that comes back from there, so the key must stay
  * orange. That is a thing a performer notices, because going white is the one
  * signal they are waiting for.
  */
-const tooBig = await perform({ opening: ['9999', '9999'], times: ['9999'] });
+const tooBig = await perform({ opening: ['1231', '1231'], times: ['9999'] });
 check(
   'numbers that overshoot the clock refuse to arm, rather than lying',
   tooBig.armed === false,

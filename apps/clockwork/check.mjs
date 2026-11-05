@@ -80,7 +80,28 @@ let overshot = 0;
  * read as generous, where four small ones read as careful, and the maths does
  * not mind which.
  */
+/*
+ * Birthdays are not four-digit numbers, and the difference is the routine.
+ *
+ * Asked for a birthday as MMDD, a person can only give you 101 to 1231 — and
+ * three digits of it between January and September, where the leading zero
+ * drops. A "four-digit number" reaches 9999. That gap is why eight birthdays
+ * fit where two free four-digit numbers would not, and it is worth modelling
+ * properly rather than approximating: the ceiling is the whole argument.
+ */
+const DAYS_IN = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+const BIRTHDAYS = [];
+for (let month = 1; month <= 12; month += 1) {
+  for (let day = 1; day <= DAYS_IN[month - 1]; day += 1) BIRTHDAYS.push(month * 100 + day);
+}
+const BIRTHDAY_MAX = Math.max(...BIRTHDAYS);
+const drawBirthday = () => BIRTHDAYS[Math.floor(random() * BIRTHDAYS.length)];
+
 const SHAPES = [
+  { birthdays: 8, mul: [2] },
+  { birthdays: 4, mul: [2] },
+  { birthdays: 9, mul: [2] },
+  { birthdays: 1, mul: [4] },
   { sum: [4, 4], mul: [1] },
   { sum: [4, 4], mul: [2] },
   { sum: [4, 4], mul: [4] },
@@ -91,19 +112,31 @@ const SHAPES = [
   { mul: [3, 3, 2, 1] },
 ];
 
-const label = (shape) =>
-  shape.sum === undefined ? shape.mul.join('·') : `(${shape.sum.join('+')})·${shape.mul.join('·')}`;
+const label = (shape) => {
+  if (shape.birthdays !== undefined) return `${shape.birthdays} bdays·${shape.mul.join('·')}`;
+  return shape.sum === undefined
+    ? shape.mul.join('·')
+    : `(${shape.sum.join('+')})·${shape.mul.join('·')}`;
+};
 
 /** What the room's numbers come to, before the forced addition. */
 const runningTotal = (shape) => {
-  const opening = shape.sum === undefined ? 1 : shape.sum.map(draw).reduce((a, b) => a + b, 0);
+  let opening = 1;
+  if (shape.birthdays !== undefined) {
+    opening = 0;
+    for (let i = 0; i < shape.birthdays; i += 1) opening += drawBirthday();
+  } else if (shape.sum !== undefined) {
+    opening = shape.sum.map(draw).reduce((a, b) => a + b, 0);
+  }
   return shape.mul.map(draw).reduce((a, b) => a * b, opening);
 };
 
 /** The largest total a shape can possibly reach — the number that decides it. */
 const ceilingOf = (shape) => {
   const top = (d) => 10 ** d - 1;
-  const opening = shape.sum === undefined ? 1 : shape.sum.reduce((a, d) => a + top(d), 0);
+  let opening = 1;
+  if (shape.birthdays !== undefined) opening = shape.birthdays * BIRTHDAY_MAX;
+  else if (shape.sum !== undefined) opening = shape.sum.reduce((a, d) => a + top(d), 0);
   return shape.mul.reduce((a, d) => a * top(d), opening);
 };
 
@@ -163,7 +196,7 @@ for (const shape of SHAPES) {
 // clock reads about 1,010,000 there against about 12,310,000 in December, so a
 // set of numbers that is comfortable at Christmas overshoots by ten times in
 // the new year.
-const RECOMMENDED = '(4+4)·1';
+const RECOMMENDED = '8 bdays·2';
 const recommended = workable.get(RECOMMENDED);
 
 console.log(`combinations      ${checked}`);

@@ -4,17 +4,24 @@ _An app in [KeyDate Magic](../../README.md). Served at `/calc`; only `public/` i
 
 A phone calculator that is a real calculator, and once per performance is not.
 
-The audience does the whole sum in plain sight. Two spectators call out a four-digit
-number each and you add them. A third calls a single digit and you multiply by it. Then
-one person taps a screen she cannot see, you add what she taps, and the answer is today's
-date and the time on the clock. Every calculator in the room agrees, because **only the
-last addition is fed in** — the rest is theirs.
+The audience does the whole sum in plain sight. **Up to eight people call out their
+birthday** — month then day, so 5 March is 305 and 28 October is 1028 — and you add them
+all up. One more person gives any two-digit number and you multiply by it. Then somebody
+taps a screen she cannot see, you add what she taps, and the answer is today's date and
+the time on the clock.
+
+Every calculator in the room agrees, because **only the last addition is fed in**. The
+birthdays are real, the multiplier is real, and the total they make is the one on screen.
 
 ```
-4827 + 3915 = 8,742            two spectators, said aloud
-8,742 x 7 = 61,194             a third, a single digit
-61,194 + 10,989,244 = 11050438  her taps  ->  11/05, 04:38
+1028 + 305 + 712 + 1231 + 101 + 904 + 618 + 1115 = 6,014
+6,014 x 47 = 282,658
+282,658 + 10,767,780 = 11050438      ->  11/05, 04:38
 ```
+
+Birthdays are worth more than their arithmetic: eight people are involved, each gives
+something that is unarguably theirs and impossible to have been steered, and the answer
+coming back as a date rhymes with what they all just contributed.
 
 ## Installing it on the phone
 
@@ -55,9 +62,9 @@ with `CALCULATOR_SLUG` on the host; set it empty to stop serving it.
 
 ## The handling
 
-1. **Two spectators, a four-digit number each.** Type the first, `+`, the second, `=`.
-   Say the total aloud.
-2. **A third calls a single digit.** Press `×`, type it. Everything so far is theirs.
+1. **Up to eight birthdays, as month-then-day.** Type each, `+` between them, `=` at the
+   end. Say the total aloud.
+2. **One two-digit number from anybody.** Press `×`, type it.
 3. **Press and hold `+`** for half a second. The key turns white: that is your
    confirmation and the only signal there is. A normal tap of `+` just adds, and a held
    `×` does nothing at all.
@@ -69,44 +76,51 @@ with `CALCULATOR_SLUG` on the host; set it empty to stop serving it.
 
 Keys are dead for about a second after a release. That is the failsafe, not a fault.
 
-**Press `=` after the addition.** Typed straight through, `A + B × c` is `A + (B × c)`
-on every calculator ever made, which is not the routine. Settling the sum first makes
-the multiplication apply to the total — and it reads better, because the number you said
-aloud is the one the room then watches get multiplied.
+**Press `=` before you multiply.** Typed straight through, `A + B × c` is `A + (B × c)`
+on every calculator ever made, which is not the routine. Settling the additions first
+makes the multiplication apply to the whole total — and it reads better, because the
+number you said aloud is the one the room then watches get multiplied.
 
-## The one thing you have to get right
+## Eight, and a two-digit multiplier
 
 **The running total must come in under the clock.** Nothing added gets back from above
 it, so if the numbers run past the target there is no addend that lands and the `+` will
 not arm. The key stays orange, which you will notice, because going white is the one
-thing you are waiting for. Hold the clock icon and the rehearsal line says what happened.
-Press AC and start again; nobody has seen anything.
+thing you are waiting for. Press AC and start again; nobody has seen anything.
 
-This matters because the target moves through the year. The clock reads about `1,010,000`
-in the first minute of January and about `12,280,000` on New Year's Eve — **a twelvefold
-difference** — so numbers that are comfortable at Christmas overshoot by ten times in
-January.
+The target moves through the year — about `1,010,000` in the first minute of January
+against `12,280,000` on New Year's Eve — so what has to hold is the worst case in the
+worst month, not the average.
 
-`check.mjs` measures it by ceiling rather than by sampling, which is the difference
-between "usually works" and "cannot fail":
+A birthday is not a four-digit number, and that distinction is the whole routine. Asked
+for MMDD, a person can only give you 101 to 1231; a free four-digit number reaches 9999.
+That gap is why eight birthdays fit where two free four-digit numbers do not.
 
-| What you ask for                  | Biggest possible total | Safe all year? | In January |
-| --------------------------------- | ---------------------: | -------------- | ---------- |
-| **(4-digit + 4-digit) × 1 digit** |            **179,982** | **always**     | 100%       |
-| 2-digit · 2-digit · 1 · 1         |                793,881 | always         | 100%       |
-| (4-digit + 4-digit) × 2-digit     |              1,979,802 | no             | 90%        |
-| 3-digit · 2-digit · 1 · 1         |              8,010,981 | no             | 79%        |
-| (4-digit + 4-digit) × 4-digit     |            199,960,002 | no             | **0%**     |
-| 3-digit · 3-digit · 2-digit · 1   |            889,218,891 | no             | **0%**     |
+| What you ask for          | Biggest possible total | Safe all year? |
+| ------------------------- | ---------------------: | -------------- |
+| **8 birthdays × 2-digit** |            **974,952** | **always**     |
+| 4 birthdays × 2-digit     |                487,476 | always         |
+| 9 birthdays × 2-digit     |              1,096,821 | no             |
+| 1 birthday × 4-digit      |             12,308,769 | no             |
+| (4-digit + 4-digit) × 1   |                179,982 | always         |
+| (4-digit + 4-digit) × 2   |              1,979,802 | no             |
+| (4-digit + 4-digit) × 4   |            199,960,002 | no             |
 
-The multiplier is the whole story. Two four-digit numbers come to about ten thousand,
-which is fine; ten thousand times another four-digit number is about fifty million,
-which is four times the biggest clock there is. That shape fails every month of the
-year and roughly 96% of the time in its best one.
+Eight is the exact ceiling: eight birthdays reach 9,848 at the very most, times 99 is
+974,952, and the smallest clock of the year is 1,010,001. Nine birthdays can pass it.
 
-So: ask for the big numbers in the **addition**, where their size costs nothing, and
-keep the **multiplier** to one digit. Her addend lands at six to eight digits whichever
-safe shape you use, so there is nothing to buy by pushing it.
+Nine is also the clearest argument for measuring ceilings rather than sampling. Nine
+birthdays times a two-digit number works **100% of the time** in every month this file
+samples — and would still fail the one night nine people all have late-December
+birthdays and somebody picks 99. "Usually" is not a property a prop can have.
+
+The multiplier is the other half. Three digits cannot work with even one birthday, and
+four digits is past the biggest clock there is before you start — `1231 × 9999` is
+12,308,769 against a December ceiling of 12,280,000. Big numbers belong in the addition,
+where their size costs nothing.
+
+Her addend lands at six to eight digits for every safe shape, so there is nothing to buy
+by pushing any of it.
 
 ### Why it is the addition that is forced, and not a multiply
 
