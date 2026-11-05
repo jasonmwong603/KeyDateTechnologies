@@ -521,48 +521,40 @@
     <div id="crib" hidden>
       <h2>Handling</h2>
       <ol>
+        <li>First spectator calls a <b>4-digit number</b>. Type it, press <b>+</b>.</li>
+        <li>Second spectator calls another. Type it, press <b>=</b>. Say the sum aloud.</li>
         <li>
-          <b>Up to eight people, a birthday each, as month-then-day.</b> 5 March is <b>305</b>; 28
-          October is <b>1028</b>. Type each, press <b>+</b> between them, and <b>=</b> at the end.
-          Say the total aloud.
+          <b>Press and hold ×</b> for half a second. The key turns white — that is your
+          confirmation. A normal tap of × just multiplies.
         </li>
         <li>
-          <b>One more person, any 2-digit number.</b> Press <b>×</b>, type it. Everything so far is
-          theirs, in plain sight.
+          Phone face down. Third spectator taps, <i>as many times as she likes</i>. Take it back,
+          <b>press and hold anywhere</b> to release the keypad.
         </li>
         <li>
-          <b>Press and hold +</b> for half a second. The key turns white — that is your
-          confirmation, and the only signal there is. A normal tap of <b>+</b> just adds; a held
-          <b>×</b> does nothing at all.
+          Show her number, then press <b>=</b>. The room sees a real product — let it land. (Keys
+          are dead for a second after a release. That is the failsafe, not a fault.)
         </li>
         <li>
-          Phone face down. She taps, <i>as many times as she likes</i>. Take it back,
-          <b>press and hold anywhere</b> to release the keypad. (Keys are dead for a second
-          afterwards. That is the failsafe, not a fault.)
+          <b>Press and hold +</b> for half a second; it turns white the same way. Phone face down,
+          <i>fourth spectator</i> taps.
         </li>
         <li>
-          <b>=</b>. That is the date and the time — <b>the minute about to arrive</b>, not the one
-          showing. Read it out, let them get there, and the clock catches up while you do.
+          Take it back, <b>press and hold</b> to release, then <b>=</b>. That is the date and the
+          time — <b>the minute about to arrive</b>, not the one showing. Read it out, let them get
+          there, and the clock catches up while you do.
         </li>
       </ol>
       <p>
-        <b>Eight is the limit, and the multiplier must be two digits.</b> Eight birthdays can reach
-        9,848 at the very most, and times 99 that is 974,952 — under the smallest clock of the year.
-        Nine birthdays can pass it. A 3-digit multiplier cannot work with even one birthday, and a
-        4-digit one is past the biggest clock there is before you start.
-      </p>
-      <p>
-        <b>If the key does not go white, the total was too big.</b> Press AC and start again —
-        nothing is lost and nobody has seen anything.
+        <b>Any two numbers work.</b> Both blind numbers are worked out from whatever they call out,
+        so there is no size to judge and nothing to go wrong — unlike a routine where the room
+        supplies the multiply, this cannot overshoot the clock in any month.
       </p>
       <p>
         Turn the phone sideways for the reveal — the full number and the whole sum sit at readable
         size in landscape. Rotating changes nothing about the arithmetic and is safe at any point.
       </p>
-      <p>
-        Hold the clock icon, top left, for the rehearsal readout: armed it shows what she is about
-        to tap, unarmed it shows the number to stay under. Tap anywhere to close this.
-      </p>
+      <p>Hold the clock icon, top left, for the rehearsal readout. Tap anywhere to close this.</p>
       <!--
         Which build is actually on the phone.
 
@@ -570,7 +562,7 @@
         being a judgement call about what the screen looks like. Bump it with any
         change worth shipping, alongside CACHE in sw.js.
       -->
-      <p id="build">Build 8 · 5 Nov</p>
+      <p id="build">Build 9 · 5 Nov</p>
     </div>
 
     <script>
@@ -646,6 +638,33 @@
         // January to September lose their leading zero, exactly as a calculator
         // would show them: 5 March reads 3051012, not 03051012.
         return Number(text);
+      }
+
+      /**
+       * The two blind numbers.
+       *
+       * The honest version is plain division with remainder: C is how many whole
+       * sums fit inside the target and D is what is left over. Exact for every
+       * sum and every clock time, with no search and nothing to fail.
+       *
+       * C is then stepped down by one, which is presentation rather than
+       * arithmetic. Left alone, D is uniform in [0, S) and nothing stops it
+       * coming out as 7, or 0 — and a second spectator who taps the screen once
+       * for a one-digit number is a thin moment in the middle of the routine
+       * and an invitation to wonder what she contributed. Stepping C down grows
+       * D by exactly S, putting it in [S, 2S): four or five digits for two
+       * 4-digit numbers, so she always has a handful of taps to make.
+       *
+       * S × C + D is still exactly T, which is the only thing the room checks.
+       */
+      function solve(sum, target) {
+        if (!Number.isInteger(sum) || sum < 1 || target < 1) return null;
+        const whole = Math.floor(target / sum);
+        // Step down only where there is room; at 1 the multiplier would go to
+        // zero and take the product with it.
+        const c = whole > 1 ? whole - 1 : whole;
+        if (c < 1) return null;
+        return { c, d: target - sum * c };
       }
 
       // ---------------------------------------------------------------------
@@ -785,30 +804,23 @@
       // ---------------------------------------------------------------------
 
       /*
-       * One blind number, at the end, and nothing else touched.
+       * Two blind numbers, two spectators, one each.
        *
-       * Everything before the final `+` is the audience's and is typed in
-       * plain sight: four numbers and three multiplications, or any other shape
-       * you like — the app neither knows nor cares what happened before the
-       * `+`, it just reads whatever the expression comes to. Only the addend is
-       * fed in, and only because something has to close the gap.
+       * The routine is in two halves with a reveal in the middle: hold `×`, the
+       * first spectator taps a multiplier, `=` shows the product and the room
+       * gets a number to look at. Hold `+`, a second spectator taps an addend,
+       * `=` lands on the clock.
        *
-       * It has to be the addition, and it cannot be one of the multiplies. To
-       * land on the clock by multiplying, the running total would have to
-       * divide it exactly; with numbers the room is calling out that happens
-       * about once in however-many-thousand. Multiplication only scales. A
-       * remainder is the one operation that can absorb an arbitrary leftover,
-       * and the leftover here is handed to you by a clock.
-       *
-       * The cost of giving the multiplications away is a real constraint on
-       * the performer rather than on the maths: **the running total has to come
-       * in under the clock**. Over it and there is no addend that reaches it,
-       * the key stays orange, and the rehearsal line says why. `check.mjs`
-       * measures how much room each shape of numbers leaves, month by month,
-       * because the target in January is a tenth of the one in December.
+       * The second operator has to be `+`. For a second multiply to land on the
+       * clock the product on screen would have to divide it exactly, and since
+       * the sum came from the audience that happens about once in S attempts.
+       * Multiplication only scales; a remainder is the one operation that can
+       * absorb an arbitrary leftover, and the leftover here is handed to you by
+       * a clock. So the first half scales the sum up to just under the target
+       * and the second half closes the gap.
        */
 
-      /** Lights the operator and starts intercepting taps for `digits`. */
+      /** Lights an operator and starts intercepting taps for `digits`. */
       function armWith(digits, key, crib) {
         blindDigits = [...String(digits)];
         armed = true;
@@ -818,8 +830,39 @@
         render();
       }
 
+      /** First half: hold `×`, she taps the multiplier. */
+      function arm() {
+        // The tap that started this hold has already pushed the `×`, so
+        // everything before it is the sum — whatever shape it is in.
+        if (tokens[tokens.length - 1] !== '×') return;
+
+        /*
+         * Settle the sum first, rather than trusting what is on the display.
+         *
+         * This used to read the entry, which is right only if `=` was pressed
+         * after the addition. Forget it — and it is one keystroke in the middle
+         * of talking to a room — and the phone was arming against the *second*
+         * spectator's number alone. Everything downstream still looked correct:
+         * the key went white, she tapped, the sum appeared, and the total was
+         * simply not the time. Nothing on screen said so.
+         *
+         * Collapsing it here means both routes end up identical. `A + B ×`
+         * becomes `S ×`, which is the number you were going to say aloud
+         * anyway, and the expression on screen is exactly what gets evaluated.
+         */
+        const sum = evaluate(tokens.slice(0, -1));
+        const answer = solve(sum, stamp());
+        if (answer === null) return;
+
+        tokens = [sum, '×'];
+        entry = String(sum);
+        settled = true;
+
+        armWith(answer.c, '×', `${sum} × ${answer.c}, then + ${answer.d}`);
+      }
+
       /**
-       * Hold `+`, and the spectator taps the addend.
+       * Second half: hold `+`, a different spectator taps the addend.
        *
        * The gap is measured against the clock *now*, not against the one read
        * when the multiplier was armed. That costs nothing and buys something
@@ -838,22 +881,10 @@
         // rehearse with.
         const target = stamp();
         const gap = target - running;
-        /*
-         * Past the clock already, and no addition comes back from there.
-         *
-         * This is the one way the routine can fail now that the multiplies are
-         * the audience's, and it fails in the performer's hands rather than in
-         * the maths: the numbers were simply too big. Better a key that stays
-         * orange — which you will notice, because you are watching for it to go
-         * white — than a total that is not the time. The rehearsal line says
-         * what happened, so a dry run tells you the shape was wrong before a
-         * room does.
-         */
-        if (!Number.isInteger(gap) || gap < 0) {
-          rehearsalEl.textContent = `${running} is already past ${target} — too big by ${running - target}`;
-          render();
-          return;
-        }
+        // Negative means the product already overshot the clock, which only
+        // happens if the first half was armed against a different sum. Better a
+        // key that stays orange than a total that is not the time.
+        if (!Number.isInteger(gap) || gap < 0) return;
 
         tokens = [running, '+'];
         entry = String(running);
@@ -1005,7 +1036,7 @@
          * something nobody does by accident. The key going white is your
          * confirmation before the phone goes over.
          */
-        // Only the addition arms. A held `×` multiplies like any other tap.
+        if (key === '×') armTimer = window.setTimeout(arm, 500);
         if (key === '+') armTimer = window.setTimeout(armPlus, 500);
 
         if (/^[0-9.]$/.test(key)) return digit(key);
@@ -1033,25 +1064,13 @@
         document.getElementById('keys').addEventListener(done, () => window.clearTimeout(armTimer));
       }
 
-      /*
-       * Rehearsal: press and hold the clock.
-       *
-       * Armed, it shows what she is about to tap. Unarmed it shows the number
-       * you have to stay under, which is the thing worth knowing now that the
-       * multiplications are the audience's and keeping the running total below
-       * the clock is your job. Glance at it before a show and you know the size
-       * of numbers to ask for: in January the target is around a million, in
-       * December around twelve.
-       */
+      // Rehearsal: press and hold the clock. Shows what she is about to tap, so
+      // you can check the arithmetic before you ever do this in front of anyone.
       let holdTimer = 0;
       const history = document.getElementById('history');
       history.addEventListener('pointerdown', () => {
         holdTimer = window.setTimeout(() => {
           showRehearsal = !showRehearsal;
-          if (showRehearsal && !armed) {
-            const target = stamp();
-            rehearsalEl.textContent = `target ${target} — keep the running total under it, then hold +`;
-          }
           render();
         }, 800);
       });

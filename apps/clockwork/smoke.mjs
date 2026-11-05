@@ -122,47 +122,13 @@ await type('1234567');
 check('groups thousands like the real one', (await shown()) === '1,234,567', await shown());
 
 // --- The trick ------------------------------------------------------------
-//
-// Four numbers from the room, three multiplications in plain sight, and one
-// blind addition. The shape is 2·2·1·1 — the largest that cannot overshoot the
-// clock in any month of the year, which `check.mjs` proves by ceiling rather
-// than by sampling.
 await page.click('.key:text-is("AC")');
 
-/*
- * The `=` after the addition is load-bearing, and it is the performer's job.
- *
- * Typed straight through, `A + B × c` is `A + (B × c)` on every calculator
- * ever made, which is not the routine. Settling the sum first makes the
- * multiplication apply to the total, and it reads better anyway — the number
- * said aloud is the one the room then watches get multiplied.
- */
-// Eight birthdays as MMDD — three digits January to September, four from
-// October — then a 2-digit multiplier. The largest shape that cannot overshoot.
-const BIRTHDAYS = ['1028', '305', '712', '1231', '101', '904', '618', '1115'];
-const MULTIPLIER = 47;
-const SUM = BIRTHDAYS.reduce((a, b) => a + Number(b), 0);
-const PRODUCT = SUM * MULTIPLIER;
-
-for (const [index, birthday] of BIRTHDAYS.entries()) {
-  await type(birthday);
-  if (index < BIRTHDAYS.length - 1) await tap('+');
-}
+await type('4827');
+await tap('+');
+await type('3915');
 await tap('=');
-check(
-  'eight birthdays total correctly',
-  Number((await shown()).replace(/,/g, '')) === SUM,
-  `${await shown()} vs ${SUM}`,
-);
-
-await tap('×');
-await type(String(MULTIPLIER));
-await tap('=');
-check(
-  'and the multiplier applies to that total, in plain sight',
-  Number((await shown()).replace(/,/g, '')) === PRODUCT,
-  `${await shown()} vs ${PRODUCT}`,
-);
+check('the two spectators total correctly', (await shown()) === '8,742', await shown());
 
 const box = page.viewportSize();
 
@@ -216,39 +182,8 @@ const takeBack = async () => {
   return free;
 };
 
-/*
- * A held multiply does nothing now.
- *
- * The multiplications belong to the audience, so `×` has to be an ordinary key
- * again — including when it is leaned on. If holding it still armed something,
- * a performer who paused mid-chain would put the overlay up in the middle of
- * their own arithmetic.
- */
-check('holding the multiply arms nothing any more', (await holdKey('×')) === null);
-await page.click('.key:text-is("AC")');
-for (const [index, birthday] of BIRTHDAYS.entries()) {
-  await type(birthday);
-  if (index < BIRTHDAYS.length - 1) await tap('+');
-}
-await tap('=');
-await tap('×');
-await type(String(MULTIPLIER));
-await tap('=');
-check(
-  'and the running total survived being leaned on',
-  Number((await shown()).replace(/,/g, '')) === PRODUCT,
-  await shown(),
-);
-
-// --- The one forced number: hold the plus -------------------------------
-const armedAfter = await clock();
-// The bare clock as it was when the digits were fixed. Read here, not after
-// the reveal: between arming and pressing `=` the minute can turn, and then
-// the clock has caught up with the answer and a check at the end sees them
-// equal. The claim is about the moment of arming, so that is when to look.
-const bareAtArming = await bareClock();
-check('holding the plus arms the taps', (await holdKey('+')) === '+');
-const armedBefore = await clock();
+// --- First half: hold the multiply, she taps the multiplier ---------------
+check('holding the multiply arms the first taps', (await holdKey('×')) === '×');
 
 await tapBlind(20);
 const overrun = await shown();
@@ -263,13 +198,14 @@ check('extra taps cannot overrun the number', !overrun.includes('Error'), overru
  * tapping the most destructive keys on the pad. The force number and the
  * pending operator have to be exactly where they were.
  */
+const releasedEarly = await page.evaluate(() => document.getElementById('blind').hidden);
 await page.mouse.move(box.width * 0.5, box.height * 0.4);
 await page.mouse.down();
 await page.waitForTimeout(700);
 await page.mouse.up();
 check(
   'a rested finger does release the overlay, as it always did',
-  await page.evaluate(() => document.getElementById('blind').hidden),
+  !releasedEarly && (await page.evaluate(() => document.getElementById('blind').hidden)),
 );
 
 const guarded = { entry: await shown(), expression: await page.textContent('#expression') };
@@ -284,8 +220,41 @@ check(
   `${await page.textContent('#expression')} ${await shown()} — was ${guarded.expression} ${guarded.entry}`,
 );
 
+// And it lifts on its own once the screen is left alone, which is what happens
+// the moment the phone is in your hand.
 await page.waitForTimeout(1100);
-check('and the keypad comes back once the tapping stops', true);
+await page.click('.key:text-is("⌫")');
+check('the seal lifts once the tapping stops', (await shown()) !== guarded.entry, await shown());
+
+// Put the digit back and carry on; the routine is unharmed by all of that.
+await tap(guarded.entry.slice(-1));
+check('and the force number is intact', (await shown()) === guarded.entry, await shown());
+
+// The middle reveal: a real product, on screen, for the room to look at. Her
+// number is in the readout and the sum is still above it, so both are showing
+// at the moment you lift the phone — which is the point of stopping here.
+const firstHalf = (await page.textContent('#expression')).trim();
+const multiplier = Number((await shown()).replace(/,/g, ''));
+await tap('=');
+const product = Number((await shown()).replace(/,/g, ''));
+check(
+  'her number multiplies the sum, and the product is shown',
+  firstHalf === '8,742 ×' && multiplier > 0 && product === 8742 * multiplier,
+  `${firstHalf} ${multiplier} = ${product}`,
+);
+
+// --- Second half: hold the plus, a different spectator taps the addend ----
+const armedAfter = await clock();
+// The bare clock as it was when the digits were fixed. Read here, not after
+// the reveal: between arming and pressing `=` the minute can turn, and then
+// the clock has caught up with the answer and a check at the end sees them
+// equal. The claim is about the moment of arming, so that is when to look.
+const bareAtArming = await bareClock();
+check('holding the plus arms the second taps', (await holdKey('+')) === '+');
+const armedBefore = await clock();
+
+await tapBlind(20);
+check('and the keypad comes back the same way', await takeBack());
 
 const expressionBefore = await page.textContent('#expression');
 
@@ -341,7 +310,7 @@ check(
 );
 check(
   'and the closing sum is on screen for the room to copy',
-  expressionBefore.trim() === `${PRODUCT.toLocaleString('en-US')} +`,
+  expressionBefore.trim() === `${product.toLocaleString('en-US')} +`,
   expressionBefore,
 );
 
@@ -435,61 +404,68 @@ await page.setViewportSize({ width: 844, height: 390 });
 await page.waitForTimeout(100);
 
 /*
- * The two ways this can still go wrong on the night.
+ * The two ways the routine used to fail without saying so.
  *
- * One is hers: she stops tapping before the number is finished. The other is
- * yours: the numbers the room gave you multiply up past the clock, and no
- * addition comes back from there. The first must be invisible; the second must
- * be impossible to miss.
+ * Both end with a number that is not the time, and nothing on screen admits it
+ * — which is the worst shape a bug can take in a prop, because the first person
+ * to notice is in the audience.
  */
-const perform = async ({ opening = BIRTHDAYS, times = [String(MULTIPLIER)], taps = 20 } = {}) => {
+const perform = async ({ settle = true, taps = 20 } = {}) => {
   await page.click('.key:text-is("AC")');
   await page.setViewportSize(devices['iPhone 13 Pro'].viewport);
   await page.waitForTimeout(80);
 
-  for (const [index, number] of opening.entries()) {
-    await type(number);
-    if (index < opening.length - 1) await tap('+');
-  }
-  await tap('=');
-  for (const number of times) {
-    await tap('×');
-    await type(number);
-  }
-  await tap('=');
-  const running = Number((await shown()).replace(/,/g, ''));
+  await type('4827');
+  await tap('+');
+  await type('3915');
+  if (settle) await tap('=');
 
   const size = page.viewportSize();
-  const key = await page.locator('.key:text-is("+")').boundingBox();
-  const before = await clock();
-  await page.mouse.move(key.x + key.width / 2, key.y + key.height / 2);
-  await page.mouse.down();
-  await page.waitForTimeout(700);
-  await page.mouse.up();
-  const after = await clock();
 
-  const lit = await page.evaluate(
-    () => document.querySelector('.key.operator.armed')?.dataset.key ?? null,
-  );
-  if (lit === null) return { armed: false, running, want: before };
+  const half = async (label, count) => {
+    const key = await page.locator(`.key:text-is("${label}")`).boundingBox();
+    await page.mouse.move(key.x + key.width / 2, key.y + key.height / 2);
+    await page.mouse.down();
+    await page.waitForTimeout(700);
+    await page.mouse.up();
 
-  for (let i = 0; i < taps; i += 1) {
-    await page.mouse.click(size.width * 0.5, size.height * 0.4);
-    await page.waitForTimeout(15);
+    for (let i = 0; i < count; i += 1) {
+      await page.mouse.click(size.width * 0.5, size.height * 0.4);
+      await page.waitForTimeout(15);
+    }
+
+    // You take the phone back.
+    await page.mouse.move(size.width * 0.5, size.height * 0.45);
+    await page.mouse.down();
+    await page.waitForTimeout(800);
+    await page.mouse.up();
+
+    // If the overlay is still up the prop is dead in the hand — every key is
+    // behind it. Say so here rather than letting the click on `=` hang for
+    // thirty seconds and report a timeout instead of a diagnosis.
+    const free = await page.evaluate(() => document.getElementById('blind').hidden);
+    // The seal: keys stay inert until the screen has been quiet. Real handling
+    // spends far longer than this turning the phone over.
+    await page.waitForTimeout(1100);
+    return free;
+  };
+
+  if (!(await half('×', taps))) {
+    return { total: 0, sum: '', ok: false, want: await clock(), stuck: true };
   }
+  const sum = (await page.textContent('#expression')).trim();
+  await tap('=');
 
-  // You take the phone back.
-  await page.mouse.move(size.width * 0.5, size.height * 0.45);
-  await page.mouse.down();
-  await page.waitForTimeout(800);
-  await page.mouse.up();
-  const free = await page.evaluate(() => document.getElementById('blind').hidden);
-  await page.waitForTimeout(1100);
-  if (!free) return { armed: true, stuck: true, running, want: before };
+  // The target is fixed the instant the second half is armed, and the minute
+  // can turn while the test is still clicking — so bracket it rather than guess.
+  const before = await clock();
+  const free = await half('+', taps);
+  const after = await clock();
+  if (!free) return { total: 0, sum, ok: false, want: before, stuck: true };
 
   await tap('=');
   const total = Number((await shown()).replace(/,/g, ''));
-  return { armed: true, running, total, ok: total === before || total === after, want: before };
+  return { total, sum, ok: total === before || total === after, want: before };
 };
 
 // She stops tapping long before the number is finished. "As many times as you
@@ -498,31 +474,24 @@ const perform = async ({ opening = BIRTHDAYS, times = [String(MULTIPLIER)], taps
 const short = await perform({ taps: 3 });
 check(
   'stopping her early still lands on the clock',
-  short.armed && short.ok,
+  short.ok,
   short.stuck
     ? 'the keypad never came back — every key is behind the overlay'
-    : `${short.total} vs ${short.want}`,
+    : `${short.total} vs ${short.want} — ${short.sum}`,
 );
 
-/*
- * And the new one: numbers too big.
- *
- * A birthday tops out at 1231, and even one of them times a four-digit number
- * reaches 12,308,769 — past the biggest clock there is, before January is even
- * considered. There is no addend that comes back from there, so the key must stay
- * orange. That is a thing a performer notices, because going white is the one
- * signal they are waiting for.
- */
-const tooBig = await perform({ opening: ['1231', '1231'], times: ['9999'] });
+// The `=` after the addition is forgotten. One keystroke, in the middle of
+// talking, and it used to arm against the second spectator's number alone.
+const unsettled = await perform({ settle: false });
 check(
-  'numbers that overshoot the clock refuse to arm, rather than lying',
-  tooBig.armed === false,
-  `running total ${tooBig.running}, armed=${tooBig.armed}`,
+  'forgetting the = after the addition still lands on the clock',
+  unsettled.ok,
+  `${unsettled.total} vs ${unsettled.want} — ${unsettled.sum}`,
 );
 check(
-  'and the rehearsal line says why',
-  /already past/.test(await page.textContent('#rehearsal')),
-  await page.textContent('#rehearsal'),
+  'and the sum on screen is the one that was evaluated',
+  unsettled.sum.startsWith('8,742 ×'),
+  unsettled.sum,
 );
 
 await page.setViewportSize({ width: 844, height: 390 });
